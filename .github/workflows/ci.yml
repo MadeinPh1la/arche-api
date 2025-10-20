@@ -13,14 +13,14 @@ concurrency:
 permissions:
   contents: read
 
+# Global env: stable, validator-friendly
 env:
-  # Stable test env (prevents OpenAPI snapshot churn)
-  ENVIRONMENT: test
+  ENVIRONMENT: staging              # <- your Settings enum accepts this
   SERVICE_VERSION: 0.0.0
   LOG_LEVEL: INFO
+  AUTH_ENABLED: "false"             # no HS256/RS256 secrets needed in CI
   RATE_LIMIT_ENABLED: "false"
-  ALLOWED_ORIGINS: "*"
-
+  ALLOWED_ORIGINS: "*"              # dev/CI wildcard (works with allow_origin_regex in app)
 
 jobs:
   test:
@@ -57,23 +57,24 @@ jobs:
           --health-retries=10
 
     env:
-      # Point the app to CI services (Docker service DNS resolves to 127.0.0.1 on the runner)
+      # Point the app to CI services
       DATABASE_URL: postgresql+asyncpg://stacklion:stacklion@127.0.0.1:5432/stacklion_test
       REDIS_URL: redis://127.0.0.1:6379/2
-      # Add third-party tokens only if your tests actually require them:
+      # Optional third-party tokens if tests require them:
       # MARKETSTACK_API_KEY: ${{ secrets.MARKETSTACK_API_KEY }}
-      CLERK_ISSUER: https://example-issuer.dev
-      CLERK_AUDIENCE: stacklion-ci
+      # (RS256/JWKS path not enforced in Settings yet; keep AUTH_ENABLED=false in CI)
 
     steps:
       - name: Checkout
         uses: actions/checkout@v4
+        with:
+          fetch-depth: 0  # helpful for tools relying on git history (optional)
 
       - name: Set up Python ${{ matrix.python-version }}
         uses: actions/setup-python@v5
         with:
           python-version: ${{ matrix.python-version }}
-          cache: "pip"
+          cache: pip
 
       - name: Show Python info (debug)
         run: |
@@ -86,11 +87,10 @@ jobs:
           python -m pip install --upgrade pip
           if [ -f requirements.txt ]; then pip install -r requirements.txt; fi
           if [ -f requirements-dev.txt ]; then pip install -r requirements-dev.txt; fi
-          # If these tools aren't in your requirements, uncomment the next line:
+          # If tooling isn't in your reqs, uncomment:
           # pip install pre-commit ruff mypy
 
-      # Optional: wait hard for DB just in case healthcheck races
-      - name: Wait for Postgres
+      - name: Wait for Postgres (belt & suspenders)
         run: |
           for i in {1..30}; do
             pg_isready -h 127.0.0.1 -p 5432 -d stacklion_test -U stacklion && break
