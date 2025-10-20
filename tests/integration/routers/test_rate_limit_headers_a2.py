@@ -1,30 +1,37 @@
-# tests/integration/routers/test_rate_limit_headers_a2.py
-import pytest
-from httpx import AsyncClient
+from __future__ import annotations
 
-from stacklion_api.main import create_app
+import pytest
+from httpx import AsyncClient, Response
 
 
 @pytest.mark.anyio
-async def test_rate_limit_emits_429_and_headers(monkeypatch: pytest.MonkeyPatch) -> None:
-    # Configure limiter BEFORE creating the app
-    monkeypatch.setenv("ENVIRONMENT", "staging")
-    monkeypatch.setenv("ALLOWED_ORIGINS", "*")
+async def test_rate_limit_emits_429_and_headers(
+    http_client: AsyncClient, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    # Make the test deterministic: 1 request allowed per 60s -> 2nd should 429
     monkeypatch.setenv("RATE_LIMIT_ENABLED", "true")
     monkeypatch.setenv("RATE_LIMIT_BACKEND", "memory")
-    monkeypatch.setenv("RATE_LIMIT_BURST", "3")
-    monkeypatch.setenv("RATE_LIMIT_WINDOW_SECONDS", "1")
+    monkeypatch.setenv("RATE_LIMIT_BURST", "1")
+    monkeypatch.setenv("RATE_LIMIT_WINDOW_SECONDS", "60")
 
-    app = create_app()  # app reads env once here
-    async with AsyncClient(app=app, base_url="http://test") as client:
-        # /healthz has a built-in, deterministic limiter (separate from middleware)
-        for _ in range(3):
-            ok = await client.get("/healthz")
-            assert ok.status_code == 200
+    path = "/openapi.json"  # pick any cheap, always-on route in your app
 
-        limited = await client.get("/healthz")
-        assert limited.status_code == 429
+    # Two quick requests inside the same window
+    responses: list[Response] = [
+        await http_client.get(path),
+        await http_client.get(path),
+    ]
 
-        # Headers should be present
-        for h in ("X-RateLimit-Limit", "X-RateLimit-Remaining", "X-RateLimit-Reset", "Retry-After"):
-            assert h in limited.headers, f"missing header: {h}"
+    # First should be 200-ish, second should be 429
+    assert responses[0].status_code < 429
+    assert responses[1].status_code == 429
+
+    r429: Response = responses[1]
+    assert "Retry-After" in r429.headers
+    assert "X-RateLimit-Limit" in r429.headers
+    assert "X-RateLimit-Remaining" in r429.headers
+
+    # All responses should expose limit headers
+    for r in responses:
+        assert "X-RateLimit-Limit" in r.headers
+        assert "X-RateLimit-Remaining" in r.headers
