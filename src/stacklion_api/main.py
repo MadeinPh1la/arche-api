@@ -191,6 +191,7 @@ def _add_healthz(app: FastAPI, settings: Any) -> None:
                 "X-RateLimit-Limit": str(burst),
                 "X-RateLimit-Remaining": str(max(0, burst - _h_state["count"])),
                 "X-RateLimit-Reset": str(window),
+                "Retry-After": str(window),
             }
             return JSONResponse(
                 status_code=429, content={"detail": "Too Many Requests"}, headers=headers
