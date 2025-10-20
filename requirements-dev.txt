@@ -1,0 +1,10 @@
+black
+ruff
+mypy
+pytest
+pytest-asyncio
+httpx
+freezegun
+types-requests
+python-jose[cryptography]==3.3.0
+httpx==0.27.2

@@ -1,0 +1,69 @@
+Business Source License 1.1
+
+Licensor: Northern Lion Labs LLC
+Licensed Work: Stacklion API
+License Date: 2025-10-15
+Change Date: 2028-10-15
+Change License: Apache License, Version 2.0
+
+--------------------------------------------------------------------------------
+
+The Licensed Work is © 2025 Northern Lion Labs LLC.
+
+Use of the Licensed Work is governed by this Business Source License 1.1 (“License”).
+This License is a source-available license that grants certain rights to use,
+modify, and distribute the Licensed Work under specific conditions.
+
+1. Usage Grant
+   a. You may use, copy, modify, and distribute the Licensed Work for
+      non-production, research, evaluation, or internal development purposes.
+   b. Commercial, production, or externally facing use of the Licensed Work
+      requires a separate commercial agreement or written permission from
+      Northern Lion Labs LLC (“Licensor”).
+   c. After the Change Date, this License will automatically convert to the
+      Change License designated above (Apache 2.0), and you may then use the
+      Licensed Work under that license.
+
+2. Distribution
+   a. You may make copies of the Licensed Work and distribute them as permitted
+      under this License, provided that each copy retains all copyright notices,
+      license text, and attribution to Northern Lion Labs LLC.
+
+3. Limitations
+   a. The Licensed Work is provided “AS IS”, without warranty of any kind.
+   b. The Licensor is not liable for any damages resulting from use of the
+      Licensed Work.
+   c. No trademark rights are granted under this License.
+
+4. Commercial Licensing
+   a. For commercial or production deployments, written permission or a
+      commercial license is required.
+   b. Contact info@northernlion.io to obtain a commercial agreement.
+
+--------------------------------------------------------------------------------
+
+Additional Use Grant – SDKs, Schemas, and Documentation
+-------------------------------------------------------
+Client SDKs, schema tooling, and public documentation distributed under the
+Stacklion namespace are licensed separately under the MIT License.
+
+MIT License (applies only to SDKs, Schemas, and Docs)
+Copyright (c) 2025 Northern Lion Labs
+
+Permission is hereby granted, free of charge, to any person obtaining a copy
+of this software and associated documentation files (the “Software”), to deal
+in the Software without restriction, including without limitation the rights
+to use, copy, modify, merge, publish, distribute, sublicense, and/or sell
+copies of the Software, and to permit persons to whom the Software is
+furnished to do so, subject to the following conditions:
+
+The above copyright notice and this permission notice shall be included in all
+copies or substantial portions of the Software.
+
+THE SOFTWARE IS PROVIDED “AS IS”, WITHOUT WARRANTY OF ANY KIND, EXPRESS OR
+IMPLIED, INCLUDING BUT NOT LIMITED TO THE WARRANTIES OF MERCHANTABILITY,
+FITNESS FOR A PARTICULAR PURPOSE AND NONINFRINGEMENT.
+
+--------------------------------------------------------------------------------
+
+SPDX-License-Identifier: BSL-1.1
