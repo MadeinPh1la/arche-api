@@ -1,0 +1,9 @@
+fastapi
+uvicorn[standard]
+pydantic
+sqlalchemy[asyncio]
+psycopg[binary]
+redis
+python-dotenv
+python-jose[cryptography]==3.3.0
+httpx==0.27.2
