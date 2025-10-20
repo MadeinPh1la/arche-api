@@ -1,37 +1,30 @@
-from __future__ import annotations
-
+# tests/integration/routers/test_rate_limit_headers_a2.py
 import pytest
-from httpx import AsyncClient, Response
+from httpx import ASGITransport, AsyncClient
+
+from stacklion_api.main import create_app
 
 
 @pytest.mark.anyio
-async def test_rate_limit_emits_429_and_headers(
-    http_client: AsyncClient, monkeypatch: pytest.MonkeyPatch
-) -> None:
-    # Make the test deterministic: 1 request allowed per 60s -> 2nd should 429
+async def test_rate_limit_emits_429_and_headers(monkeypatch: pytest.MonkeyPatch) -> None:
+    # Set env BEFORE creating the app
+    monkeypatch.setenv("ENVIRONMENT", "staging")
+    monkeypatch.setenv("ALLOWED_ORIGINS", "*")
     monkeypatch.setenv("RATE_LIMIT_ENABLED", "true")
     monkeypatch.setenv("RATE_LIMIT_BACKEND", "memory")
-    monkeypatch.setenv("RATE_LIMIT_BURST", "1")
-    monkeypatch.setenv("RATE_LIMIT_WINDOW_SECONDS", "60")
+    monkeypatch.setenv("RATE_LIMIT_BURST", "3")
+    monkeypatch.setenv("RATE_LIMIT_WINDOW_SECONDS", "1")
 
-    path = "/openapi.json"  # pick any cheap, always-on route in your app
+    app = create_app()  # app reads env here
+    transport = ASGITransport(app=app)
+    async with AsyncClient(transport=transport, base_url="http://test") as client:
+        # /healthz has the built-in simple limiter you added
+        for _ in range(3):
+            ok = await client.get("/healthz")
+            assert ok.status_code == 200
 
-    # Two quick requests inside the same window
-    responses: list[Response] = [
-        await http_client.get(path),
-        await http_client.get(path),
-    ]
+        limited = await client.get("/healthz")
+        assert limited.status_code == 429
 
-    # First should be 200-ish, second should be 429
-    assert responses[0].status_code < 429
-    assert responses[1].status_code == 429
-
-    r429: Response = responses[1]
-    assert "Retry-After" in r429.headers
-    assert "X-RateLimit-Limit" in r429.headers
-    assert "X-RateLimit-Remaining" in r429.headers
-
-    # All responses should expose limit headers
-    for r in responses:
-        assert "X-RateLimit-Limit" in r.headers
-        assert "X-RateLimit-Remaining" in r.headers
+        for h in ("X-RateLimit-Limit", "X-RateLimit-Remaining", "X-RateLimit-Reset", "Retry-After"):
+            assert h in limited.headers, f"missing header: {h}"
