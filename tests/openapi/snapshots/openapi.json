@@ -197,7 +197,7 @@
     }
   },
   "info": {
-    "description": "Bloomberg-grade data layer for modern finance teams.",
+    "description": "A secure, governed API platform that consolidates regulatory filings, market data, and portfolio intelligence into a single, auditable financial data backbone.",
     "title": "Stacklion API",
     "version": "0.1.0"
   },

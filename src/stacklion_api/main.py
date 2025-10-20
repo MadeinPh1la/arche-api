@@ -114,21 +114,33 @@ def _init_middlewares(app: FastAPI, settings: Any) -> None:
 
 def _add_cors(app: FastAPI, settings: Any) -> None:
     """Add CORS with exposure headers when configured."""
-    if settings.cors_allow_origins:
-        app.add_middleware(
-            CORSMiddleware,
-            allow_origins=settings.cors_allow_origins,
-            allow_credentials=True,
-            allow_methods=["GET", "POST", "PUT", "PATCH", "DELETE", "OPTIONS"],
-            allow_headers=["*"],
-            expose_headers=[
-                "ETag",
-                "X-Request-ID",
-                "X-RateLimit-Limit",
-                "X-RateLimit-Remaining",
-                "X-RateLimit-Reset",
-            ],
-        )
+    origins = settings.cors_allow_origins
+    if not origins:
+        return
+
+    # If dev/test wants "*", use regex to support allow_credentials=True
+    allow_origin_regex = None
+    allow_origins = origins
+    if origins == ["*"]:
+        allow_origins = []  # Starlette ignores "*" with credentials
+        allow_origin_regex = ".*"  # allow any origin in dev/test
+
+    app.add_middleware(
+        CORSMiddleware,
+        allow_origins=allow_origins,
+        allow_origin_regex=allow_origin_regex,
+        allow_credentials=True,
+        allow_methods=["GET", "POST", "PUT", "PATCH", "DELETE", "OPTIONS"],
+        allow_headers=["*"],
+        expose_headers=[
+            "ETag",
+            "X-Request-ID",
+            "X-RateLimit-Limit",
+            "X-RateLimit-Remaining",
+            "X-RateLimit-Reset",
+            "Retry-After",
+        ],
+    )
 
 
 def _add_error_handlers(app: FastAPI) -> None:
@@ -281,7 +293,7 @@ def create_app() -> FastAPI:
     app = FastAPI(
         title="Stacklion API",
         version=service_version,
-        description="Bloomberg-grade data layer for modern finance teams.",
+        description="A secure, governed API platform that consolidates regulatory filings, market data, and portfolio intelligence into a single, auditable financial data backbone.",
     )
 
     attach_openapi_contract_registry(app)
