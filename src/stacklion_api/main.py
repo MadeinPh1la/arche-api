@@ -31,6 +31,7 @@ import logging
 import os
 import time
 from collections.abc import Callable
+from contextlib import suppress
 from typing import Any, cast
 
 from fastapi import APIRouter, FastAPI, HTTPException, Request
@@ -95,7 +96,7 @@ def _init_middlewares(app: FastAPI, settings: Any) -> None:
                 burst=settings.rate_limit_burst,
                 window_s=settings.rate_limit_window_seconds,
             )
-            logger.info("rate_limit_enabled")
+            logger.info("rate_limit_enabled", extra={"backend": "redis"})
         else:
             rate_per_sec = max(
                 1.0,
@@ -107,7 +108,7 @@ def _init_middlewares(app: FastAPI, settings: Any) -> None:
                 rate_per_sec=rate_per_sec,
                 burst=settings.rate_limit_burst,
             )
-            logger.info("rate_limit_enabled")
+            logger.info("rate_limit_enabled", extra={"backend": "memory"})
 
     app.add_middleware(GZipMiddleware, minimum_size=1024)
 
@@ -294,15 +295,66 @@ def create_app() -> FastAPI:
     app = FastAPI(
         title="Stacklion API",
         version=service_version,
-        description="A secure, governed API platform that consolidates regulatory filings, market data, and portfolio intelligence into a single, auditable financial data backbone.",
+        description=(
+            "A secure, governed API platform that consolidates regulatory filings, "
+            "market data, and portfolio intelligence into a single, auditable financial data backbone."
+        ),
     )
 
+    # OpenAPI contract registry first to guarantee canonical envelopes.
     attach_openapi_contract_registry(app)
+
+    # Core middleware / CORS / errors / probes.
     _init_middlewares(app, settings)
     _add_cors(app, settings)
     _add_error_handlers(app)
+
+    # ---- Readiness probe wiring (DB/Redis) via DI overrides ----
+    try:
+        from redis.asyncio import Redis
+        from sqlalchemy.ext.asyncio import (
+            AsyncSession,
+            async_sessionmaker,
+            create_async_engine,
+        )
+
+        from stacklion_api.adapters.routers.health_router import (
+            get_health_probe,
+        )
+        from stacklion_api.infrastructure.health.probe import DbRedisProbe
+
+        engine = create_async_engine(settings.database_url, future=True, echo=False)
+        session_factory = async_sessionmaker(
+            bind=engine, class_=AsyncSession, expire_on_commit=False
+        )
+        redis_client = Redis.from_url(settings.redis_url, encoding="utf-8", decode_responses=True)
+
+        async def _probe_provider() -> DbRedisProbe:
+            return DbRedisProbe(session_factory=session_factory, redis=redis_client)
+
+        app.dependency_overrides[get_health_probe] = _probe_provider
+
+        @app.on_event("shutdown")
+        async def _close_infra() -> None:
+            # Best-effort clean shutdown across redis-py versions
+            with suppress(Exception):
+                aclose = getattr(redis_client, "aclose", None)
+                if callable(aclose):
+                    await aclose()
+                else:
+                    close = getattr(redis_client, "close", None)
+                    if callable(close):
+                        await close()
+            await engine.dispose()
+
+    except Exception as exc:  # pragma: no cover
+        logger.warning("readiness_probe_wiring_failed", extra={"error": str(exc)})
+
+    # Health and metrics endpoints (schema-hidden where appropriate).
     _add_healthz(app, settings)
     _mount_metrics(app)
+
+    # Project API routers and minimal protected probe.
     _mount_project_api(app, service_name)
     _ensure_protected_ping(app)
 

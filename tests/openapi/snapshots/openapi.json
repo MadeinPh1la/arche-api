@@ -205,7 +205,7 @@
   "paths": {
     "/health/ready": {
       "get": {
-        "description": "Aggregate dependency checks and return overall readiness.\nThe response status code is 200 when all checks are \"ok\", otherwise 503.\nIndividual check errors are captured in their `detail` field.\n\nArgs:\n    response: FastAPI response object used to mutate the status code.\n    probe: Injected health probe implementing dependency checks.\n\nReturns:\n    A `ReadinessResponse` summarizing dependency health.",
+        "description": "Aggregate dependency checks and return overall readiness.\n\nThe response status code is 200 when all checks are \"ok\", otherwise 503.\nIndividual check errors are captured in their `detail` field.\n\nArgs:\n    response: FastAPI response object used to mutate the status code.\n    probe: Injected health probe implementing dependency checks.\n\nReturns:\n    A `ReadinessResponse` summarizing dependency health.",
         "operationId": "health_readiness",
         "responses": {
           "200": {
@@ -237,7 +237,7 @@
     },
     "/health/z": {
       "get": {
-        "description": "Return a fast liveness signal.\n\nThis endpoint must avoid any external I/O to ensure it can respond even when\ndependencies are unavailable.",
+        "description": "Return a fast liveness signal (no external I/O).",
         "operationId": "health_liveness",
         "responses": {
           "200": {

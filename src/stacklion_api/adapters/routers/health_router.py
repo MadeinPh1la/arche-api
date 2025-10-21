@@ -1,18 +1,21 @@
-"""Health endpoints for Stacklion.
+# Copyright (c) Stacklion.
+# SPDX-License-Identifier: MIT
+"""
+Health endpoints for Stacklion.
 
 This router exposes liveness and readiness checks suitable for container
 orchestrators and load balancers. It is transport-bound (FastAPI) but does not
 depend on infrastructure details. Concrete check functions (DB, Redis, etc.)
 should be injected via FastAPI dependencies so the application layer remains
-decoupled from the transport and infra specifics.
+decoupled from transport and infra specifics.
 
 Design
 ------
-- `/health/z` liveness: cheap "is the process up" signal.
-- `/health/ready` readiness: aggregates optional dependency checks and sets HTTP
-  status to 200 when healthy, 503 when degraded/down.
+- `/health/z`     liveness: cheap "is the process up" signal (no external I/O).
+- `/health/ready` readiness: aggregates dependency checks and returns 200 when
+  healthy, 503 when degraded/down. Payload always includes typed check results.
 
-To wire real checks, override `get_health_probe` in your dependency module:
+To wire real checks, override `get_health_probe` in your app composition:
 
     app.dependency_overrides[get_health_probe] = PostgresRedisProbe(session_factory, redis_client)
 
@@ -140,11 +143,7 @@ async def get_health_probe() -> HealthProbe:
     operation_id="health_liveness",
 )
 async def liveness() -> LivenessResponse:
-    """Return a fast liveness signal.
-
-    This endpoint must avoid any external I/O to ensure it can respond even when
-    dependencies are unavailable.
-    """
+    """Return a fast liveness signal (no external I/O)."""
     return LivenessResponse()
 
 
@@ -160,6 +159,7 @@ async def readiness(
     probe: Annotated[HealthProbe, Depends(get_health_probe)],
 ) -> ReadinessResponse:
     """Aggregate dependency checks and return overall readiness.
+
     The response status code is 200 when all checks are "ok", otherwise 503.
     Individual check errors are captured in their `detail` field.
 
@@ -171,12 +171,14 @@ async def readiness(
         A `ReadinessResponse` summarizing dependency health.
     """
 
+    loop = asyncio.get_running_loop()
+
     async def _time(
         name: str, fn: t.Callable[[], t.Awaitable[tuple[bool, str | None]]]
     ) -> CheckResult:
-        start = asyncio.get_event_loop().time()
+        start = loop.time()
         ok, detail = await fn()
-        duration_ms = (asyncio.get_event_loop().time() - start) * 1000.0
+        duration_ms = (loop.time() - start) * 1000.0
         return CheckResult(
             name=name, status="ok" if ok else "down", detail=detail, duration_ms=duration_ms
         )
@@ -204,6 +206,14 @@ async def readiness(
             }
         },
     )
+
+    # Warn if any single check is slow (>200ms).
+    slow = [r for r in results if r.duration_ms > 200.0]
+    if slow:
+        logger.warning(
+            "readiness_probe_slow",
+            extra={"extra": {"slow": [r.model_dump() for r in slow]}},
+        )
 
     # Set HTTP 503 when degraded/down, but keep the typed payload.
     if not all_ok:
