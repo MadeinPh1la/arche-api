@@ -1,34 +1,26 @@
 # Copyright (c) Stacklion.
 # SPDX-License-Identifier: MIT
-"""
-Metrics Router.
+"""Metrics router.
 
-Summary:
-    Exposes a `/metrics` endpoint for metrics scraping. By default this returns
-    an empty Prometheus exposition so imports and wiring remain stable. Replace
-    the body with your exporter (e.g., `prometheus_client`) when ready.
-
-Notes:
-    * The route is hidden from OpenAPI via `include_in_schema=False`.
+Exposes Prometheus metrics from the default registry at `/metrics`. We import
+the observability metrics module for its side effects so histogram definitions
+are registered before this endpoint is scraped.
 """
 
 from __future__ import annotations
 
 from fastapi import APIRouter, Response
+from prometheus_client import CONTENT_TYPE_LATEST, REGISTRY, generate_latest
 
-__all__ = ["router"]
+# Ensure histograms/counters are registered on import.
+# (Module-level import; no runtime cost beyond registration.)
+from stacklion_api.infrastructure.observability import metrics as _obs_metrics  # noqa: F401
 
 router = APIRouter()
 
 
-@router.get("/metrics", include_in_schema=False)
+@router.get("/metrics", include_in_schema=False, name="metrics_probe")
 async def metrics_probe() -> Response:
-    """Return a metrics payload suitable for Prometheus scraping.
-
-    Returns:
-        Response: A text/plain payload in Prometheus exposition format.
-    """
-    # TODO: replace with real exposition, e.g.:
-    # from prometheus_client import generate_latest, CONTENT_TYPE_LATEST
-    # return Response(generate_latest(), media_type=CONTENT_TYPE_LATEST)
-    return Response(content="", media_type="text/plain; version=0.0.4")
+    """Return Prometheus metrics text exposition from the default registry."""
+    payload = generate_latest(REGISTRY)
+    return Response(payload, media_type=CONTENT_TYPE_LATEST)

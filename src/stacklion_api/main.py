@@ -21,8 +21,8 @@ Run (factory):
     uvicorn stacklion_api.main:create_app --factory --reload
 
 Attributes:
-    app (FastAPI): Eagerly-created application. Exposed to support tools/tests
-        that import ``stacklion_api.main:app`` (e.g., OpenAPI snapshot tests).
+    app: Eagerly-created application. Exposed to support tools/tests that import
+        ``stacklion_api.main:app`` (e.g., OpenAPI snapshot tests).
 """
 
 from __future__ import annotations
@@ -30,12 +30,15 @@ from __future__ import annotations
 import logging
 import os
 import time
-from collections.abc import Callable
-from typing import Any, cast
+from collections.abc import AsyncGenerator, Callable
+from contextlib import asynccontextmanager
+from typing import Annotated, Any, cast
 
-from fastapi import APIRouter, FastAPI, HTTPException, Request
+import redis.asyncio as aioredis
+from fastapi import APIRouter, Depends, FastAPI, HTTPException, Request
 from fastapi.exceptions import RequestValidationError
 from fastapi.responses import JSONResponse
+from sqlalchemy.ext.asyncio import AsyncSession
 from starlette import status
 from starlette.middleware.base import BaseHTTPMiddleware
 from starlette.middleware.cors import CORSMiddleware
@@ -43,15 +46,28 @@ from starlette.middleware.gzip import GZipMiddleware
 from starlette.routing import BaseRoute
 
 # Adapters / middleware
+from stacklion_api.adapters.dependencies.health_probe import PostgresRedisProbe
+from stacklion_api.adapters.routers.health_router import get_health_probe
 from stacklion_api.adapters.routers.metrics_router import router as metrics_router
 from stacklion_api.adapters.routers.openapi_registry import attach_openapi_contract_registry
-from stacklion_api.config.settings import get_settings
+from stacklion_api.config.settings import Settings, get_settings
+from stacklion_api.infrastructure.caching.redis_client import (
+    close_redis,
+    init_redis,
+    redis_dependency,
+)
+from stacklion_api.infrastructure.database.session import (
+    dispose_engine,
+    get_db_session,
+    init_engine_and_sessionmaker,
+)
 from stacklion_api.infrastructure.logging import logger as _logmod
 from stacklion_api.infrastructure.middleware.access_log import AccessLogMiddleware
 from stacklion_api.infrastructure.middleware.metrics import PromMetricsMiddleware
 from stacklion_api.infrastructure.middleware.rate_limit import RateLimitMiddleware
 from stacklion_api.infrastructure.middleware.request_id import RequestIdMiddleware
 from stacklion_api.infrastructure.middleware.security_headers import SecurityHeadersMiddleware
+from stacklion_api.infrastructure.observability import metrics as _obs_metrics  # noqa: F401
 
 # Optional Redis-backed rate limit middleware (may not be installed in all envs)
 try:
@@ -60,7 +76,7 @@ try:
     )
 
     RateLimitMiddlewareRedis: type[BaseHTTPMiddleware] | None = _RedisMW
-except Exception:  # pragma: no cover - optional import
+except Exception:  # pragma: no cover - optional import not always present
     RateLimitMiddlewareRedis = None
 
 # -----------------------------------------------------------------------------
@@ -77,10 +93,38 @@ logger = get_json_logger(__name__)
 
 
 # -----------------------------------------------------------------------------
-# Internal helpers (kept small to satisfy lints and readability)
+# Infrastructure DI providers (Postgres/Redis)
+# -----------------------------------------------------------------------------
+async def get_db_session_dep() -> AsyncGenerator[AsyncSession, None]:
+    """Yield a typed async DB session (FastAPI dependency).
+
+    Yields:
+        AsyncSession: A SQLAlchemy async session.
+    """
+    async with get_db_session() as session:
+        yield session
+
+
+async def get_redis_client_dep() -> AsyncGenerator[aioredis.Redis[Any], None]:
+    """Yield the shared Redis client (FastAPI dependency).
+
+    Yields:
+        redis.asyncio.Redis[Any]: The shared Redis client.
+    """
+    async with redis_dependency() as client:
+        yield client
+
+
+# -----------------------------------------------------------------------------
+# Internal helpers
 # -----------------------------------------------------------------------------
 def _init_middlewares(app: FastAPI, settings: Any) -> None:
-    """Attach core middleware in the correct order."""
+    """Attach core middleware in the correct order.
+
+    Args:
+        app: FastAPI application instance.
+        settings: Application settings object.
+    """
     # RequestId -> AccessLog -> Metrics -> SecurityHeaders -> RateLimit -> GZip
     app.add_middleware(RequestIdMiddleware)
     app.add_middleware(AccessLogMiddleware)
@@ -113,7 +157,12 @@ def _init_middlewares(app: FastAPI, settings: Any) -> None:
 
 
 def _add_cors(app: FastAPI, settings: Any) -> None:
-    """Add CORS with exposure headers when configured."""
+    """Add CORS with exposure headers when configured.
+
+    Args:
+        app: FastAPI application instance.
+        settings: Application settings object.
+    """
     origins = settings.cors_allow_origins
     if not origins:
         return
@@ -144,10 +193,14 @@ def _add_cors(app: FastAPI, settings: Any) -> None:
 
 
 def _add_error_handlers(app: FastAPI) -> None:
-    """Register canonical error envelopes."""
+    """Register canonical error envelopes.
+
+    Args:
+        app: FastAPI application instance.
+    """
 
     @app.exception_handler(RequestValidationError)
-    async def _validation_exception_handler(
+    async def _validation_exception_handler(  # noqa: D401 - nested handler doc is above
         request: Request, exc: RequestValidationError
     ) -> JSONResponse:
         """Return a canonical adapters-level validation error envelope."""
@@ -170,8 +223,13 @@ def _add_error_handlers(app: FastAPI) -> None:
 
 
 def _add_healthz(app: FastAPI, settings: Any) -> None:
-    """Add a schema-hidden /healthz with a simple burst/window limiter using raw env."""
-    _h_state = {"start": 0.0, "count": 0}
+    """Add a schema-hidden /healthz with a simple burst/window limiter using env.
+
+    Args:
+        app: FastAPI application instance.
+        settings: Application settings object.
+    """
+    _h_state: dict[str, float | int] = {"start": 0.0, "count": 0}
 
     async def _healthz() -> JSONResponse:
         enabled = (os.getenv("RATE_LIMIT_ENABLED", "") or "").lower() == "true"
@@ -186,10 +244,10 @@ def _add_healthz(app: FastAPI, settings: Any) -> None:
             _h_state["count"] = 0
 
         _h_state["count"] += 1
-        if enabled and _h_state["count"] > burst:
+        if enabled and int(_h_state["count"]) > burst:
             headers = {
                 "X-RateLimit-Limit": str(burst),
-                "X-RateLimit-Remaining": str(max(0, burst - _h_state["count"])),
+                "X-RateLimit-Remaining": str(max(0, burst - int(_h_state["count"]))),
                 "X-RateLimit-Reset": str(window),
                 "Retry-After": str(window),
             }
@@ -209,12 +267,21 @@ def _add_healthz(app: FastAPI, settings: Any) -> None:
 
 
 def _mount_metrics(app: FastAPI) -> None:
-    """Expose /metrics for Prometheus (hidden from OpenAPI at the router level)."""
+    """Expose /metrics for Prometheus (hidden from OpenAPI at the router level).
+
+    Args:
+        app: FastAPI application instance.
+    """
     app.include_router(metrics_router)
 
 
 def _mount_project_api(app: FastAPI, service_name: str) -> None:
-    """Attempt to mount the project API router; log if unavailable."""
+    """Attempt to mount the project API router; log if unavailable.
+
+    Args:
+        app: FastAPI application instance.
+        service_name: Logical service name for logs.
+    """
     try:
         from .adapters.routers import api_router
 
@@ -224,7 +291,16 @@ def _mount_project_api(app: FastAPI, service_name: str) -> None:
 
 
 def _route_exists(app: FastAPI, path: str, method: str) -> bool:
-    """Return True if a route with `path` and HTTP `method` is mounted."""
+    """Return True if a route with `path` and HTTP `method` is mounted.
+
+    Args:
+        app: FastAPI application instance.
+        path: The route path to check.
+        method: HTTP method to check.
+
+    Returns:
+        True if the method/path exists on the router; otherwise False.
+    """
     m = method.upper()
     for r in app.router.routes:
         path_attr = getattr(r, "path", None)
@@ -241,7 +317,11 @@ def _route_exists(app: FastAPI, path: str, method: str) -> bool:
 
 
 def _ensure_protected_ping(app: FastAPI) -> None:
-    """Mount a schema-hidden /v1/protected/ping if the project doesn't provide one."""
+    """Mount /v1/protected/ping if the project doesn't provide one.
+
+    Args:
+        app: FastAPI application instance.
+    """
     if _route_exists(app, "/v1/protected/ping", "GET"):
         return
 
@@ -249,7 +329,17 @@ def _ensure_protected_ping(app: FastAPI) -> None:
 
     @protected.get("/ping", name="protected_ping")
     async def _protected_ping(request: Request) -> dict[str, str]:
-        """Simple protected probe: 401 without valid HS256 token when AUTH is enabled."""
+        """Return 401 when AUTH is enabled and a valid token is not provided.
+
+        Args:
+            request: Incoming request.
+
+        Returns:
+            A minimal JSON status payload.
+
+        Raises:
+            HTTPException: When authentication is required and invalid.
+        """
         auth_enabled = (os.getenv("AUTH_ENABLED", "") or "").lower() == "true"
         if not auth_enabled:
             return {"status": "ok"}
@@ -268,7 +358,7 @@ def _ensure_protected_ping(app: FastAPI) -> None:
 
         try:
             pyjwt.decode(token, secret, algorithms=["HS256"])
-        except Exception as _err:
+        except Exception as _err:  # noqa: F841
             # Hide decode internals; ensure exception provenance is clear for linters.
             raise HTTPException(status_code=401, detail="Invalid token") from None
 
@@ -278,7 +368,7 @@ def _ensure_protected_ping(app: FastAPI) -> None:
 
 
 # -----------------------------------------------------------------------------
-# Application factory
+# Application factory (+ lifespan for real infra clients)
 # -----------------------------------------------------------------------------
 def create_app() -> FastAPI:
     """Create and configure the FastAPI application.
@@ -286,17 +376,38 @@ def create_app() -> FastAPI:
     Returns:
         FastAPI: Fully configured application.
     """
-    settings = get_settings()
+    settings: Settings = get_settings()
     env = settings.environment.value
     service_name = "stacklion-api"
     service_version = os.getenv("SERVICE_VERSION") or settings.service_version or "0.1.0"
 
+    @asynccontextmanager
+    async def lifespan(app: FastAPI) -> AsyncGenerator[None, None]:  # noqa: ARG001
+        """Initialize and teardown shared infrastructure (DB/Redis).
+
+        Args:
+            app: FastAPI application instance (unused; required by signature).
+        """
+        init_engine_and_sessionmaker(settings)
+        init_redis(settings)
+        try:
+            yield
+        finally:
+            await close_redis()
+            await dispose_engine()
+
     app = FastAPI(
         title="Stacklion API",
         version=service_version,
-        description="A secure, governed API platform that consolidates regulatory filings, market data, and portfolio intelligence into a single, auditable financial data backbone.",
+        description=(
+            "A secure, governed API platform that consolidates regulatory filings, "
+            "market data, and portfolio intelligence into a single, auditable financial "
+            "data backbone."
+        ),
+        lifespan=lifespan,
     )
 
+    # OpenAPI / middleware / routers
     attach_openapi_contract_registry(app)
     _init_middlewares(app, settings)
     _add_cors(app, settings)
@@ -305,6 +416,24 @@ def create_app() -> FastAPI:
     _mount_metrics(app)
     _mount_project_api(app, service_name)
     _ensure_protected_ping(app)
+
+    # Health router: override its dependency with our concrete probe.
+    async def _concrete_health_probe(
+        db: Annotated[AsyncSession, Depends(get_db_session_dep)],
+        r: Annotated[Any, Depends(get_redis_client_dep)],
+    ) -> PostgresRedisProbe:
+        """Provide a concrete Postgres+Redis probe to the health router.
+
+        Args:
+            db: Injected SQLAlchemy AsyncSession.
+            r: Injected Redis asyncio client.
+
+        Returns:
+            A ready probe instance for the health router.
+        """
+        return PostgresRedisProbe(db, r)
+
+    app.dependency_overrides[get_health_probe] = _concrete_health_probe
 
     logger.info(
         "service_startup",
