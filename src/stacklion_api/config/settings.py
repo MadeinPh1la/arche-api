@@ -10,7 +10,7 @@ Summary:
     environment at runtime. Other layers should receive `Settings` via DI.
 
 Design:
-    - Pydantic v2 `BaseSettings` with `extra='forbid'` to catch unknown env.
+    - Pydantic v2 BaseSettings with `extra='forbid'` to catch unknown env.
     - Explicit field declarations with constrained types and ranges.
     - Environment enumeration for behavior toggles.
     - Singleton accessor `get_settings()` with LRU cache.
@@ -45,10 +45,16 @@ class Environment(str, Enum):
 
 
 def _split_env(v: str | None) -> list[str]:
-    """Split a comma/space-separated env var into tokens (empty on None/blank)."""
+    """Split a comma/space-separated env var into tokens.
+
+    Args:
+        v: Raw environment variable value (may be None or empty).
+
+    Returns:
+        A list of non-empty, stripped tokens. Returns an empty list for None/blank input.
+    """
     if not v:
         return []
-    # normalize both comma and whitespace; filter empties
     parts = [p.strip() for chunk in v.split(",") for p in chunk.split()]
     return [p for p in parts if p]
 
@@ -72,11 +78,13 @@ class Settings(BaseSettings):
     database_url: str = Field(
         ...,
         description="SQLAlchemy async DB URL. Example: postgresql+asyncpg://user:pass@host:5432/db",
+        validation_alias="DATABASE_URL",
     )
 
     redis_url: str = Field(
         ...,
         description="Redis connection URL used for caching, telemetry, and rate limiting.",
+        validation_alias="REDIS_URL",
     )
 
     # Raw env; parse manually to avoid pydantic JSON decoding on list[str]
@@ -132,23 +140,62 @@ class Settings(BaseSettings):
     )
 
     # ---------------------------
-    # Auth (Clerk OIDC/JWT)
+    # Observability (OTEL)
+    # ---------------------------
+    otel_enabled: bool = Field(
+        default=False,
+        description="Enable OpenTelemetry instrumentation.",
+        validation_alias="OTEL_ENABLED",
+    )
+    otel_exporter_otlp_endpoint: AnyHttpUrl | None = Field(
+        default=None,
+        description=(
+            "OTLP endpoint for traces/metrics/logs. "
+            "Examples: http://otel-collector:4318/v1/traces or http://otel-collector:4317"
+        ),
+        validation_alias="OTEL_EXPORTER_OTLP_ENDPOINT",
+    )
+
+    # ---------------------------
+    # Auth (Clerk OIDC/JWT) — primary config
     # ---------------------------
     clerk_issuer: AnyHttpUrl = Field(
         ...,
         description="Clerk OIDC issuer URL (e.g., https://<sub>.clerk.accounts.dev).",
+        validation_alias="CLERK_ISSUER",
     )
     clerk_audience: str = Field(
         default="stacklion-ci",
         min_length=1,
         max_length=128,
         description="Expected JWT audience ('aud') configured in Clerk.",
+        validation_alias="CLERK_AUDIENCE",
     )
     clerk_jwks_ttl_seconds: int = Field(
         default=300,
         ge=60,
         le=3600,
         description="JWKS cache TTL in seconds (60–3600).",
+        validation_alias="CLERK_JWKS_TTL_SECONDS",
+    )
+
+    # ---------------------------
+    # Auth (Clerk) — compatibility inputs (avoid extra='forbid' failures)
+    # ---------------------------
+    next_public_clerk_publishable_key: str | None = Field(
+        default=None,
+        description="Optional Clerk publishable key for web clients.",
+        validation_alias="NEXT_PUBLIC_CLERK_PUBLISHABLE_KEY",
+    )
+    clerk_secret_key: str | None = Field(
+        default=None,
+        description="Optional Clerk server secret (not required if using JWKS only).",
+        validation_alias="CLERK_SECRET_KEY",
+    )
+    clerk_jwks_url: AnyHttpUrl | None = Field(
+        default=None,
+        description="Optional explicit JWKS URL override for Clerk (rarely needed).",
+        validation_alias="CLERK_JWKS_URL",
     )
 
     # ---------------------------
@@ -157,10 +204,12 @@ class Settings(BaseSettings):
     docs_url: AnyHttpUrl | None = Field(
         default=None,
         description="External docs base URL (e.g., https://docs.stacklion.io).",
+        validation_alias="DOCS_URL",
     )
     api_base_url: AnyHttpUrl | None = Field(
         default=None,
         description="Externally visible API base URL (e.g., https://api.stacklion.io).",
+        validation_alias="API_BASE_URL",
     )
 
     # ---------------------------
@@ -169,102 +218,168 @@ class Settings(BaseSettings):
     celery_broker_url: str | None = Field(
         default=None,
         description="Celery broker URL (commonly Redis). Example: redis://localhost:6379/0",
+        validation_alias="CELERY_BROKER_URL",
     )
     celery_result_backend: str | None = Field(
         default=None,
         description="Celery result backend URL. Example: redis://localhost:6379/1",
+        validation_alias="CELERY_RESULT_BACKEND",
     )
 
     # ---------------------------
     # Ingestion flags / CRONs (optional)
     # ---------------------------
     run_ingestion_on_startup: bool = Field(
-        default=False, description="If true, run ingestion tasks at application startup."
+        default=False,
+        description="If true, run ingestion tasks at application startup.",
+        validation_alias="RUN_INGESTION_ON_STARTUP",
     )
-    edgar_cron: str | None = Field(default=None, description="CRON schedule for EDGAR ingestion.")
+    edgar_cron: str | None = Field(
+        default=None,
+        description="CRON schedule for EDGAR ingestion.",
+        validation_alias="EDGAR_CRON",
+    )
     marketstack_cron: str | None = Field(
-        default=None, description="CRON schedule for MarketStack sync."
+        default=None,
+        description="CRON schedule for MarketStack sync.",
+        validation_alias="MARKETSTACK_CRON",
     )
     batch_ingest_cron: str | None = Field(
-        default=None, description="CRON schedule for batch ingest."
+        default=None,
+        description="CRON schedule for batch ingest.",
+        validation_alias="BATCH_INGEST_CRON",
     )
     ingestion_frequency: str | None = Field(
-        default=None, description="Human label for ingestion cadence (e.g., '3x')."
+        default=None,
+        description="Human label for ingestion cadence (e.g., '3x').",
+        validation_alias="INGESTION_FREQUENCY",
     )
 
     # ---------------------------
     # MarketStack (optional)
     # ---------------------------
-    marketstack_api_key: str | None = Field(default=None, description="MarketStack API key.")
+    marketstack_api_key: str | None = Field(
+        default=None, description="MarketStack API key.", validation_alias="MARKETSTACK_API_KEY"
+    )
     marketstack_company_fallback: Literal["warn", "skip", "fail"] | None = Field(
-        default="warn", description="Fallback behavior when company resolution fails."
+        default="warn",
+        description="Fallback behavior when company resolution fails.",
+        validation_alias="MARKETSTACK_COMPANY_FALLBACK",
     )
     market_index_ticker: str | None = Field(
-        default=None, description="Symbol used as market index baseline (e.g., 'SPY')."
+        default=None,
+        description="Symbol used as market index baseline (e.g., 'SPY').",
+        validation_alias="MARKET_INDEX_TICKER",
     )
 
     # ---------------------------
     # Legacy local admin/API keys (dev only)
     # ---------------------------
     api_key: str | None = Field(
-        default=None, description="Legacy local API key (development only)."
+        default=None,
+        description="Legacy local API key (development only).",
+        validation_alias="API_KEY",
     )
     admin_api_key: str | None = Field(
-        default=None, description="Legacy local admin API key (development only)."
+        default=None,
+        description="Legacy local admin API key (development only).",
+        validation_alias="ADMIN_API_KEY",
     )
 
     # ---------------------------
     # Internal service JWT (not end-user auth)
     # ---------------------------
     jwt_secret_key: str | None = Field(
-        default=None, description="HMAC secret for internal service-issued JWTs."
+        default=None,
+        description="HMAC secret for internal service-issued JWTs.",
+        validation_alias="JWT_SECRET_KEY",
     )
     jwt_algorithm: str | None = Field(
-        default="HS256", description="JWT algorithm for internal tokens (e.g., HS256)."
+        default="HS256",
+        description="JWT algorithm for internal tokens (e.g., HS256).",
+        validation_alias="JWT_ALGORITHM",
     )
     jwt_access_token_minutes: int | None = Field(
-        default=60, ge=5, le=24 * 60, description="TTL (minutes) for internal tokens."
+        default=60,
+        ge=5,
+        le=24 * 60,
+        description="TTL (minutes) for internal tokens.",
+        validation_alias="JWT_ACCESS_TOKEN_MINUTES",
     )
-    jwt_issuer: str | None = Field(default=None, description="Issuer for internal tokens, if used.")
+    jwt_issuer: str | None = Field(
+        default=None,
+        description="Issuer for internal tokens, if used.",
+        validation_alias="JWT_ISSUER",
+    )
     jwt_audience: str | None = Field(
-        default=None, description="Audience for internal tokens, if used."
+        default=None,
+        description="Audience for internal tokens, if used.",
+        validation_alias="JWT_AUDIENCE",
     )
 
     # ---------------------------
     # Clerk webhook (Svix) (optional)
     # ---------------------------
     clerk_webhook_secret: str | None = Field(
-        default=None, description="Clerk (Svix) webhook secret for user/org events."
+        default=None,
+        description="Clerk (Svix) webhook secret for user/org events.",
+        validation_alias="CLERK_WEBHOOK_SECRET",
     )
 
     # ---------------------------
     # Paddle (optional)
     # ---------------------------
     paddle_env: Literal["sandbox", "live"] | None = Field(
-        default=None, description="Paddle environment."
+        default=None, description="Paddle environment.", validation_alias="PADDLE_ENV"
     )
-    paddle_api_key: str | None = Field(default=None, description="Paddle API key.")
-    paddle_webhook_secret: str | None = Field(default=None, description="Paddle webhook secret.")
+    paddle_api_key: str | None = Field(
+        default=None, description="Paddle API key.", validation_alias="PADDLE_API_KEY"
+    )
+    paddle_webhook_secret: str | None = Field(
+        default=None, description="Paddle webhook secret.", validation_alias="PADDLE_WEBHOOK_SECRET"
+    )
     paddle_api_base_url: AnyHttpUrl | None = Field(
-        default=None, description="Override for Paddle API base URL."
+        default=None,
+        description="Override for Paddle API base URL.",
+        validation_alias="PADDLE_API_BASE_URL",
     )
     paddle_webhook_max_skew_seconds: int | None = Field(
-        default=300, ge=60, le=900, description="Webhook timestamp tolerance (seconds)."
+        default=300,
+        ge=60,
+        le=900,
+        description="Webhook timestamp tolerance (seconds).",
+        validation_alias="PADDLE_WEBHOOK_MAX_SKEW_SECONDS",
     )
 
     # ---------------------------
     # Developer API key issuance (optional)
     # ---------------------------
     api_key_pepper_b64: str | None = Field(
-        default=None, description="Base64-encoded pepper used during API key hashing."
+        default=None,
+        description="Base64-encoded pepper used during API key hashing.",
+        validation_alias="API_KEY_PEPPER_B64",
     )
     api_key_old_pepper_b64: str | None = Field(
-        default=None, description="Previous pepper accepted during rotation window."
+        default=None,
+        description="Previous pepper accepted during rotation window.",
+        validation_alias="API_KEY_OLD_PEPPER_B64",
     )
-    api_key_prefix_test: str | None = Field(default="sl_test_", description="Prefix for test keys.")
-    api_key_prefix_live: str | None = Field(default="sl_live_", description="Prefix for live keys.")
+    api_key_prefix_test: str | None = Field(
+        default="sl_test_",
+        description="Prefix for test keys.",
+        validation_alias="API_KEY_PREFIX_TEST",
+    )
+    api_key_prefix_live: str | None = Field(
+        default="sl_live_",
+        description="Prefix for live keys.",
+        validation_alias="API_KEY_PREFIX_LIVE",
+    )
     api_key_min_bytes: int | None = Field(
-        default=32, ge=16, le=64, description="Min random bytes for key generation."
+        default=32,
+        ge=16,
+        le=64,
+        description="Min random bytes for key generation.",
+        validation_alias="API_KEY_MIN_BYTES",
     )
 
     # ---------------------------
@@ -293,12 +408,21 @@ class Settings(BaseSettings):
     @field_validator("cors_allow_origins", mode="before")
     @classmethod
     def _split_cors_origins(cls, v: Any) -> list[str]:
-        """Normalize allowed CORS origins when pydantic supplies a raw value.
+        """Normalize allowed CORS origins when Pydantic supplies a raw value.
 
         Accepts:
             - Comma-separated string ("https://a, https://b")
             - JSON-like list ('["https://a","https://b"]')
             - Native list (["https://a","https://b"])
+
+        Args:
+            v: Raw value provided by Pydantic before parsing.
+
+        Returns:
+            A normalized list of origins.
+
+        Raises:
+            ValueError: If the provided format is unsupported.
         """
         if v is None or v == "":
             return []
@@ -315,7 +439,12 @@ class Settings(BaseSettings):
 
     @model_validator(mode="after")
     def _coerce_cors_list(self) -> Settings:
-        """Coerce ALLOWED_ORIGINS / CORS_ALLOW_ORIGINS into `cors_allow_origins`."""
+        """Coerce ALLOWED_ORIGINS / CORS_ALLOW_ORIGINS into `cors_allow_origins`.
+
+        Returns:
+            The current settings instance with `cors_allow_origins` populated from
+            either `cors_allow_origins_raw` or `CORS_ALLOW_ORIGINS`.
+        """
         raw = self.cors_allow_origins_raw or os.getenv("CORS_ALLOW_ORIGINS")
         if not self.cors_allow_origins:
             self.cors_allow_origins = _split_env(raw)
@@ -324,7 +453,17 @@ class Settings(BaseSettings):
     @field_validator("database_url")
     @classmethod
     def _ensure_asyncpg(cls, v: str) -> str:
-        """Validate database driver is AsyncPG."""
+        """Validate that the database driver is AsyncPG.
+
+        Args:
+            v: Database URL string.
+
+        Returns:
+            The input URL when valid.
+
+        Raises:
+            ValueError: If the URL does not use 'postgresql+asyncpg://'.
+        """
         if v.startswith("postgresql://"):
             raise ValueError("Use 'postgresql+asyncpg://...' for async SQLAlchemy.")
         if not v.startswith("postgresql+asyncpg://"):
@@ -340,6 +479,13 @@ class Settings(BaseSettings):
               (localhost is exempt for tooling).
             • If AUTH is enabled, an HS256 secret must be provided.
             • If rate limiting is enabled with a 'redis' backend, REDIS_URL must be set.
+            • If OTEL is enabled, an OTLP endpoint must be provided.
+
+        Returns:
+            The validated settings object.
+
+        Raises:
+            ValueError: When a cross-field constraint is violated.
         """
         # CORS hardening
         if self.environment == Environment.PRODUCTION:
@@ -367,6 +513,10 @@ class Settings(BaseSettings):
         if self.rate_limit_enabled and self.rate_limit_backend == "redis" and not self.redis_url:
             raise ValueError("RATE_LIMIT_BACKEND=redis requires REDIS_URL to be set.")
 
+        # OTEL requirements
+        if self.otel_enabled and not self.otel_exporter_otlp_endpoint:
+            raise ValueError("OTEL_ENABLED=true requires OTEL_EXPORTER_OTLP_ENDPOINT to be set.")
+
         return self
 
 
@@ -376,6 +526,13 @@ def get_settings() -> Settings:
 
     Reads process and `.env` variables according to `model_config`, validates
     fields, applies cross-field rules, and logs a non-sensitive summary.
+
+    Returns:
+        The validated `Settings` singleton.
+
+    Raises:
+        RuntimeError: If validation fails. The original `ValidationError` is
+            chained as the cause.
     """
     try:
         settings = Settings()
@@ -398,6 +555,8 @@ def get_settings() -> Settings:
                 "has_celery": bool(settings.celery_broker_url and settings.celery_result_backend),
                 "ingest_on_start": settings.run_ingestion_on_startup,
                 "paddle_env": settings.paddle_env if settings.paddle_env else None,
+                "otel_enabled": settings.otel_enabled,
+                "otel_endpoint_set": bool(settings.otel_exporter_otlp_endpoint),
             },
         )
         return settings

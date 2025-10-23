@@ -1,23 +1,30 @@
 # syntax=docker/dockerfile:1
-FROM python:3.12-slim AS base
+FROM python:3.12-slim
 
-ENV PYTHONDONTWRITEBYTECODE=1
-ENV PYTHONUNBUFFERED=1
-ENV POETRY_VIRTUALENVS_CREATE=false
+# --- Base env ---
+ENV PYTHONDONTWRITEBYTECODE=1 \
+    PYTHONUNBUFFERED=1
 
 WORKDIR /app
 
-# System deps
-RUN apt-get update && apt-get install -y build-essential libpq-dev curl && rm -rf /var/lib/apt/lists/*
+# --- OS deps (build & libpq for asyncpg) ---
+RUN apt-get update && apt-get install -y --no-install-recommends \
+    build-essential \
+    libpq-dev \
+    curl \
+ && rm -rf /var/lib/apt/lists/*
 
-# Copy dependencies
-COPY pyproject.toml poetry.lock* requirements*.txt ./
+# --- Copy project metadata first (better layer caching) ---
+COPY pyproject.toml README.md ./
 
-# Install dependencies
-RUN pip install --upgrade pip && pip install -e ".[dev]" --no-cache-dir
-
-# Copy source
+# --- Copy source ---
+# For editable install, need the actual source present
 COPY src ./src
 
-# Run
-CMD ["uvicorn", "stacklion_api.main:app", "--host", "0.0.0.0", "--port", "8000"]
+# --- Install (editable, includes your dev extras if you want) ---
+# If defined "otel" extra in pyproject, use .[dev,otel]; otherwise .[dev]
+RUN pip install --upgrade pip \
+ && pip install --no-cache-dir -e ".[dev,otel]"
+
+# --- Default dev command (factory to ensure lifespan runs) ---
+CMD ["uvicorn", "stacklion_api.main:create_app", "--factory", "--host", "0.0.0.0", "--port", "8000", "--reload"]
