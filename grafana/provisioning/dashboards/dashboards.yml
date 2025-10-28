@@ -1,0 +1,11 @@
+apiVersion: 1
+providers:
+  - name: "Stacklion (read-only)"
+    orgId: 1
+    folder: "Stacklion"
+    type: file
+    disableDeletion: true
+    editable: false
+    allowUiUpdates: false
+    options:
+      path: /etc/grafana/provisioning/dashboards/json

@@ -169,3 +169,15 @@ markers = [
   "e2e: end-to-end tests through the API surface",
 ]
 anyio_backend = "asyncio"
+observability = [
+  "opentelemetry-sdk>=1.27.0",
+  "opentelemetry-exporter-otlp>=1.27.0",
+  "opentelemetry-instrumentation-asgi>=0.48b0",
+  "opentelemetry-instrumentation-fastapi>=0.48b0",
+  "opentelemetry-instrumentation-httpx>=0.48b0",
+  "opentelemetry-instrumentation-sqlalchemy>=0.48b0",
+]
+# For Redis client below:
+runtime = [
+  "redis>=5.0.0"
+]

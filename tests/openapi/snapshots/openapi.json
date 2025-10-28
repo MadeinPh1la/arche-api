@@ -197,9 +197,9 @@
     }
   },
   "info": {
-    "description": "A secure, governed API platform that consolidates regulatory filings, market data, and portfolio intelligence into a single, auditable financial data backbone.",
+    "description": "Stacklion API",
     "title": "Stacklion API",
-    "version": "0.1.0"
+    "version": "0.0.0"
   },
   "openapi": "3.1.0",
   "paths": {
