@@ -29,7 +29,6 @@ from __future__ import annotations
 
 import time
 from threading import Lock
-from typing import Any
 
 from prometheus_client import REGISTRY, Histogram
 from redis.asyncio import Redis
@@ -131,11 +130,7 @@ class DbRedisProbe:
         redis: Async Redis client instance.
     """
 
-    def __init__(
-        self,
-        session_factory: async_sessionmaker[AsyncSession],
-        redis: Redis[Any],
-    ) -> None:
+    def __init__(self, session_factory: async_sessionmaker[AsyncSession], redis: Redis) -> None:
         """Initialize the probe with DB session factory and Redis client.
 
         Args:

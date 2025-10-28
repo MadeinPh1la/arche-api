@@ -121,12 +121,19 @@ async def get_db_session_dep() -> AsyncGenerator[AsyncSession, None]:
         yield session
 
 
-async def get_redis_client_dep() -> AsyncGenerator[aioredis.Redis[Any], None]:
+async def get_redis_client_dep() -> AsyncGenerator[aioredis.Redis, None]:
     """Yield the shared Redis client (FastAPI dependency).
 
+    This wraps the project’s context-manager dependency so that FastAPI receives
+    the concrete client instance instead of a context manager. Doing it this way
+    prevents request-time validation errors (HTTP 422) and avoids noisy teardown
+    warnings like “generator didn’t stop” during tests.
+
     Yields:
-        redis.asyncio.Redis[Any]: The shared Redis client.
+        redis.asyncio.Redis: The shared asyncio Redis client.
     """
+    # Local import to avoid import-order cycles during app boot.
+
     async with redis_dependency() as client:
         yield client
 
@@ -418,7 +425,7 @@ def create_app() -> FastAPI:
     # Health router: override its dependency with our concrete probe (DB + Redis via DI).
     async def _concrete_health_probe(
         db: Annotated[AsyncSession, Depends(get_db_session_dep)],
-        r: Annotated[Any, Depends(get_redis_client_dep)],
+        redis_client: Annotated[aioredis.Redis, Depends(get_redis_client_dep)],
     ) -> PostgresRedisProbe:
         """Provide a concrete Postgres+Redis probe to the health router.
 
@@ -429,7 +436,7 @@ def create_app() -> FastAPI:
         Returns:
             PostgresRedisProbe: Ready probe instance for the health router.
         """
-        return PostgresRedisProbe(db, r)
+        return PostgresRedisProbe(db, redis_client)
 
     app.dependency_overrides[get_health_probe] = _concrete_health_probe
 
