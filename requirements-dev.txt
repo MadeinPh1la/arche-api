@@ -7,4 +7,5 @@ httpx
 freezegun
 types-requests
 python-jose[cryptography]==3.3.0
-httpx==0.27.2
+respx>=0.21
+tenacity>=8.2

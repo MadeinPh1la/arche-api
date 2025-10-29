@@ -74,8 +74,8 @@ from typing import Any, Protocol, runtime_checkable
 from fastapi import APIRouter, Query
 
 from stacklion_api.adapters.presenters.base_presenter import PresentResult
-from stacklion_api.adapters.schemas.base import BaseHTTPSchema
-from stacklion_api.adapters.schemas.envelopes import ErrorEnvelope
+from stacklion_api.adapters.schemas.http.base import BaseHTTPSchema
+from stacklion_api.adapters.schemas.http.envelopes import ErrorEnvelope
 from stacklion_api.infrastructure.logging.logger import get_json_logger
 from stacklion_api.types import JsonValue
 

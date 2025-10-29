@@ -33,8 +33,8 @@ from collections.abc import Mapping, MutableMapping, Sequence
 from dataclasses import dataclass
 from typing import Any, Protocol
 
-from stacklion_api.adapters.schemas.base import BaseHTTPSchema
-from stacklion_api.adapters.schemas.envelopes import (
+from stacklion_api.adapters.schemas.http.base import BaseHTTPSchema
+from stacklion_api.adapters.schemas.http.envelopes import (
     ErrorEnvelope,
     ErrorObject,
     PaginatedEnvelope,
