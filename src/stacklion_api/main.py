@@ -29,7 +29,6 @@ from __future__ import annotations
 
 import logging
 import os
-import sys
 import time
 from collections.abc import AsyncGenerator, Callable
 from contextlib import asynccontextmanager
@@ -48,7 +47,9 @@ from starlette.routing import BaseRoute
 
 # Adapters / middleware
 from stacklion_api.adapters.dependencies.health_probe import PostgresRedisProbe
-from stacklion_api.adapters.routers.health_router import get_health_probe
+from stacklion_api.adapters.routers.health_router import (
+    get_health_probe as _router_get_health_probe,
+)
 from stacklion_api.adapters.routers.metrics_router import router as metrics_router
 from stacklion_api.adapters.routers.openapi_registry import attach_openapi_contract_registry
 from stacklion_api.config.settings import Settings, get_settings
@@ -63,7 +64,6 @@ from stacklion_api.infrastructure.database.session import (
     init_engine_and_sessionmaker,
 )
 from stacklion_api.infrastructure.logging import logger as _logmod
-from stacklion_api.infrastructure.logging.tracing import configure_tracing
 from stacklion_api.infrastructure.middleware.access_log import AccessLogMiddleware
 from stacklion_api.infrastructure.middleware.metrics import PromMetricsMiddleware
 from stacklion_api.infrastructure.middleware.rate_limit import RateLimitMiddleware
@@ -72,15 +72,26 @@ from stacklion_api.infrastructure.middleware.request_metrics import RequestLaten
 from stacklion_api.infrastructure.middleware.security_headers import SecurityHeadersMiddleware
 from stacklion_api.infrastructure.observability import metrics as _obs_metrics  # noqa: F401
 
+# OTEL/init (A4.3) — safe import with no-op fallback
+try:
+    from stacklion_api.infrastructure.observability.otel import init_otel
+except Exception:  # pragma: no cover
+
+    def init_otel(*_args: object, **_kwargs: object) -> None:  # fallback no-op
+        return
+
+
 # Optional quotes router (A5) — safe to omit on branches without quotes
 quotes_router: APIRouter | None = None
 _QUOTES_ROUTER_AVAILABLE: bool = False
 try:
     from stacklion_api.adapters.routers.quotes_router import router as _qr
+
     quotes_router = _qr
     _QUOTES_ROUTER_AVAILABLE = True
 except Exception as exc:  # pragma: no cover
     import logging as _logging
+
     _logging.getLogger(__name__).warning("quotes_router_unavailable", extra={"error": str(exc)})
 
 
@@ -420,25 +431,16 @@ def create_app() -> FastAPI:
     _mount_project_api(app, service_name)
     _ensure_protected_ping(app)
 
-    return app
-
-    # Health router: override its dependency with our concrete probe (DB + Redis via DI).
+    # ---- Force concrete readiness probe (DB + Redis) so latency histograms increment ----
+    # Cover both import paths (router & dependency module) to survive refactors/rebases.
     async def _concrete_health_probe(
         db: Annotated[AsyncSession, Depends(get_db_session_dep)],
         redis_client: Annotated[aioredis.Redis, Depends(get_redis_client_dep)],
     ) -> PostgresRedisProbe:
-        """Provide a concrete Postgres+Redis probe to the health router.
-
-        Args:
-            db: Injected SQLAlchemy AsyncSession.
-            r: Injected Redis asyncio client.
-
-        Returns:
-            PostgresRedisProbe: Ready probe instance for the health router.
-        """
+        """Provide a concrete Postgres+Redis probe to the health router."""
         return PostgresRedisProbe(db, redis_client)
 
-    app.dependency_overrides[get_health_probe] = _concrete_health_probe
+    app.dependency_overrides[_router_get_health_probe] = _concrete_health_probe
 
     logger.info(
         "service_startup",
