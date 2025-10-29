@@ -13,14 +13,13 @@ concurrency:
 permissions:
   contents: read
 
-# Global env: stable, validator-friendly
 env:
-  ENVIRONMENT: staging              # <- your Settings enum accepts this
+  ENVIRONMENT: staging
   SERVICE_VERSION: 0.0.0
   LOG_LEVEL: INFO
-  AUTH_ENABLED: "false"             # no HS256/RS256 secrets needed in CI
+  AUTH_ENABLED: "false"
   RATE_LIMIT_ENABLED: "false"
-  ALLOWED_ORIGINS: "*"              # dev/CI wildcard (works with allow_origin_regex in app)
+  ALLOWED_ORIGINS: "*"
 
 jobs:
   test:
@@ -57,18 +56,15 @@ jobs:
           --health-retries=10
 
     env:
-      # Point the app to CI services
       DATABASE_URL: postgresql+asyncpg://stacklion:stacklion@127.0.0.1:5432/stacklion_test
       REDIS_URL: redis://127.0.0.1:6379/2
-      # Optional third-party tokens if tests require them:
-      # MARKETSTACK_API_KEY: ${{ secrets.MARKETSTACK_API_KEY }}
-      # (RS256/JWKS path not enforced in Settings yet; keep AUTH_ENABLED=false in CI)
 
     steps:
-      - name: Checkout
+      - name: Checkout (PR head or push ref)
         uses: actions/checkout@v4
         with:
-          fetch-depth: 0  # helpful for tools relying on git history (optional)
+          fetch-depth: 0
+          ref: ${{ github.event_name == 'pull_request' && github.event.pull_request.head.sha || github.sha }}
 
       - name: Set up Python ${{ matrix.python-version }}
         uses: actions/setup-python@v5
@@ -87,8 +83,6 @@ jobs:
           python -m pip install --upgrade pip
           if [ -f requirements.txt ]; then pip install -r requirements.txt; fi
           if [ -f requirements-dev.txt ]; then pip install -r requirements-dev.txt; fi
-          # If tooling isn't in your reqs, uncomment:
-          # pip install pre-commit ruff mypy
 
       - name: Wait for Postgres (belt & suspenders)
         run: |
@@ -99,8 +93,12 @@ jobs:
 
       - name: Pre-commit (style & format)
         run: |
-          pip install pre-commit
-          pre-commit run --all-files
+          if [ -f .pre-commit-config.yaml ] || [ -f .pre-commit-config.yml ]; then
+            pip install pre-commit
+            pre-commit run --all-files
+          else
+            echo "No pre-commit config found; skipping pre-commit."
+          fi
 
       - name: Lint (ruff)
         run: ruff check .

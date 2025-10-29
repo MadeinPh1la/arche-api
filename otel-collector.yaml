@@ -1,0 +1,39 @@
+receivers:
+  otlp:
+    protocols:
+      grpc:
+        endpoint: 0.0.0.0:4317
+
+processors:
+  batch: {}
+
+exporters:
+  # Human-readable dump for local dev (safe to leave on)
+  debug:
+    verbosity: basic
+
+  # Expose OTEL metrics as Prometheus /metrics on :9464
+  prometheus:
+    endpoint: "0.0.0.0:9464"
+    namespace: "otelcol"
+
+  # Send traces to Tempo via OTLP gRPC (collector -> tempo service in compose)
+  otlp/tempo:
+    endpoint: tempo:4317
+    tls:
+      insecure: true
+
+service:
+  pipelines:
+    metrics:
+      receivers: [otlp]
+      processors: [batch]
+      exporters: [prometheus, debug]
+    traces:
+      receivers: [otlp]
+      processors: [batch]
+      exporters: [otlp/tempo, debug]
+
+  telemetry:
+    logs:
+      level: debug

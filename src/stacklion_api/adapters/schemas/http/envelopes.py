@@ -27,7 +27,7 @@ from typing import Any
 
 from pydantic import BaseModel, ConfigDict, Field
 
-from stacklion_api.adapters.schemas.base import BaseHTTPSchema
+from stacklion_api.adapters.schemas.http.base import BaseHTTPSchema
 
 __all__ = [
     "ErrorObject",

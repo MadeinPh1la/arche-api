@@ -25,7 +25,7 @@ from typing import cast
 from fastapi import FastAPI
 from pydantic import BaseModel
 
-from stacklion_api.adapters.schemas.envelopes import (
+from stacklion_api.adapters.schemas.http.envelopes import (
     ErrorEnvelope,
     PaginatedEnvelope,
     SuccessEnvelope,

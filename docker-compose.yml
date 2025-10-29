@@ -2,47 +2,148 @@ services:
   api:
     build: .
     container_name: stacklion-api
-    command: uvicorn stacklion_api.main:app --host 0.0.0.0 --port 8000 --reload
-    volumes:
-      - ./src:/app/src
-    ports:
-      - "8000:8000"
+    command: uvicorn stacklion_api.main:create_app --factory --host 0.0.0.0 --port 8000 --reload
+    ports: ["8000:8000"]
     env_file: .env
+    # Minimal hardening for the app container
+    read_only: true
+    security_opt: ["no-new-privileges:true"]
+    cap_drop: ["ALL"]
+    tmpfs:
+      - /tmp:rw,exec,nosuid,nodev
+    ulimits:
+      nofile: 65536
+    volumes:
+      - ./src:/app/src:rw
     depends_on:
-      - db
-      - redis
+      db:
+        condition: service_healthy
+      redis:
+        condition: service_healthy
+      otel-collector:
+        condition: service_started
+    healthcheck:
+      test: ["CMD", "curl", "-fsS", "http://localhost:8000/health/z"]
+      interval: 10s
+      timeout: 3s
+      retries: 10
+      start_period: 10s
 
   db:
     image: postgres:16
     container_name: stacklion-db
-    restart: always
+    restart: unless-stopped
     environment:
       POSTGRES_DB: stacklion
       POSTGRES_USER: stacklion
       POSTGRES_PASSWORD: stacklion
+    ports: ["5432:5432"]
     volumes:
       - postgres_data:/var/lib/postgresql/data
-    ports:
-      - "5432:5432"
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U stacklion -d stacklion"]
+      interval: 5s
+      timeout: 3s
+      retries: 20
+      start_period: 5s
 
   redis:
     image: redis:7-alpine
     container_name: stacklion-redis
-    ports:
-      - "6379:6379"
-    restart: always
+    restart: unless-stopped
+    ports: ["6379:6379"]
+    healthcheck:
+      test: ["CMD", "redis-cli", "ping"]
+      interval: 5s
+      timeout: 3s
+      retries: 20
+      start_period: 5s
 
-  worker:
-    build: .
-    container_name: stacklion-worker
-    command: celery -A src.infrastructure.background.celery_app worker -l info
+  otel-collector:
+    image: otel/opentelemetry-collector:0.99.0
+    container_name: stacklion-otel
+    command: ["--config=/etc/otel-collector.yaml"]
+    read_only: true
+    security_opt: ["no-new-privileges:true"]
+    cap_drop: ["ALL"]
     volumes:
-      - ./src:/app/src
-    env_file: .env
+      - ./otel-collector.yaml:/etc/otel-collector.yaml:ro
+    ports:
+      - "4317:4317"   # OTLP gRPC (app -> collector)
+      - "9464:9464"   # Prometheus exporter (collector -> /metrics)
+    restart: unless-stopped
+    healthcheck:
+      test: ["CMD", "wget", "-qO-", "http://localhost:8888/metrics"]
+      interval: 10s
+      timeout: 5s
+      retries: 12
+      start_period: 10s
+
+  # --- Observability add-ons (optional) ---
+
+  prometheus:
+    image: prom/prometheus:v2.54.1
+    container_name: stacklion-prometheus
+    volumes:
+      - ./prometheus.yml:/etc/prometheus/prometheus.yml:ro
+    ports: ["9090:9090"]
+    restart: unless-stopped
     depends_on:
-      - api
-      - db
-      - redis
+      otel-collector:
+        condition: service_started
+
+  tempo:
+    image: grafana/tempo:2.6.1
+    container_name: stacklion-tempo
+    command: ["-config.file=/etc/tempo.yaml"]
+    volumes:
+      - ./tempo.yaml:/etc/tempo.yaml:ro
+    ports:
+      - "3200:3200"   # Tempo query API
+      - "4318:4318"   # OTLP HTTP (optional; collector uses gRPC)
+    restart: unless-stopped
+
+  grafana:
+    image: grafana/grafana:11.2.0
+    container_name: stacklion-grafana
+    ports: ["3000:3000"]
+    # Minimal hardening
+    read_only: true
+    security_opt:
+      - "no-new-privileges:true"
+    cap_drop: ["ALL"]
+    user: "472:472" # grafana
+    tmpfs:
+      - /tmp:rw,nosuid,nodev
+    # Provisioning (read-only) + writable data dir
+    volumes:
+      - ./grafana/provisioning/datasources:/etc/grafana/provisioning/datasources:ro
+      - ./grafana/provisioning/dashboards:/etc/grafana/provisioning/dashboards:ro
+      - grafana_data:/var/lib/grafana
+    environment:
+      - GF_SECURITY_ADMIN_USER=admin
+      - GF_SECURITY_ADMIN_PASSWORD=admin
+      - GF_LOG_MODE=console
+      - GF_DASHBOARDS_DEFAULT_HOME_DASHBOARD_PATH=/etc/grafana/provisioning/dashboards/json/stacklion_api_overview.json
+    depends_on:
+      prometheus:
+        condition: service_started
+      tempo:
+        condition: service_started
+    restart: unless-stopped
+    healthcheck:
+      test: ["CMD", "wget", "-qO-", "http://localhost:3000/api/health"]
+      interval: 10s
+      timeout: 5s
+      retries: 12
+      start_period: 10s
+    # Soft resource ceilings (compose ignores deploy in non-swarm; useful as docs)
+    deploy:
+      resources:
+        limits:
+          cpus: "0.50"
+          memory: "512M"
 
 volumes:
   postgres_data:
+  grafana_data:

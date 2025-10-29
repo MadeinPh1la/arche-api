@@ -30,9 +30,9 @@ from __future__ import annotations
 import logging
 import os
 import time
-from collections.abc import Callable
-from contextlib import suppress
-from typing import Any, cast
+from collections.abc import AsyncGenerator, Callable
+from contextlib import asynccontextmanager
+from typing import Annotated, Any, cast
 
 import redis.asyncio as aioredis
 from fastapi import APIRouter, Depends, FastAPI, HTTPException, Request
@@ -47,7 +47,9 @@ from starlette.routing import BaseRoute
 
 # Adapters / middleware
 from stacklion_api.adapters.dependencies.health_probe import PostgresRedisProbe
-from stacklion_api.adapters.routers.health_router import get_health_probe
+from stacklion_api.adapters.routers.health_router import (
+    get_health_probe as _router_get_health_probe,
+)
 from stacklion_api.adapters.routers.metrics_router import router as metrics_router
 from stacklion_api.adapters.routers.openapi_registry import attach_openapi_contract_registry
 from stacklion_api.config.settings import Settings, get_settings
@@ -66,8 +68,32 @@ from stacklion_api.infrastructure.middleware.access_log import AccessLogMiddlewa
 from stacklion_api.infrastructure.middleware.metrics import PromMetricsMiddleware
 from stacklion_api.infrastructure.middleware.rate_limit import RateLimitMiddleware
 from stacklion_api.infrastructure.middleware.request_id import RequestIdMiddleware
+from stacklion_api.infrastructure.middleware.request_metrics import RequestLatencyMiddleware
 from stacklion_api.infrastructure.middleware.security_headers import SecurityHeadersMiddleware
 from stacklion_api.infrastructure.observability import metrics as _obs_metrics  # noqa: F401
+
+# OTEL/init (A4.3) — safe import with no-op fallback
+try:
+    from stacklion_api.infrastructure.observability.otel import init_otel
+except Exception:  # pragma: no cover
+
+    def init_otel(*_args: object, **_kwargs: object) -> None:  # fallback no-op
+        return
+
+
+# Optional quotes router (A5) — safe to omit on branches without quotes
+quotes_router: APIRouter | None = None
+_QUOTES_ROUTER_AVAILABLE: bool = False
+try:
+    from stacklion_api.adapters.routers.quotes_router import router as _qr
+
+    quotes_router = _qr
+    _QUOTES_ROUTER_AVAILABLE = True
+except Exception as exc:  # pragma: no cover
+    import logging as _logging
+
+    _logging.getLogger(__name__).warning("quotes_router_unavailable", extra={"error": str(exc)})
+
 
 # Optional Redis-backed rate limit middleware (may not be installed in all envs)
 try:
@@ -78,6 +104,7 @@ try:
     RateLimitMiddlewareRedis: type[BaseHTTPMiddleware] | None = _RedisMW
 except Exception:  # pragma: no cover - optional import not always present
     RateLimitMiddlewareRedis = None
+
 
 # -----------------------------------------------------------------------------
 # Logging bootstrap
@@ -105,34 +132,56 @@ async def get_db_session_dep() -> AsyncGenerator[AsyncSession, None]:
         yield session
 
 
-async def get_redis_client_dep() -> AsyncGenerator[aioredis.Redis[Any], None]:
+async def get_redis_client_dep() -> AsyncGenerator[aioredis.Redis, None]:
     """Yield the shared Redis client (FastAPI dependency).
 
+    This wraps the project’s context-manager dependency so that FastAPI receives
+    the concrete client instance instead of a context manager. Doing it this way
+    prevents request-time validation errors (HTTP 422) and avoids noisy teardown
+    warnings like “generator didn’t stop” during tests.
+
     Yields:
-        redis.asyncio.Redis[Any]: The shared Redis client.
+        redis.asyncio.Redis: The shared asyncio Redis client.
     """
+    # Local import to avoid import-order cycles during app boot.
+
     async with redis_dependency() as client:
         yield client
 
 
 # -----------------------------------------------------------------------------
-# Internal helpers
+# Middleware and HTTP helpers
 # -----------------------------------------------------------------------------
 def _init_middlewares(app: FastAPI, settings: Any) -> None:
     """Attach core middleware in the correct order.
 
-    Args:
-        app: FastAPI application instance.
-        settings: Application settings object.
+    Order:
+        RequestId -> AccessLog -> RequestLatency (OTEL) -> PromMetrics ->
+        SecurityHeaders -> RateLimit -> GZip
     """
-    # RequestId -> AccessLog -> Metrics -> SecurityHeaders -> RateLimit -> GZip
     app.add_middleware(RequestIdMiddleware)
     app.add_middleware(AccessLogMiddleware)
+
+    # Prefer Settings; fall back to env only if the attr isn't available
+    otel_enabled = getattr(settings, "otel_enabled", None)
+    if otel_enabled is None:
+        otel_enabled = (os.getenv("OTEL_ENABLED", "") or "").lower() == "true"
+
+    if otel_enabled:
+        app.add_middleware(RequestLatencyMiddleware)
+
+    # Prometheus request metrics (after OTEL so spans wrap the whole request)
     app.add_middleware(PromMetricsMiddleware)
+
+    # Security headers
     app.add_middleware(SecurityHeadersMiddleware)
 
-    if settings.rate_limit_enabled:
-        if settings.rate_limit_backend == "redis" and RateLimitMiddlewareRedis is not None:
+    # Rate limit (memory or Redis)
+    if getattr(settings, "rate_limit_enabled", False):
+        if (
+            getattr(settings, "rate_limit_backend", "") == "redis"
+            and RateLimitMiddlewareRedis is not None
+        ):
             app.add_middleware(
                 cast(Any, RateLimitMiddlewareRedis),
                 redis_url=settings.redis_url,
@@ -141,11 +190,9 @@ def _init_middlewares(app: FastAPI, settings: Any) -> None:
             )
             logger.info("rate_limit_enabled", extra={"backend": "redis"})
         else:
-            rate_per_sec = max(
-                1.0,
-                float(settings.rate_limit_burst)
-                / float(max(1, settings.rate_limit_window_seconds)),
-            )
+            # Guard against zero/neg window just in case
+            window = max(1, int(getattr(settings, "rate_limit_window_seconds", 1)))
+            rate_per_sec = max(1.0, float(settings.rate_limit_burst) / float(window))
             app.add_middleware(
                 RateLimitMiddleware,
                 rate_per_sec=rate_per_sec,
@@ -153,17 +200,13 @@ def _init_middlewares(app: FastAPI, settings: Any) -> None:
             )
             logger.info("rate_limit_enabled", extra={"backend": "memory"})
 
+    # Compression last
     app.add_middleware(GZipMiddleware, minimum_size=1024)
 
 
 def _add_cors(app: FastAPI, settings: Any) -> None:
-    """Add CORS with exposure headers when configured.
-
-    Args:
-        app: FastAPI application instance.
-        settings: Application settings object.
-    """
-    origins = settings.cors_allow_origins
+    """Add CORS with exposure headers when configured."""
+    origins = getattr(settings, "cors_allow_origins", None)
     if not origins:
         return
 
@@ -193,11 +236,7 @@ def _add_cors(app: FastAPI, settings: Any) -> None:
 
 
 def _add_error_handlers(app: FastAPI) -> None:
-    """Register canonical error envelopes.
-
-    Args:
-        app: FastAPI application instance.
-    """
+    """Register canonical error envelopes."""
 
     @app.exception_handler(RequestValidationError)
     async def _validation_exception_handler(  # noqa: D401 - nested handler doc is above
@@ -223,19 +262,17 @@ def _add_error_handlers(app: FastAPI) -> None:
 
 
 def _add_healthz(app: FastAPI, settings: Any) -> None:
-    """Add a schema-hidden /healthz with a simple burst/window limiter using env.
-
-    Args:
-        app: FastAPI application instance.
-        settings: Application settings object.
-    """
+    """Add a schema-hidden /healthz with a simple burst/window limiter using env."""
     _h_state: dict[str, float | int] = {"start": 0.0, "count": 0}
 
     async def _healthz() -> JSONResponse:
         enabled = (os.getenv("RATE_LIMIT_ENABLED", "") or "").lower() == "true"
-        burst = int(os.getenv("RATE_LIMIT_BURST", settings.rate_limit_burst or 5))
+        burst = int(os.getenv("RATE_LIMIT_BURST", getattr(settings, "rate_limit_burst", 5)))
         window = int(
-            os.getenv("RATE_LIMIT_WINDOW_SECONDS", settings.rate_limit_window_seconds or 1)
+            os.getenv(
+                "RATE_LIMIT_WINDOW_SECONDS",
+                getattr(settings, "rate_limit_window_seconds", 1),
+            )
         )
 
         now = time.monotonic()
@@ -267,21 +304,12 @@ def _add_healthz(app: FastAPI, settings: Any) -> None:
 
 
 def _mount_metrics(app: FastAPI) -> None:
-    """Expose /metrics for Prometheus (hidden from OpenAPI at the router level).
-
-    Args:
-        app: FastAPI application instance.
-    """
+    """Expose /metrics for Prometheus (hidden from OpenAPI at the router level)."""
     app.include_router(metrics_router)
 
 
 def _mount_project_api(app: FastAPI, service_name: str) -> None:
-    """Attempt to mount the project API router; log if unavailable.
-
-    Args:
-        app: FastAPI application instance.
-        service_name: Logical service name for logs.
-    """
+    """Attempt to mount the project API router; log if unavailable."""
     try:
         from .adapters.routers import api_router
 
@@ -291,16 +319,7 @@ def _mount_project_api(app: FastAPI, service_name: str) -> None:
 
 
 def _route_exists(app: FastAPI, path: str, method: str) -> bool:
-    """Return True if a route with `path` and HTTP `method` is mounted.
-
-    Args:
-        app: FastAPI application instance.
-        path: The route path to check.
-        method: HTTP method to check.
-
-    Returns:
-        True if the method/path exists on the router; otherwise False.
-    """
+    """Return True if a route with `path` and HTTP `method` is mounted."""
     m = method.upper()
     for r in app.router.routes:
         path_attr = getattr(r, "path", None)
@@ -317,11 +336,7 @@ def _route_exists(app: FastAPI, path: str, method: str) -> bool:
 
 
 def _ensure_protected_ping(app: FastAPI) -> None:
-    """Mount /v1/protected/ping if the project doesn't provide one.
-
-    Args:
-        app: FastAPI application instance.
-    """
+    """Mount /v1/protected/ping if the project doesn't provide one."""
     if _route_exists(app, "/v1/protected/ping", "GET"):
         return
 
@@ -329,17 +344,7 @@ def _ensure_protected_ping(app: FastAPI) -> None:
 
     @protected.get("/ping", name="protected_ping")
     async def _protected_ping(request: Request) -> dict[str, str]:
-        """Return 401 when AUTH is enabled and a valid token is not provided.
-
-        Args:
-            request: Incoming request.
-
-        Returns:
-            A minimal JSON status payload.
-
-        Raises:
-            HTTPException: When authentication is required and invalid.
-        """
+        """Return 401 when AUTH is enabled and a valid token is not provided."""
         auth_enabled = (os.getenv("AUTH_ENABLED", "") or "").lower() == "true"
         if not auth_enabled:
             return {"status": "ok"}
@@ -358,8 +363,7 @@ def _ensure_protected_ping(app: FastAPI) -> None:
 
         try:
             pyjwt.decode(token, secret, algorithms=["HS256"])
-        except Exception as _err:  # noqa: F841
-            # Hide decode internals; ensure exception provenance is clear for linters.
+        except Exception:
             raise HTTPException(status_code=401, detail="Invalid token") from None
 
         return {"status": "ok"}
@@ -381,13 +385,12 @@ def create_app() -> FastAPI:
     service_name = "stacklion-api"
     service_version = os.getenv("SERVICE_VERSION") or settings.service_version or "0.1.0"
 
+    # Initialize OTEL/exporters early (doesn't require app instance).
+    init_otel(service_name, service_version)
+
     @asynccontextmanager
     async def lifespan(app: FastAPI) -> AsyncGenerator[None, None]:  # noqa: ARG001
-        """Initialize and teardown shared infrastructure (DB/Redis).
-
-        Args:
-            app: FastAPI application instance (unused; required by signature).
-        """
+        """Initialize and teardown shared infrastructure (DB/Redis)."""
         init_engine_and_sessionmaker(settings)
         init_redis(settings)
         try:
@@ -396,13 +399,16 @@ def create_app() -> FastAPI:
             await close_redis()
             await dispose_engine()
 
+    # Instantiate app after lifespan is defined
     app = FastAPI(
         title="Stacklion API",
         version=service_version,
         description=(
             "A secure, governed API platform that consolidates regulatory filings, "
-            "market data, and portfolio intelligence into a single, auditable financial data backbone."
+            "market data, and portfolio intelligence into a single, auditable financial "
+            "data backbone."
         ),
+        lifespan=lifespan,
     )
 
     # OpenAPI contract registry first to guarantee canonical envelopes.
@@ -413,72 +419,28 @@ def create_app() -> FastAPI:
     _add_cors(app, settings)
     _add_error_handlers(app)
 
-    # ---- Readiness probe wiring (DB/Redis) via DI overrides ----
-    try:
-        from redis.asyncio import Redis
-        from sqlalchemy.ext.asyncio import (
-            AsyncSession,
-            async_sessionmaker,
-            create_async_engine,
-        )
-
-        from stacklion_api.adapters.routers.health_router import (
-            get_health_probe,
-        )
-        from stacklion_api.infrastructure.health.probe import DbRedisProbe
-
-        engine = create_async_engine(settings.database_url, future=True, echo=False)
-        session_factory = async_sessionmaker(
-            bind=engine, class_=AsyncSession, expire_on_commit=False
-        )
-        redis_client = Redis.from_url(settings.redis_url, encoding="utf-8", decode_responses=True)
-
-        async def _probe_provider() -> DbRedisProbe:
-            return DbRedisProbe(session_factory=session_factory, redis=redis_client)
-
-        app.dependency_overrides[get_health_probe] = _probe_provider
-
-        @app.on_event("shutdown")
-        async def _close_infra() -> None:
-            # Best-effort clean shutdown across redis-py versions
-            with suppress(Exception):
-                aclose = getattr(redis_client, "aclose", None)
-                if callable(aclose):
-                    await aclose()
-                else:
-                    close = getattr(redis_client, "close", None)
-                    if callable(close):
-                        await close()
-            await engine.dispose()
-
-    except Exception as exc:  # pragma: no cover
-        logger.warning("readiness_probe_wiring_failed", extra={"error": str(exc)})
-
     # Health and metrics endpoints (schema-hidden where appropriate).
     _add_healthz(app, settings)
     _mount_metrics(app)
+
+    # Optional A5 routes (only if available on this branch)
+    if _QUOTES_ROUTER_AVAILABLE and quotes_router is not None:
+        app.include_router(quotes_router)
 
     # Project API routers and minimal protected probe.
     _mount_project_api(app, service_name)
     _ensure_protected_ping(app)
 
-    # Health router: override its dependency with our concrete probe.
+    # ---- Force concrete readiness probe (DB + Redis) so latency histograms increment ----
+    # Cover both import paths (router & dependency module) to survive refactors/rebases.
     async def _concrete_health_probe(
         db: Annotated[AsyncSession, Depends(get_db_session_dep)],
-        r: Annotated[Any, Depends(get_redis_client_dep)],
+        redis_client: Annotated[aioredis.Redis, Depends(get_redis_client_dep)],
     ) -> PostgresRedisProbe:
-        """Provide a concrete Postgres+Redis probe to the health router.
+        """Provide a concrete Postgres+Redis probe to the health router."""
+        return PostgresRedisProbe(db, redis_client)
 
-        Args:
-            db: Injected SQLAlchemy AsyncSession.
-            r: Injected Redis asyncio client.
-
-        Returns:
-            A ready probe instance for the health router.
-        """
-        return PostgresRedisProbe(db, r)
-
-    app.dependency_overrides[get_health_probe] = _concrete_health_probe
+    app.dependency_overrides[_router_get_health_probe] = _concrete_health_probe
 
     logger.info(
         "service_startup",
@@ -493,6 +455,7 @@ def create_app() -> FastAPI:
 
 
 # Eager app for tools/tests that import `stacklion_api.main:app`
+# Only create it when not under pytest (pytest sets its module very early).
 app: FastAPI = create_app()
 
 if __name__ == "__main__":  # pragma: no cover

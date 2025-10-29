@@ -73,6 +73,71 @@
         "title": "ErrorEnvelope",
         "type": "object"
       },
+      "ErrorObject": {
+        "additionalProperties": false,
+        "description": "Canonical error payload per API Standards §2.1.",
+        "examples": [
+          {
+            "code": "VALIDATION_ERROR",
+            "details": {
+              "from": "2025-09-30",
+              "to": "2025-01-01"
+            },
+            "http_status": 400,
+            "message": "from must be <= to",
+            "trace_id": "7e8a5d2e-2f8e-4a7a-8d2b-0e1f9e5c1234"
+          }
+        ],
+        "properties": {
+          "code": {
+            "description": "Stable machine-readable error code (UPPER_SNAKE_CASE).",
+            "title": "Code",
+            "type": "string"
+          },
+          "details": {
+            "anyOf": [
+              {
+                "additionalProperties": true,
+                "type": "object"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "description": "Optional structured context; safe to expose to clients.",
+            "title": "Details"
+          },
+          "http_status": {
+            "description": "HTTP status code associated with this error.",
+            "title": "Http Status",
+            "type": "integer"
+          },
+          "message": {
+            "description": "Human-readable, safe description of the error.",
+            "title": "Message",
+            "type": "string"
+          },
+          "trace_id": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "description": "Request correlation id echoed back to the client.",
+            "title": "Trace Id"
+          }
+        },
+        "required": [
+          "code",
+          "http_status",
+          "message"
+        ],
+        "title": "ErrorObject",
+        "type": "object"
+      },
       "HealthState": {
         "description": "Overall health classification.",
         "enum": [
@@ -151,6 +216,93 @@
         "title": "PaginatedEnvelope",
         "type": "object"
       },
+      "QuoteItem": {
+        "additionalProperties": false,
+        "description": "HTTP schema for a single quote item.",
+        "example": {
+          "trace_id": "c1e2d3f4-5678-90ab-cdef-1234567890ab"
+        },
+        "properties": {
+          "as_of": {
+            "description": "UTC timestamp (ISO-8601)",
+            "examples": [
+              "2025-10-28T12:34:56Z"
+            ],
+            "format": "date-time",
+            "title": "As Of",
+            "type": "string"
+          },
+          "currency": {
+            "description": "ISO 4217 currency",
+            "examples": [
+              "USD"
+            ],
+            "title": "Currency",
+            "type": "string"
+          },
+          "price": {
+            "description": "Decimal string last price",
+            "examples": [
+              "428.17"
+            ],
+            "title": "Price",
+            "type": "string"
+          },
+          "ticker": {
+            "description": "Upper-case ticker symbol",
+            "examples": [
+              "MSFT"
+            ],
+            "title": "Ticker",
+            "type": "string"
+          },
+          "volume": {
+            "anyOf": [
+              {
+                "type": "integer"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "description": "Latest volume if available",
+            "examples": [
+              14230000
+            ],
+            "title": "Volume"
+          }
+        },
+        "required": [
+          "ticker",
+          "price",
+          "currency",
+          "as_of"
+        ],
+        "title": "QuoteItem",
+        "type": "object"
+      },
+      "QuotesBatch": {
+        "additionalProperties": false,
+        "description": "HTTP schema for a batch of quotes (wrapped by SuccessEnvelope).",
+        "example": {
+          "trace_id": "c1e2d3f4-5678-90ab-cdef-1234567890ab"
+        },
+        "properties": {
+          "items": {
+            "description": "Quotes for requested tickers (≤50)",
+            "items": {
+              "$ref": "#/components/schemas/QuoteItem"
+            },
+            "title": "Items",
+            "type": "array"
+          }
+        },
+        "required": [
+          "items"
+        ],
+        "title": "QuotesBatch",
+        "type": "object"
+      },
       "ReadinessResponse": {
         "description": "Aggregated readiness response following a problem-details-like shape.\n\nAttributes:\n    status: Overall service status classification.\n    checks: Individual dependency check results.",
         "properties": {
@@ -193,13 +345,36 @@
         ],
         "title": "SuccessEnvelope",
         "type": "object"
+      },
+      "SuccessEnvelope_QuotesBatch_": {
+        "additionalProperties": false,
+        "description": "Canonical success envelope for single-resource responses.",
+        "examples": [
+          {
+            "data": {
+              "id": "a3d8b3c8-9d9e-4a64-9b38-7e2b8cfd8c34",
+              "ticker": "MSFT"
+            }
+          }
+        ],
+        "properties": {
+          "data": {
+            "$ref": "#/components/schemas/QuotesBatch",
+            "description": "Adapter DTO or primitive value returned by the endpoint."
+          }
+        },
+        "required": [
+          "data"
+        ],
+        "title": "SuccessEnvelope",
+        "type": "object"
       }
     }
   },
   "info": {
     "description": "A secure, governed API platform that consolidates regulatory filings, market data, and portfolio intelligence into a single, auditable financial data backbone.",
     "title": "Stacklion API",
-    "version": "0.1.0"
+    "version": "0.0.0"
   },
   "openapi": "3.1.0",
   "paths": {
@@ -254,6 +429,132 @@
         "summary": "Liveness",
         "tags": [
           "Health"
+        ]
+      }
+    },
+    "/v1/quotes": {
+      "get": {
+        "description": "Return the latest quotes for provided tickers.\n\nReturns:\n    SuccessEnvelope on 200.\n    A bare 304 Response (no body) when the If-None-Match matches the deterministic ETag.",
+        "operationId": "get_quotes_v1_quotes_get",
+        "parameters": [
+          {
+            "in": "query",
+            "name": "tickers",
+            "required": true,
+            "schema": {
+              "examples": [
+                "AAPL,MSFT"
+              ],
+              "title": "Tickers",
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/SuccessEnvelope_QuotesBatch_"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "400": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorEnvelope"
+                }
+              }
+            },
+            "description": "Bad request (validation or parameter)"
+          },
+          "401": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorEnvelope"
+                }
+              }
+            },
+            "description": "Unauthorized (missing/invalid auth)"
+          },
+          "403": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorEnvelope"
+                }
+              }
+            },
+            "description": "Forbidden (insufficient permissions)"
+          },
+          "404": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorEnvelope"
+                }
+              }
+            },
+            "description": "Not found"
+          },
+          "409": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorEnvelope"
+                }
+              }
+            },
+            "description": "Conflict"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorEnvelope"
+                }
+              }
+            },
+            "description": "Unprocessable content"
+          },
+          "429": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorEnvelope"
+                }
+              }
+            },
+            "description": "Rate limit exceeded"
+          },
+          "500": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorEnvelope"
+                }
+              }
+            },
+            "description": "Internal server error"
+          },
+          "503": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorEnvelope"
+                }
+              }
+            },
+            "description": "Service unavailable"
+          }
+        },
+        "summary": "Get latest quotes for tickers",
+        "tags": [
+          "Market Data"
         ]
       }
     }
