@@ -1,18 +1,23 @@
 # Copyright (c) Stacklion.
 # SPDX-License-Identifier: MIT
-"""
-HTTP Schemas – Quotes
+"""HTTP Schemas: Historical Quotes.
 
-Purpose:
-    Transport-facing Pydantic models for `/v1/quotes` responses.
+Synopsis:
+    Pydantic models that define the HTTP-facing request/response contracts for
+    historical quotes. OpenAPI will reference these schemas.
 
-Layer: adapters/schemas/http
+Layer:
+    adapters/schemas/http
 """
+
 from __future__ import annotations
 
-from pydantic import AwareDatetime, Field
+from collections.abc import Sequence
+from datetime import date
 
-from .base import BaseHTTPSchema
+from pydantic import AwareDatetime, ConfigDict, Field
+
+from stacklion_api.adapters.schemas.http.base import BaseHTTPSchema
 
 
 class QuoteItem(BaseHTTPSchema):
@@ -33,3 +38,44 @@ class QuotesBatch(BaseHTTPSchema):
     """HTTP schema for a batch of quotes (wrapped by SuccessEnvelope)."""
 
     items: list[QuoteItem] = Field(description="Quotes for requested tickers (≤50)")
+
+
+class HistoricalQuotesRequest(BaseHTTPSchema):
+    """Query parameters for /v1/quotes/historical."""
+
+    model_config = ConfigDict(extra="forbid")
+
+    tickers: Sequence[str] = Field(
+        ..., description="List of ticker symbols (1..50).", examples=[["AAPL", "MSFT"]]
+    )
+    from_: date = Field(..., description="Start date (UTC).", examples=["2025-01-01"])
+    to: date = Field(..., description="End date (UTC, inclusive).", examples=["2025-03-31"])
+    interval: str = Field(..., description="Bar interval (1m,5m,15m,1h,1d).", examples=["1d"])
+    page: int = Field(1, ge=1, description="Page number.")
+    page_size: int = Field(50, ge=1, le=200, description="Page size (max 200).")
+
+
+class HistoricalBarHTTP(BaseHTTPSchema):
+    """HTTP payload for a single bar."""
+
+    model_config = ConfigDict(extra="forbid")
+
+    ticker: str
+    timestamp: str
+    open: str
+    high: str
+    low: str
+    close: str
+    volume: str | None = None
+    interval: str
+
+
+class HistoricalQuotesPaginatedResponse(BaseHTTPSchema):
+    """Paginated list of historical bars."""
+
+    model_config = ConfigDict(extra="forbid")
+
+    page: int
+    page_size: int
+    total: int
+    items: list[HistoricalBarHTTP]

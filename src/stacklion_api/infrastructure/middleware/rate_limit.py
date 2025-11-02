@@ -8,10 +8,6 @@ Summary:
     tracks tokens per (client_ip, path) key in process memory and emits
     standard rate limit headers.
 
-Notes:
-    • Use a Redis-backed limiter in production.
-    • This middleware is intentionally simple and not distributed.
-
 Emitted headers:
     X-RateLimit-Limit, X-RateLimit-Remaining, X-RateLimit-Reset, Retry-After (on 429)
 """
@@ -52,22 +48,25 @@ class RateLimitMiddleware(BaseHTTPMiddleware):
         self.buckets: dict[str, _Bucket] = {}
 
     def _key(self, request: Request) -> str:
-        """Return a per-client, per-path key. Replace with user/API key when available."""
+        """Return a per-client, per-path key."""
         ip = request.client.host if request.client else "unknown"
         return f"{ip}:{request.url.path}"
 
     async def dispatch(self, request: Request, call_next: RequestResponseEndpoint) -> Response:
         """Apply token-bucket limiting and annotate responses with standard headers."""
-        key = self._key(request)
         now = time.monotonic()
-        bucket = self.buckets.get(key) or _Bucket(tokens=self.capacity, last=now)
+        key = self._key(request)
+        bucket = self.buckets.get(key)
+        if bucket is None:
+            bucket = _Bucket(tokens=self.capacity, last=now)
+            self.buckets[key] = bucket
 
-        # Refill tokens based on elapsed time.
+        # Refill
         delta = max(0.0, now - bucket.last)
         bucket.tokens = min(self.capacity, bucket.tokens + delta * self.rate)
         bucket.last = now
 
-        # Attempt to consume one token.
+        # Try to consume a token
         if bucket.tokens < 1.0:
             retry_after = max(1, int((1.0 - bucket.tokens) / self.rate) + 1)
             limited = JSONResponse(
@@ -90,23 +89,13 @@ class RateLimitMiddleware(BaseHTTPMiddleware):
             )
             return limited
 
-        response: Response = await call_next(request)
-        response.headers.update(
-            {
-                "X-RateLimit-Limit": str(int(self.capacity)),
-                "X-RateLimit-Remaining": str(int(bucket.tokens)),
-                "X-RateLimit-Reset": "0",
-            }
-        )
-        return response
-
-        # Spend one token and persist the bucket.
+        # Spend one token before calling downstream
         bucket.tokens -= 1.0
         self.buckets[key] = bucket
 
-        response = await call_next(request)
+        response: Response = await call_next(request)
 
-        # Expose rate headers for observability on successful responses.
+        # After response, expose headers with current remaining tokens
         response.headers.update(
             {
                 "X-RateLimit-Limit": str(int(self.capacity)),
