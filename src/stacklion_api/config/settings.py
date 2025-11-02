@@ -27,9 +27,15 @@ from typing import Any, Literal
 from pydantic import AnyHttpUrl, Field, ValidationError, field_validator, model_validator
 from pydantic_settings import BaseSettings, SettingsConfigDict
 
-# Centralized logger import (graceful fallback if logging isn't initialized yet)
+# Structured logger (graceful fallback if infra logger isn't available yet)
 try:  # pragma: no cover
-    from stacklion_api.infrastructure.logging.logger import logger  # type: ignore[attr-defined]
+    from stacklion_api.infrastructure.logging.logger import (
+        configure_root_logging,
+        get_json_logger,
+    )
+
+    configure_root_logging()
+    logger = get_json_logger("stacklion.config")
 except Exception:  # pragma: no cover
     import logging
 
@@ -73,6 +79,7 @@ class Settings(BaseSettings):
     environment: Environment = Field(
         default=Environment.DEVELOPMENT,
         description="Logical deployment environment.",
+        validation_alias="ENVIRONMENT",
     )
 
     database_url: str = Field(
@@ -405,6 +412,20 @@ class Settings(BaseSettings):
     # ---------------------------
     # Validators
     # ---------------------------
+    @field_validator("environment", mode="before")
+    @classmethod
+    def _accept_test_env(cls, v: object) -> object:
+        """Accept ENVIRONMENT=test and coerce to 'development' while flagging test mode.
+
+        Side effect:
+            Sets STACKLION_TEST_MODE=1 so other layers (e.g., app factory) can
+            safely switch to test-safe components (like in-memory cache).
+        """
+        if isinstance(v, str) and v.lower() == "test":
+            os.environ["STACKLION_TEST_MODE"] = "1"
+            return Environment.DEVELOPMENT.value
+        return v
+
     @field_validator("cors_allow_origins", mode="before")
     @classmethod
     def _split_cors_origins(cls, v: Any) -> list[str]:
@@ -414,15 +435,6 @@ class Settings(BaseSettings):
             - Comma-separated string ("https://a, https://b")
             - JSON-like list ('["https://a","https://b"]')
             - Native list (["https://a","https://b"])
-
-        Args:
-            v: Raw value provided by Pydantic before parsing.
-
-        Returns:
-            A normalized list of origins.
-
-        Raises:
-            ValueError: If the provided format is unsupported.
         """
         if v is None or v == "":
             return []
@@ -439,12 +451,7 @@ class Settings(BaseSettings):
 
     @model_validator(mode="after")
     def _coerce_cors_list(self) -> Settings:
-        """Coerce ALLOWED_ORIGINS / CORS_ALLOW_ORIGINS into `cors_allow_origins`.
-
-        Returns:
-            The current settings instance with `cors_allow_origins` populated from
-            either `cors_allow_origins_raw` or `CORS_ALLOW_ORIGINS`.
-        """
+        """Coerce ALLOWED_ORIGINS / CORS_ALLOW_ORIGINS into `cors_allow_origins`."""
         raw = self.cors_allow_origins_raw or os.getenv("CORS_ALLOW_ORIGINS")
         if not self.cors_allow_origins:
             self.cors_allow_origins = _split_env(raw)
@@ -453,17 +460,7 @@ class Settings(BaseSettings):
     @field_validator("database_url")
     @classmethod
     def _ensure_asyncpg(cls, v: str) -> str:
-        """Validate that the database driver is AsyncPG.
-
-        Args:
-            v: Database URL string.
-
-        Returns:
-            The input URL when valid.
-
-        Raises:
-            ValueError: If the URL does not use 'postgresql+asyncpg://'.
-        """
+        """Validate that the database driver is AsyncPG."""
         if v.startswith("postgresql://"):
             raise ValueError("Use 'postgresql+asyncpg://...' for async SQLAlchemy.")
         if not v.startswith("postgresql+asyncpg://"):
@@ -480,12 +477,6 @@ class Settings(BaseSettings):
             • If AUTH is enabled, an HS256 secret must be provided.
             • If rate limiting is enabled with a 'redis' backend, REDIS_URL must be set.
             • If OTEL is enabled, an OTLP endpoint must be provided.
-
-        Returns:
-            The validated settings object.
-
-        Raises:
-            ValueError: When a cross-field constraint is violated.
         """
         # CORS hardening
         if self.environment == Environment.PRODUCTION:
@@ -531,8 +522,7 @@ def get_settings() -> Settings:
         The validated `Settings` singleton.
 
     Raises:
-        RuntimeError: If validation fails. The original `ValidationError` is
-            chained as the cause.
+        RuntimeError: If validation fails. The original `ValidationError` is chained.
     """
     try:
         settings = Settings()
@@ -540,6 +530,7 @@ def get_settings() -> Settings:
             "Settings initialized",
             extra={
                 "environment": settings.environment.value,
+                "test_mode": os.getenv("STACKLION_TEST_MODE") == "1",
                 "cors_count": len(settings.cors_allow_origins),
                 "cors_has_wildcard": any(o == "*" for o in settings.cors_allow_origins),
                 "auth_enabled": settings.auth_enabled,

@@ -5,25 +5,20 @@ Auth Feature Settings (Adapters-facing view)
 
 Summary:
     A minimal, typed projection of authentication-related toggles/secrets for
-    adapters/infrastructure. This keeps infra decoupled from the full Settings
-    surface and avoids importing heavy modules in request-time code.
+    adapters/infrastructure. Keeps infra decoupled from the full Settings surface.
 
-Design:
-    * Pulls from the canonical application settings via `get_settings()`.
-    * Exposes a small `AuthSettings` model used by FastAPI dependencies.
-    * Contains no business logic and never logs/prints secrets.
+Behavior:
+    • If AUTH_ENABLED is explicitly set in the environment, use it (and
+      AUTH_HS256_SECRET) — this avoids cross-test caching via get_settings().
+    • Otherwise, fall back to the canonical application settings.
 
-Usage:
-    from stacklion_api.config.features.auth import get_auth_settings
-
-    def dependency(
-        cfg: AuthSettings = Depends(get_auth_settings),
-    ):
-        if cfg.enabled:
-            ...
+Notes:
+    • No logging/printing of secrets.
 """
 
 from __future__ import annotations
+
+import os
 
 from pydantic import BaseModel, Field
 
@@ -45,14 +40,28 @@ class AuthSettings(BaseModel):
     hs256_secret: str | None = Field(default=None)
 
 
-def get_auth_settings() -> AuthSettings:
-    """Return the current authentication feature settings.
+def _to_bool(val: str | None) -> bool:
+    """Return True for common truthy strings ('1','true','yes','on')."""
+    return (val or "").strip().lower() in {"1", "true", "yes", "on"}
 
-    Pulls from the canonical application settings (cached singleton) and maps
-    only the fields required by infra/auth dependencies.
+
+def get_auth_settings() -> AuthSettings:
+    """Return current auth config, honoring env overrides (test-friendly).
+
+    Reads AUTH_ENABLED / AUTH_HS256_SECRET directly from the environment when
+    AUTH_ENABLED is explicitly set. Otherwise falls back to application settings.
 
     Returns:
         AuthSettings: Minimal auth configuration for adapters/infrastructure.
     """
+    raw_enabled = os.getenv("AUTH_ENABLED")
+    if raw_enabled is not None:
+        # Explicit override present — use env for both fields.
+        return AuthSettings(
+            enabled=_to_bool(raw_enabled),
+            hs256_secret=os.getenv("AUTH_HS256_SECRET"),
+        )
+
+    # Fallback to canonical application settings (cached singleton).
     s = get_settings()
     return AuthSettings(enabled=s.auth_enabled, hs256_secret=s.auth_hs256_secret)

@@ -13,10 +13,9 @@ from __future__ import annotations
 
 from collections.abc import Sequence
 
+from stacklion_api.adapters.controllers.base import BaseController
 from stacklion_api.application.schemas.dto.quotes import QuotesBatchDTO
 from stacklion_api.application.use_cases.quotes.get_quotes import GetQuotes
-
-from .base_controller import BaseController
 
 
 class QuotesController(BaseController):

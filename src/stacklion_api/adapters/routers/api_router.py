@@ -20,7 +20,7 @@ from fastapi import APIRouter
 
 # Import concrete feature routers here.
 # Health is always included.
-from .health_router import router as health_router
+from stacklion_api.adapters.routers.health_router import router as health_router
 
 # Example: add more feature routers as they come online:
 # from .companies_router import router as companies_router

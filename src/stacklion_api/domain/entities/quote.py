@@ -14,7 +14,7 @@ from dataclasses import dataclass
 from datetime import UTC, datetime
 from decimal import Decimal
 
-from .base import BaseEntity
+from stacklion_api.domain.entities.base import BaseEntity
 
 
 @dataclass(frozen=True, slots=True)

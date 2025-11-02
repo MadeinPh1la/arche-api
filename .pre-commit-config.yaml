@@ -1,0 +1,61 @@
+repos:
+  # ---------- Hygiene ----------
+  - repo: https://github.com/pre-commit/pre-commit-hooks
+    rev: v6.0.0
+    hooks:
+      - id: check-merge-conflict
+      - id: check-yaml
+      - id: end-of-file-fixer
+        # Belt-and-suspenders: keep generated OpenAPI snapshot stable.
+        exclude: ^tests/openapi/snapshots/openapi\.json$
+      - id: trailing-whitespace
+
+  # ---------- Ruff (lint & autofix) ----------
+  - repo: https://github.com/astral-sh/ruff-pre-commit
+    rev: v0.14.1
+    hooks:
+      - id: ruff
+        args: [--fix]
+
+  # ---------- Black (format) ----------
+  - repo: https://github.com/psf/black
+    rev: 25.9.0
+    hooks:
+      - id: black
+        language_version: python3.12
+
+# ---------- MyPy (type check via project config) ----------
+  - repo: https://github.com/pre-commit/mirrors-mypy
+    rev: v1.18.2
+    hooks:
+      - id: mypy
+        language_version: python3.12
+        args: ["--config=pyproject.toml", "-p", "stacklion_api"]
+        pass_filenames: false
+        additional_dependencies:
+          - pydantic~=2.12
+          - types-requests
+
+  # ---------- Pytest (run on pre-push, not pre-commit) ----------
+  - repo: local
+    hooks:
+      - id: pytest
+        name: pytest (pre-push)
+        entry: python -m pytest -q
+        language: system
+        pass_filenames: false
+        stages: [pre-push]
+
+  - repo: local
+    hooks:
+      - id: forbid-openapi-monkeypatch
+        name: Forbid OpenAPI monkey-patching
+        language: system
+        entry: >
+          bash -c 'set -euo pipefail;
+          if grep -R -n -E "app\.openapi\s*=" -- src; then
+            echo "[governance] Forbidden: app.openapi assignment detected. Use attach_openapi_contract_registry().";
+            exit 1;
+          fi'
+        pass_filenames: false
+        files: ^src/.*\.py$

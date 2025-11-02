@@ -138,6 +138,19 @@
         "title": "ErrorObject",
         "type": "object"
       },
+      "HTTPValidationError": {
+        "properties": {
+          "detail": {
+            "items": {
+              "$ref": "#/components/schemas/ValidationError"
+            },
+            "title": "Detail",
+            "type": "array"
+          }
+        },
+        "title": "HTTPValidationError",
+        "type": "object"
+      },
       "HealthState": {
         "description": "Overall health classification.",
         "enum": [
@@ -189,20 +202,20 @@
           },
           "page": {
             "description": "1-indexed page number.",
-            "minimum": 1,
+            "minimum": 1.0,
             "title": "Page",
             "type": "integer"
           },
           "page_size": {
             "description": "Items per page (bounded by API policy).",
-            "maximum": 200,
-            "minimum": 1,
+            "maximum": 200.0,
+            "minimum": 1.0,
             "title": "Page Size",
             "type": "integer"
           },
           "total": {
             "description": "Total number of records matching the current filter.",
-            "minimum": 0,
+            "minimum": 0.0,
             "title": "Total",
             "type": "integer"
           }
@@ -214,93 +227,6 @@
           "items"
         ],
         "title": "PaginatedEnvelope",
-        "type": "object"
-      },
-      "QuoteItem": {
-        "additionalProperties": false,
-        "description": "HTTP schema for a single quote item.",
-        "example": {
-          "trace_id": "c1e2d3f4-5678-90ab-cdef-1234567890ab"
-        },
-        "properties": {
-          "as_of": {
-            "description": "UTC timestamp (ISO-8601)",
-            "examples": [
-              "2025-10-28T12:34:56Z"
-            ],
-            "format": "date-time",
-            "title": "As Of",
-            "type": "string"
-          },
-          "currency": {
-            "description": "ISO 4217 currency",
-            "examples": [
-              "USD"
-            ],
-            "title": "Currency",
-            "type": "string"
-          },
-          "price": {
-            "description": "Decimal string last price",
-            "examples": [
-              "428.17"
-            ],
-            "title": "Price",
-            "type": "string"
-          },
-          "ticker": {
-            "description": "Upper-case ticker symbol",
-            "examples": [
-              "MSFT"
-            ],
-            "title": "Ticker",
-            "type": "string"
-          },
-          "volume": {
-            "anyOf": [
-              {
-                "type": "integer"
-              },
-              {
-                "type": "null"
-              }
-            ],
-            "description": "Latest volume if available",
-            "examples": [
-              14230000
-            ],
-            "title": "Volume"
-          }
-        },
-        "required": [
-          "ticker",
-          "price",
-          "currency",
-          "as_of"
-        ],
-        "title": "QuoteItem",
-        "type": "object"
-      },
-      "QuotesBatch": {
-        "additionalProperties": false,
-        "description": "HTTP schema for a batch of quotes (wrapped by SuccessEnvelope).",
-        "example": {
-          "trace_id": "c1e2d3f4-5678-90ab-cdef-1234567890ab"
-        },
-        "properties": {
-          "items": {
-            "description": "Quotes for requested tickers (≤50)",
-            "items": {
-              "$ref": "#/components/schemas/QuoteItem"
-            },
-            "title": "Items",
-            "type": "array"
-          }
-        },
-        "required": [
-          "items"
-        ],
-        "title": "QuotesBatch",
         "type": "object"
       },
       "ReadinessResponse": {
@@ -346,33 +272,43 @@
         "title": "SuccessEnvelope",
         "type": "object"
       },
-      "SuccessEnvelope_QuotesBatch_": {
-        "additionalProperties": false,
-        "description": "Canonical success envelope for single-resource responses.",
-        "examples": [
-          {
-            "data": {
-              "id": "a3d8b3c8-9d9e-4a64-9b38-7e2b8cfd8c34",
-              "ticker": "MSFT"
-            }
-          }
-        ],
+      "ValidationError": {
         "properties": {
-          "data": {
-            "$ref": "#/components/schemas/QuotesBatch",
-            "description": "Adapter DTO or primitive value returned by the endpoint."
+          "loc": {
+            "items": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "integer"
+                }
+              ]
+            },
+            "title": "Location",
+            "type": "array"
+          },
+          "msg": {
+            "title": "Message",
+            "type": "string"
+          },
+          "type": {
+            "title": "Error Type",
+            "type": "string"
           }
         },
         "required": [
-          "data"
+          "loc",
+          "msg",
+          "type"
         ],
-        "title": "SuccessEnvelope",
+        "title": "ValidationError",
         "type": "object"
       }
     }
   },
   "info": {
-    "description": "A secure, governed API platform that consolidates regulatory filings, market data, and portfolio intelligence into a single, auditable financial data backbone.",
+    "description": "Secure, governed financial data API.",
     "title": "Stacklion API",
     "version": "0.0.0"
   },
@@ -404,10 +340,7 @@
             "description": "Service degraded or down"
           }
         },
-        "summary": "Readiness",
-        "tags": [
-          "Health"
-        ]
+        "summary": "Readiness"
       }
     },
     "/health/z": {
@@ -426,50 +359,49 @@
             "description": "Successful Response"
           }
         },
-        "summary": "Liveness",
-        "tags": [
-          "Health"
-        ]
+        "summary": "Liveness"
       }
     },
-    "/v1/quotes": {
+    "/healthz": {
       "get": {
-        "description": "Return the latest quotes for provided tickers.\n\nReturns:\n    SuccessEnvelope on 200.\n    A bare 304 Response (no body) when the If-None-Match matches the deterministic ETag.",
-        "operationId": "get_quotes_v1_quotes_get",
-        "parameters": [
-          {
-            "in": "query",
-            "name": "tickers",
-            "required": true,
-            "schema": {
-              "examples": [
-                "AAPL,MSFT"
-              ],
-              "title": "Tickers",
-              "type": "string"
-            }
-          }
-        ],
+        "operationId": "_healthz_healthz_get",
         "responses": {
           "200": {
             "content": {
               "application/json": {
                 "schema": {
-                  "$ref": "#/components/schemas/SuccessEnvelope_QuotesBatch_"
+                  "additionalProperties": {
+                    "type": "string"
+                  },
+                  "title": "Response  Healthz Healthz Get",
+                  "type": "object"
                 }
               }
             },
             "description": "Successful Response"
-          },
-          "400": {
+          }
+        },
+        "summary": " Healthz"
+      }
+    },
+    "/v1/protected/ping": {
+      "get": {
+        "description": "Returns 200 when reachable. Requires valid bearer token when AUTH_ENABLED=true.",
+        "operationId": "ping_v1_protected_ping_get",
+        "responses": {
+          "200": {
             "content": {
               "application/json": {
                 "schema": {
-                  "$ref": "#/components/schemas/ErrorEnvelope"
+                  "additionalProperties": {
+                    "type": "string"
+                  },
+                  "title": "Response Ping V1 Protected Ping Get",
+                  "type": "object"
                 }
               }
             },
-            "description": "Bad request (validation or parameter)"
+            "description": "OK"
           },
           "401": {
             "content": {
@@ -490,6 +422,160 @@
               }
             },
             "description": "Forbidden (insufficient permissions)"
+          }
+        },
+        "summary": "Auth check ping",
+        "tags": [
+          "Auth"
+        ]
+      }
+    },
+    "/v1/quotes/historical": {
+      "get": {
+        "description": "Return historical OHLCV bars (End-of-Day or intraday) for one or more tickers over a time range. Supports pagination and conditional requests via the `If-None-Match` header (ETag).",
+        "operationId": "list_historical_quotes_v1",
+        "parameters": [
+          {
+            "description": "One or more ticker symbols (comma-separated), e.g., AAPL, MSFT.",
+            "in": "query",
+            "name": "tickers",
+            "required": true,
+            "schema": {
+              "description": "One or more ticker symbols (comma-separated), e.g., AAPL, MSFT.",
+              "items": {
+                "type": "string"
+              },
+              "maxItems": 50,
+              "minItems": 1,
+              "title": "Tickers",
+              "type": "array"
+            }
+          },
+          {
+            "description": "Start date (YYYY-MM-DD), inclusive; normalized to 00:00:00Z.",
+            "in": "query",
+            "name": "from_",
+            "required": true,
+            "schema": {
+              "description": "Start date (YYYY-MM-DD), inclusive; normalized to 00:00:00Z.",
+              "format": "date",
+              "title": "From ",
+              "type": "string"
+            }
+          },
+          {
+            "description": "End date (YYYY-MM-DD), inclusive; normalized to 23:59:59.999999Z.",
+            "in": "query",
+            "name": "to",
+            "required": true,
+            "schema": {
+              "description": "End date (YYYY-MM-DD), inclusive; normalized to 23:59:59.999999Z.",
+              "format": "date",
+              "title": "To",
+              "type": "string"
+            }
+          },
+          {
+            "description": "Bar interval (one of: 1m, 5m, 15m, 30m, 1h, 1d).",
+            "in": "query",
+            "name": "interval",
+            "required": true,
+            "schema": {
+              "description": "Bar interval (one of: 1m, 5m, 15m, 30m, 1h, 1d).",
+              "pattern": "^(1d|1m|5m|15m|30m|1h)$",
+              "title": "Interval",
+              "type": "string"
+            }
+          },
+          {
+            "description": "1-based page number.",
+            "in": "query",
+            "name": "page",
+            "required": false,
+            "schema": {
+              "default": 1,
+              "description": "1-based page number.",
+              "minimum": 1,
+              "title": "Page",
+              "type": "integer"
+            }
+          },
+          {
+            "description": "Items per page (≤ 1000).",
+            "in": "query",
+            "name": "page_size",
+            "required": false,
+            "schema": {
+              "default": 50,
+              "description": "Items per page (≤ 1000).",
+              "maximum": 1000,
+              "minimum": 1,
+              "title": "Page Size",
+              "type": "integer"
+            }
+          },
+          {
+            "description": "ETag from a previous response to enable conditional GET.",
+            "in": "header",
+            "name": "If-None-Match",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "description": "ETag from a previous response to enable conditional GET.",
+              "title": "If-None-Match"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/PaginatedEnvelope"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "304": {
+            "description": "Not Modified (ETag matched)."
+          },
+          "400": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorEnvelope"
+                }
+              }
+            },
+            "description": "Validation or parameter error."
+          },
+          "401": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorEnvelope"
+                }
+              }
+            },
+            "description": "Unauthorized (missing/invalid auth)"
+          },
+          "403": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorEnvelope"
+                }
+              }
+            },
+            "description": "Forbidden (insufficient permissions)."
           },
           "404": {
             "content": {
@@ -499,7 +585,7 @@
                 }
               }
             },
-            "description": "Not found"
+            "description": "Not Found."
           },
           "409": {
             "content": {
@@ -509,17 +595,17 @@
                 }
               }
             },
-            "description": "Conflict"
+            "description": "Conflict."
           },
           "422": {
             "content": {
               "application/json": {
                 "schema": {
-                  "$ref": "#/components/schemas/ErrorEnvelope"
+                  "$ref": "#/components/schemas/HTTPValidationError"
                 }
               }
             },
-            "description": "Unprocessable content"
+            "description": "Validation Error"
           },
           "429": {
             "content": {
@@ -529,7 +615,7 @@
                 }
               }
             },
-            "description": "Rate limit exceeded"
+            "description": "Rate limited / quota exceeded."
           },
           "500": {
             "content": {
@@ -539,7 +625,7 @@
                 }
               }
             },
-            "description": "Internal server error"
+            "description": "Server error."
           },
           "503": {
             "content": {
@@ -549,10 +635,10 @@
                 }
               }
             },
-            "description": "Service unavailable"
+            "description": "Upstream unavailable."
           }
         },
-        "summary": "Get latest quotes for tickers",
+        "summary": "Historical quotes",
         "tags": [
           "Market Data"
         ]

@@ -7,7 +7,8 @@ Purpose:
 
 Design:
     - Single `get_json_logger(name)` accessor.
-    - Adds `request_id` if middleware set it in context vars.
+    - `configure_root_logging()` to initialize the root logger once.
+    - Adds `request_id` if middleware set it in context vars or env.
     - Avoids crashes: never raises from enrichment path.
 
 Layer:
@@ -41,21 +42,46 @@ class _JsonFormatter(logging.Formatter):
             if rid:
                 payload["request_id"] = rid
         except Exception as exc:  # pragma: no cover - defensive
-            # Log enrichment failures without interrupting application flow.
             payload["enrichment_error"] = str(exc)
 
         if record.exc_info:
             payload["exc_info"] = self.formatException(record.exc_info)
 
-        # Include extra=... dict if present
-        for k, v in getattr(record, "extra", {}).items() if hasattr(record, "extra") else []:
-            payload[k] = v
+        # Include any `extra=` keys if present (defensive: won't fail if absent)
+        extras = getattr(record, "extra", None)
+        if isinstance(extras, dict):
+            payload.update(extras)
 
         return json.dumps(payload, ensure_ascii=False)
 
 
+def configure_root_logging(level: str | int | None = None) -> None:
+    """Initialize the root logger with a JSON stream handler (idempotent).
+
+    Args:
+        level: Optional logging level; if None, uses LOG_LEVEL env (default INFO).
+    """
+    root = logging.getLogger()
+    if root.handlers:  # already configured (avoid duplicate logs)
+        return
+
+    handler = logging.StreamHandler()
+    handler.setFormatter(_JsonFormatter())
+    root.addHandler(handler)
+
+    # Coerce to a valid level for mypy and logging
+    env_level = os.getenv("LOG_LEVEL")
+    resolved: int | str = (
+        level if level is not None else (env_level.upper() if env_level else "INFO")
+    )
+    root.setLevel(resolved)
+
+
 def get_json_logger(name: str) -> logging.Logger:
     """Return a JSON logger configured with a stream handler.
+
+    If the root logger hasn't been configured yet, this function does *not*
+    implicitly configure it; call `configure_root_logging()` at app startup.
 
     Args:
         name: Logger name (usually `__name__` of the caller).
@@ -70,6 +96,7 @@ def get_json_logger(name: str) -> logging.Logger:
     handler = logging.StreamHandler()
     handler.setFormatter(_JsonFormatter())
     logger.addHandler(handler)
-    logger.setLevel(os.getenv("LOG_LEVEL", "INFO"))
+    env_level = os.getenv("LOG_LEVEL")
+    logger.setLevel(env_level.upper() if env_level else "INFO")
     logger.propagate = False
     return logger
