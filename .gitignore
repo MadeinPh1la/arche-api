@@ -45,6 +45,7 @@ inspectionProfile.xml
 artifacts
 artifacts/*
 audit_report.json
+coverage.xml
 
 # Ignore native build artifacts
 /build/
