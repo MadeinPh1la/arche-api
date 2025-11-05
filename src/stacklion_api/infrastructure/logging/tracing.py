@@ -32,7 +32,7 @@ def _should_disable() -> bool:
 
 
 def _import_otel() -> (
-    tuple[Any, Any, Any, Any, Any, Any, Any | None, Any | None, Any | None] | None
+    tuple[Any, Any, Any, Any, Any, Any, type[Any] | None, type[Any] | None, type[Any] | None] | None
 ):
     """Soft-import OTEL SDK & instrumentations; return None if unavailable."""
     try:
@@ -45,16 +45,26 @@ def _import_otel() -> (
 
         try:
             from opentelemetry.instrumentation.httpx import HTTPXClientInstrumentor
+
+            HTTPXType: type[Any] | None = HTTPXClientInstrumentor
         except Exception:  # pragma: no cover
-            HTTPXClientInstrumentor = None
+            HTTPXType = None
         try:
-            from opentelemetry.instrumentation.sqlalchemy import SQLAlchemyInstrumentor
+            from opentelemetry.instrumentation.sqlalchemy import (
+                SQLAlchemyInstrumentor,
+            )
+
+            SAType: type[Any] | None = SQLAlchemyInstrumentor
         except Exception:  # pragma: no cover
-            SQLAlchemyInstrumentor = None
+            SAType = None
         try:
-            from opentelemetry.exporter.otlp.proto.http.trace_exporter import OTLPSpanExporter
+            from opentelemetry.exporter.otlp.proto.http.trace_exporter import (
+                OTLPSpanExporter,
+            )
+
+            OTLPType: type[Any] | None = OTLPSpanExporter
         except Exception:  # pragma: no cover
-            OTLPSpanExporter = None
+            OTLPType = None
         return (
             trace,
             Resource,
@@ -62,9 +72,9 @@ def _import_otel() -> (
             BatchSpanProcessor,
             OpenTelemetryMiddleware,
             FastAPIInstrumentor,
-            HTTPXClientInstrumentor,
-            SQLAlchemyInstrumentor,
-            OTLPSpanExporter,
+            HTTPXType,
+            SAType,
+            OTLPType,
         )
     except Exception:
         logger.info("otel.sdk_not_installed; tracing disabled")
@@ -93,7 +103,9 @@ def _build_provider(trace: Any, Resource: Any, TracerProvider: Any) -> tuple[Any
     return provider, service_name, service_version
 
 
-def _wire_exporter(provider: Any, BatchSpanProcessor: Any, OTLPSpanExporter: Any | None) -> str:
+def _wire_exporter(
+    provider: Any, BatchSpanProcessor: Any, OTLPSpanExporter: type[Any] | None
+) -> str:
     """Wire OTLP HTTP exporter if endpoint is set; return endpoint or ''."""
     endpoint = (os.getenv("OTEL_EXPORTER_OTLP_ENDPOINT") or "").strip()
     if endpoint and BatchSpanProcessor and OTLPSpanExporter:
@@ -110,8 +122,8 @@ def _instrument_frameworks(
     app: Any,
     OpenTelemetryMiddleware: Any,
     FastAPIInstrumentor: Any,
-    HTTPXClientInstrumentor: Any | None,
-    SQLAlchemyInstrumentor: Any | None,
+    HTTPXClientInstrumentor: type[Any] | None,
+    SQLAlchemyInstrumentor: type[Any] | None,
 ) -> None:
     """Instrument FastAPI/ASGI, HTTPX, and SQLAlchemy (global) if available."""
     # FastAPI / ASGI

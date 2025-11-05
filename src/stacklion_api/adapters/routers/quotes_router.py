@@ -12,13 +12,14 @@ Layer:
 from __future__ import annotations
 
 import hashlib
-from typing import Annotated
+from typing import Annotated, Any, cast
 
 from fastapi import Depends, HTTPException, Query, Request, Response, status
 from pydantic import BaseModel, ConfigDict, Field
 
 from stacklion_api.adapters.presenters.quotes_presenter import QuotesPresenter
 from stacklion_api.adapters.routers.base_router import BaseRouter
+from stacklion_api.adapters.schemas.http.base import BaseHTTPSchema
 from stacklion_api.adapters.schemas.http.envelopes import SuccessEnvelope
 from stacklion_api.adapters.schemas.http.quotes import QuotesBatch
 from stacklion_api.application.use_cases.quotes.get_quotes import GetQuotes
@@ -56,7 +57,7 @@ def _deterministic_etag(seed: str) -> str:
     "",
     response_model=SuccessEnvelope[QuotesBatch],
     status_code=status.HTTP_200_OK,
-    responses=BaseRouter.std_error_responses(),
+    responses=cast("dict[int | str, dict[str, Any]]", BaseRouter.std_error_responses()),
     summary="Get latest quotes for tickers",
 )
 async def get_quotes(
@@ -64,12 +65,11 @@ async def get_quotes(
     response: Response,
     tickers: Annotated[str, Query(examples=["AAPL,MSFT"])],
     uc: Annotated[GetQuotes, Depends(get_quotes_uc)],
-) -> SuccessEnvelope[QuotesBatch] | Response | dict[str, str | int | float | None]:
+) -> BaseHTTPSchema | dict[str, Any] | Response:
     """Return the latest quotes for provided tickers.
 
     Returns:
-        SuccessEnvelope on 200.
-        A bare 304 Response (no body) when the If-None-Match matches the deterministic ETag.
+        SuccessEnvelope on 200, or a bare 304 Response when ETag matches.
     """
     try:
         q = QuotesQuery(tickers=_parse_tickers(tickers))
@@ -92,7 +92,10 @@ async def get_quotes(
             cache_ttl_s=5,
             etag_seed=seed,
         )
-        return router.send_success(response, result)
+
+        # Apply headers directly to avoid mypy Protocol friction on Response.headers
+        response.headers.update(dict(result.headers))
+        return router.send_success(None, result)
 
     except SymbolNotFound as e:
         response.status_code = status.HTTP_404_NOT_FOUND

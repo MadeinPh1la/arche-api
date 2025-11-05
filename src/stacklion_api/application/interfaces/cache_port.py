@@ -30,7 +30,7 @@ class CachePort(Protocol):
         """
         ...
 
-    async def set_json(self, key: str, value: Mapping[str, Any], ttl: int) -> None:
+    async def set_json(self, key: str, value: Mapping[str, Any], *, ttl: int) -> None:
         """Set a JSON-serializable value with TTL.
 
         Args:

@@ -1,3 +1,5 @@
+# Copyright (c) Stacklion.
+# SPDX-License-Identifier: MIT
 """
 Base Router (Adapters Layer)
 
@@ -11,57 +13,6 @@ Purpose:
 
 Layer:
     adapters/routers
-
-Usage:
-    from fastapi import Depends, Response, status
-    from stacklion_api.adapters.routers.base_router import BaseRouter, PageParams
-    from stacklion_api.adapters.presenters.base_presenter import BasePresenter
-    from stacklion_api.adapters.schemas.envelopes import SuccessEnvelope
-    from .dto import CompanyResponse  # your adapter schema
-
-    router = BaseRouter(version="v1", resource="companies", tags=["Companies"])
-    presenter = BasePresenter[CompanyResponse]()
-
-    @router.get(
-        "/{company_id}",
-        response_model=SuccessEnvelope[CompanyResponse],
-        status_code=status.HTTP_200_OK,
-        responses=BaseRouter.std_error_responses(),
-        summary="Get company by ID",
-    )
-    async def get_company(company_id: str, response: Response) -> SuccessEnvelope[CompanyResponse]:
-        dto = await service.get_company(company_id)  # your app/service call
-        result = presenter.present_success(dto, trace_id=response.headers.get("X-Request-ID"))
-        return router.send_success(response, result)
-
-    @router.get(
-        "",
-        response_model=SuccessEnvelope[list[CompanyResponse]],
-        status_code=status.HTTP_200_OK,
-        responses=BaseRouter.std_error_responses(),
-        summary="List companies (non-paginated example)",
-    )
-    async def list_companies(response: Response) -> SuccessEnvelope[list[CompanyResponse]]:
-        items = await service.list_companies()
-        result = presenter.present_success(items, trace_id=response.headers.get("X-Request-ID"))
-        return router.send_success(response, result)
-
-    @router.get(
-        "/search",
-        response_model=SuccessEnvelope[list[CompanyResponse]],
-        status_code=status.HTTP_200_OK,
-        responses=BaseRouter.std_error_responses(),
-        summary="Search companies (with pagination parameters available)",
-    )
-    async def search_companies(
-        q: str,
-        page: PageParams = Depends(BaseRouter.page_params),
-        response: Response | None = None,  # FastAPI injects this
-    ) -> SuccessEnvelope[list[CompanyResponse]]:
-        items, total = await service.search_companies(q, offset=page.offset, limit=page.limit)
-        # If you want strict paginated envelope instead, use presenter.present_paginated(...)
-        result = presenter.present_success(items, trace_id=response.headers.get("X-Request-ID") if response else None)
-        return router.send_success(response, result)
 """
 
 from __future__ import annotations
@@ -174,7 +125,7 @@ class BaseRouter(APIRouter):
     @staticmethod
     def send_success(
         response: _ResponseLike | None,
-        result: PresentResult[BaseHTTPSchema | Mapping[str, JsonValue]],
+        result: PresentResult[Any],
     ) -> BaseHTTPSchema | dict[str, JsonValue]:
         """Apply presenter headers on the Response (if provided) and return the body.
 
@@ -196,6 +147,9 @@ class BaseRouter(APIRouter):
                 )
 
         body = result.body
+        if body is None:
+            # Guarantee an object body for JSON rendering (contract registry rule).
+            return {}
         if isinstance(body, Mapping):
             # Normalize to a concrete dict for JSON rendering.
             return dict(body)
@@ -276,7 +230,6 @@ class BaseRouter(APIRouter):
         Returns:
             Mapping of HTTP status codes to OpenAPI response objects.
         """
-        # Keep descriptions brief and actionable for API consumers.
         return {
             400: {"model": ErrorEnvelope, "description": "Bad request (validation or parameter)"},
             401: {"model": ErrorEnvelope, "description": "Unauthorized (missing/invalid auth)"},

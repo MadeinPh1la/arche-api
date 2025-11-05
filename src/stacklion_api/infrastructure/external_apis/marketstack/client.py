@@ -1,98 +1,185 @@
+# src/stacklion_api/infrastructure/external_apis/marketstack/client.py
 # Copyright (c) Stacklion.
 # SPDX-License-Identifier: MIT
-"""Marketstack Gateway.
+"""Marketstack Transport Client (Option A).
 
-Async gateway to Marketstack with timeouts, bounded retries, strict schema
-validation, precise domain error translation, and observability metrics.
-Supports latest quotes and historical OHLCV bars (EOD / intraday).
+Synopsis:
+    Thin, framework-agnostic HTTP client for Marketstack that:
+      * Builds query parameters for EOD & intraday requests.
+      * Performs asynchronous HTTP with timeouts.
+      * Maps HTTP/transport errors to domain exceptions.
+      * Returns raw provider JSON plus upstream ETag (if present).
 
-This adapter is framework-agnostic and adheres to the gateway protocol in the
-domain layer.
+Design:
+    - Transport-only: no DTO mapping, caching, metrics, or business logic.
+    - Deterministic error mapping:
+        429 → MarketDataRateLimited
+        402 → MarketDataQuotaExceeded
+        400/422 → MarketDataBadRequest
+        timeouts/network/5xx → MarketDataUnavailable
+        non-JSON or unexpected shape → MarketDataValidationError
+    - Normalizes symbols to uppercase to avoid downstream drift.
+
+Layer:
+    infrastructure/external_apis
 """
 
 from __future__ import annotations
 
-from collections.abc import Sequence
-from datetime import UTC, datetime
-from decimal import Decimal
-from time import monotonic
+from collections.abc import Mapping, Sequence
 from typing import Any
 
 import httpx
-from tenacity import retry, retry_if_exception_type, stop_after_attempt, wait_random_exponential
 
-from stacklion_api.application.schemas.dto.quotes import (
-    HistoricalBarDTO,
-    HistoricalQueryDTO,
-)
-from stacklion_api.domain.entities.historical_bar import BarInterval
-from stacklion_api.domain.entities.quote import Quote
 from stacklion_api.domain.exceptions.market_data import (
     MarketDataBadRequest,
     MarketDataQuotaExceeded,
     MarketDataRateLimited,
     MarketDataUnavailable,
     MarketDataValidationError,
-    SymbolNotFound,
 )
-from stacklion_api.domain.interfaces.gateways.market_data_gateway import MarketDataGatewayProtocol
 from stacklion_api.infrastructure.external_apis.marketstack.settings import MarketstackSettings
-from stacklion_api.infrastructure.observability.metrics_market_data import (
-    market_data_errors_total,
-    market_data_success_total,
-    stacklion_market_data_gateway_latency_seconds,
-)
 
 
-class MarketstackGateway(MarketDataGatewayProtocol):
-    """Marketstack-backed market data gateway."""
+class MarketstackClient:
+    """Asynchronous transport client for Marketstack.
 
-    def __init__(self, client: httpx.AsyncClient, settings: MarketstackSettings) -> None:
-        """Initialize the gateway.
+    This client is the source of truth for outbound HTTP to Marketstack. It
+    performs network I/O, enforces timeouts, and translates errors to domain
+    exceptions. It **does not** parse payloads into DTOs—mapping belongs in the
+    adapter gateway.
 
-        Args:
-            client: Shared asynchronous HTTP client.
-            settings: Provider configuration (base URL, access key, timeouts, retries).
-        """
-        self._client = client
+    Args:
+        http: Shared :class:`httpx.AsyncClient` with connection pooling.
+        settings: Provider configuration (base URL, access key, timeout).
+    """
+
+    def __init__(self, http: httpx.AsyncClient, settings: MarketstackSettings) -> None:
+        self._http = http
         self._cfg = settings
 
-    # -----------------------------------------------------------------------
-    # Helpers: parameter builders
-    # -----------------------------------------------------------------------
+    # --------------------------------------------------------------------- #
+    # Public API                                                            #
+    # --------------------------------------------------------------------- #
 
-    def _params_latest(self, tickers: Sequence[str]) -> dict[str, str | int]:
-        """Build query parameters for the 'latest' endpoint.
+    async def eod(
+        self,
+        *,
+        tickers: Sequence[str],
+        date_from: str,
+        date_to: str,
+        page: int,
+        limit: int,
+    ) -> tuple[dict[str, Any], str | None]:
+        """Fetch **End-of-Day** bars as raw JSON plus upstream ETag.
 
         Args:
-            tickers: One or more ticker symbols.
+            tickers: Ticker symbols (case-insensitive); joined by commas.
+            date_from: Inclusive start date in ``YYYY-MM-DD``.
+            date_to: Inclusive end date in ``YYYY-MM-DD``.
+            page: 1-based page number (>= 1).
+            limit: Page size (>= 1).
 
         Returns:
-            dict: Query parameter mapping (access key, symbols, limit).
-        """
-        return {
-            "access_key": self._cfg.access_key.get_secret_value(),
-            "symbols": ",".join(tickers),
-            "limit": len(tickers),
-        }
+            tuple[dict[str, Any], str | None]: ``(raw_json, etag)`` where
+            ``raw_json`` contains at least ``{"data": [...]}`` and optionally
+            ``"pagination"``, and ``etag`` is the upstream ETag if present.
 
-    def _params_eod(
-        self, *, tickers: Sequence[str], date_from: str, date_to: str, limit: int, offset: int
-    ) -> dict[str, Any]:
-        """Build query parameters for the EOD endpoint.
+        Raises:
+            MarketDataValidationError: Invalid pagination or unexpected payload shape.
+            MarketDataBadRequest: Upstream 400/422 parameter error.
+            MarketDataQuotaExceeded: Upstream 402 quota exceeded.
+            MarketDataRateLimited: Upstream 429 rate-limited.
+            MarketDataUnavailable: Timeout, network failure, or non-4xx HTTP error.
+        """
+        if page < 1 or limit < 1:
+            raise MarketDataValidationError("invalid pagination parameters")
+
+        params = self._params_eod(
+            tickers=_normalize_symbols(tickers),
+            date_from=date_from,
+            date_to=date_to,
+            limit=limit,
+            offset=(page - 1) * limit,
+        )
+        url = f"{self._cfg.base_url}/eod"
+        return await self._get(url, params)
+
+    async def intraday(
+        self,
+        *,
+        tickers: Sequence[str],
+        date_from: str,
+        date_to: str,
+        interval: str,
+        page: int,
+        limit: int,
+    ) -> tuple[dict[str, Any], str | None]:
+        """Fetch **intraday** bars as raw JSON plus upstream ETag.
 
         Args:
-            tickers: One or more ticker symbols.
+            tickers: Ticker symbols (case-insensitive); joined by commas.
+            date_from: Inclusive start instant (ISO-8601, UTC recommended).
+            date_to: Inclusive end instant (ISO-8601, UTC recommended).
+            interval: Bar interval string accepted by Marketstack (e.g., ``"1m"``, ``"5m"``, ``"15m"``, ``"1h"``).
+            page: 1-based page number (>= 1).
+            limit: Page size (>= 1).
+
+        Returns:
+            tuple[dict[str, Any], str | None]: ``(raw_json, etag)`` where
+            ``raw_json`` contains at least ``{"data": [...]}`` and optionally
+            ``"pagination"``, and ``etag`` is the upstream ETag if present.
+
+        Raises:
+            MarketDataValidationError: Invalid pagination or unexpected payload shape.
+            MarketDataBadRequest: Upstream 400/422 parameter error.
+            MarketDataQuotaExceeded: Upstream 402 quota exceeded.
+            MarketDataRateLimited: Upstream 429 rate-limited.
+            MarketDataUnavailable: Timeout, network failure, or non-4xx HTTP error.
+        """
+        if page < 1 or limit < 1:
+            raise MarketDataValidationError("invalid pagination parameters")
+
+        params = self._params_intraday(
+            tickers=_normalize_symbols(tickers),
+            date_from=date_from,
+            date_to=date_to,
+            interval=interval,
+            limit=limit,
+            offset=(page - 1) * limit,
+        )
+        url = f"{self._cfg.base_url}/intraday"
+        return await self._get(url, params)
+
+    # --------------------------------------------------------------------- #
+    # Internal helpers                                                      #
+    # --------------------------------------------------------------------- #
+
+    def _params_base(self) -> dict[str, str]:
+        """Return base query parameters containing the access key.
+
+        Returns:
+            dict[str, str]: Mapping with ``access_key`` set.
+        """
+        return {"access_key": self._cfg.access_key.get_secret_value()}
+
+    def _params_eod(
+        self, *, tickers: list[str], date_from: str, date_to: str, limit: int, offset: int
+    ) -> dict[str, Any]:
+        """Construct query parameters for the EOD endpoint.
+
+        Args:
+            tickers: Uppercased ticker symbols.
             date_from: Inclusive start date (``YYYY-MM-DD``).
             date_to: Inclusive end date (``YYYY-MM-DD``).
             limit: Page size.
             offset: Zero-based offset.
 
         Returns:
-            dict: Query parameter mapping.
+            dict[str, Any]: Query mapping for ``/eod``.
         """
         return {
-            "access_key": self._cfg.access_key.get_secret_value(),
+            **self._params_base(),
             "symbols": ",".join(tickers),
             "date_from": date_from,
             "date_to": date_to,
@@ -103,28 +190,28 @@ class MarketstackGateway(MarketDataGatewayProtocol):
     def _params_intraday(
         self,
         *,
-        tickers: Sequence[str],
+        tickers: list[str],
         date_from: str,
         date_to: str,
         interval: str,
         limit: int,
         offset: int,
     ) -> dict[str, Any]:
-        """Build query parameters for the intraday endpoint.
+        """Construct query parameters for the intraday endpoint.
 
         Args:
-            tickers: One or more ticker symbols.
-            date_from: Inclusive start instant (ISO-8601, UTC).
-            date_to: Inclusive end instant (ISO-8601, UTC).
-            interval: Bar interval string (e.g., ``"1m"``, ``"5m"``).
+            tickers: Uppercased ticker symbols.
+            date_from: Inclusive start instant (ISO-8601).
+            date_to: Inclusive end instant (ISO-8601).
+            interval: Bar interval string accepted by Marketstack.
             limit: Page size.
             offset: Zero-based offset.
 
         Returns:
-            dict: Query parameter mapping.
+            dict[str, Any]: Query mapping for ``/intraday``.
         """
         return {
-            "access_key": self._cfg.access_key.get_secret_value(),
+            **self._params_base(),
             "symbols": ",".join(tickers),
             "date_from": date_from,
             "date_to": date_to,
@@ -133,259 +220,91 @@ class MarketstackGateway(MarketDataGatewayProtocol):
             "offset": offset,
         }
 
-    # -----------------------------------------------------------------------
-    # Latest quotes
-    # -----------------------------------------------------------------------
-
-    @retry(
-        retry=retry_if_exception_type(MarketDataUnavailable),
-        wait=wait_random_exponential(multiplier=0.1, max=1.0),
-        stop=stop_after_attempt(1),
-        reraise=True,
-    )
-    async def get_latest_quotes(self, tickers: Sequence[str]) -> list[Quote]:
-        """Return latest quotes for the provided tickers.
-
-        This method maps the provider payload to :class:`Quote` entities,
-        translating shape issues and provider absences to domain exceptions.
+    async def _get(self, url: str, params: Mapping[str, Any]) -> tuple[dict[str, Any], str | None]:
+        """Execute a GET and return raw JSON and ETag with strict error mapping.
 
         Args:
-            tickers: Ticker symbols.
+            url: Fully qualified endpoint URL.
+            params: Query parameters to send.
 
         Returns:
-            list[Quote]: Latest quotes ordered by the provider response order.
+            tuple[dict[str, Any], str | None]: The provider JSON payload and the upstream ETag.
 
         Raises:
-            MarketDataUnavailable: On timeout/network/5xx with retry policy.
-            MarketDataValidationError: On unexpected payload shape/values.
-            SymbolNotFound: When provider returns no items for the symbols.
+            MarketDataBadRequest: Upstream 400/422 parameter error.
+            MarketDataQuotaExceeded: Upstream 402 quota exceeded.
+            MarketDataRateLimited: Upstream 429 rate-limited.
+            MarketDataUnavailable: Timeout, network failure, or non-4xx HTTP error.
+            MarketDataValidationError: Non-JSON or unexpected payload shape.
         """
-        url = f"{self._cfg.base_url}/intraday/latest"
-        attempts = 0
-        params = self._params_latest(tickers)
-
-        while True:
-            attempts += 1
-            t0 = monotonic()
-            try:
-                r = await self._client.get(url, params=params, timeout=self._cfg.timeout_s)
-                r.raise_for_status()
-                raw: dict[str, Any] = r.json()
-            except (httpx.TimeoutException, httpx.NetworkError, httpx.HTTPStatusError) as e:
-                # Record latency even on errors.
-                elapsed = monotonic() - t0
-                stacklion_market_data_gateway_latency_seconds.labels(
-                    "marketstack", "latest", "latest"
-                ).observe(elapsed)
-                if attempts <= self._cfg.max_retries:
-                    raise MarketDataUnavailable("market data provider unavailable") from e
-                raise MarketDataUnavailable("market data provider unavailable") from e
-            except Exception as e:
-                elapsed = monotonic() - t0
-                stacklion_market_data_gateway_latency_seconds.labels(
-                    "marketstack", "latest", "latest"
-                ).observe(elapsed)
-                raise MarketDataValidationError("invalid provider response") from e
-
-            # Success path: record latency, then parse.
-            elapsed = monotonic() - t0
-            stacklion_market_data_gateway_latency_seconds.labels(
-                "marketstack", "latest", "latest"
-            ).observe(elapsed)
-
-            try:
-                if (
-                    not isinstance(raw, dict)
-                    or "data" not in raw
-                    or not isinstance(raw["data"], list)
-                ):
-                    raise MarketDataValidationError("unexpected provider payload")
-
-                data = raw["data"]
-                items: list[Quote] = []
-                for row in data:
-                    sym = str(row["symbol"]).upper()
-                    price = Decimal(str(row["last"]))
-                    ts = datetime.fromisoformat(str(row["date"]).replace("Z", "+00:00")).astimezone(
-                        UTC
-                    )
-                    cur = str(row.get("currency") or "USD")
-                    vol = row.get("volume")
-                    vol_int = int(vol) if vol is not None else None
-                    items.append(
-                        Quote(ticker=sym, price=price, currency=cur, as_of=ts, volume=vol_int)
-                    )
-
-                if not items:
-                    raise SymbolNotFound("no quotes for requested symbols")
-
-                market_data_success_total.labels("marketstack", "latest").inc()
-                return items
-
-            except SymbolNotFound:
-                # 2-label signature: (reason, endpoint)
-                market_data_errors_total.labels("not_found", "latest").inc()
-                raise
-            except Exception as e:
-                market_data_errors_total.labels("validation", "latest").inc()
-                raise MarketDataValidationError("unexpected provider payload") from e
-
-    # -----------------------------------------------------------------------
-    # Historical OHLCV bars
-    # -----------------------------------------------------------------------
-
-    # ruff: noqa: C901
-    @retry(
-        retry=retry_if_exception_type(MarketDataUnavailable),
-        wait=wait_random_exponential(multiplier=0.1, max=1.0),
-        stop=stop_after_attempt(1),
-        reraise=True,
-    )
-    async def get_historical_bars(
-        self, q: HistoricalQueryDTO
-    ) -> tuple[list[HistoricalBarDTO], int]:
-        """Return historical OHLCV bars (EOD or intraday) with pagination.
-
-        Args:
-            q: Validated query DTO (tickers, from_, to, interval, page, page_size).
-
-        Returns:
-            tuple[list[HistoricalBarDTO], int]: Items and total available count.
-
-        Raises:
-            MarketDataUnavailable: On network errors and unavailability.
-            MarketDataBadRequest: On upstream 4xx parameter issues.
-            MarketDataRateLimited: On upstream rate limit (429).
-            MarketDataQuotaExceeded: On upstream quota/plan exceeded (e.g., 402).
-            MarketDataValidationError: On shape/semantic mapping failures.
-        """
-        if q.page < 1 or q.page_size < 1:
-            raise MarketDataValidationError("invalid pagination parameters")
-        offset = (q.page - 1) * q.page_size
-        interval_label = (
-            q.interval.value if isinstance(q.interval, BarInterval) else str(q.interval)
-        )
-
-        if q.interval == BarInterval.I1D:
-            url = f"{self._cfg.base_url}/eod"
-            endpoint = "eod"
-            params = self._params_eod(
-                tickers=q.tickers,
-                date_from=q.from_.date().isoformat(),
-                date_to=q.to.date().isoformat(),
-                limit=q.page_size,
-                offset=offset,
-            )
-        else:
-            url = f"{self._cfg.base_url}/intraday"
-            endpoint = "intraday"
-            params = self._params_intraday(
-                tickers=q.tickers,
-                date_from=q.from_.isoformat(),
-                date_to=q.to.isoformat(),
-                interval=q.interval.value,
-                limit=q.page_size,
-                offset=offset,
+        try:
+            # Small explicit User-Agent aids observability and vendor-side debugging.
+            headers = {"User-Agent": "stacklion-api/marketstack-client"}
+            resp = await self._http.get(
+                url, params=params, headers=headers, timeout=self._cfg.timeout_s
             )
 
-        attempts = 0
-        while True:
-            attempts += 1
-            t0 = monotonic()
+            # Explicitly handle empty 204s (unexpected for these endpoints).
+            if resp.status_code == 204:
+                raise MarketDataValidationError("empty provider response (204)")
+
+            # Classify common 4xx explicitly before generic handler.
+            if resp.status_code == 429:
+                raise MarketDataRateLimited("upstream rate limit exceeded")
+            if resp.status_code in (400, 422):
+                raise MarketDataBadRequest("invalid upstream parameters")
+            if resp.status_code == 402:
+                raise MarketDataQuotaExceeded("provider quota exceeded")
+
+            resp.raise_for_status()
+
             try:
-                r = await self._client.get(url, params=params, timeout=self._cfg.timeout_s)
+                raw = resp.json()
+            except Exception as exc:  # noqa: BLE001
+                raise MarketDataValidationError("invalid provider response (non-JSON)") from exc
 
-                # CLASSIFY EARLY 4xx WITHOUT RAISING YET, BUT ALWAYS RECORD LATENCY
-                elapsed = monotonic() - t0
-                stacklion_market_data_gateway_latency_seconds.labels(
-                    "marketstack", endpoint, interval_label
-                ).observe(elapsed)
+            if not isinstance(raw, dict) or "data" not in raw:
+                raise MarketDataValidationError("unexpected provider payload")
 
-                if r.status_code == 429:
-                    market_data_errors_total.labels("rate_limited", endpoint).inc()
-                    raise MarketDataRateLimited("upstream rate limit exceeded")
-                if r.status_code in (400, 422):
-                    market_data_errors_total.labels("bad_request", endpoint).inc()
-                    raise MarketDataBadRequest("invalid upstream parameters")
-                if r.status_code in (402,):
-                    market_data_errors_total.labels("quota_exceeded", endpoint).inc()
-                    raise MarketDataQuotaExceeded("provider quota exceeded")
+            etag = _extract_etag(resp)
+            return raw, etag
 
-                r.raise_for_status()
-                raw: dict[str, Any] = r.json()
+        except (httpx.TimeoutException, httpx.NetworkError) as exc:
+            raise MarketDataUnavailable("market data provider unavailable") from exc
+        except httpx.HTTPStatusError as exc:
+            code = exc.response.status_code if exc.response is not None else 0
+            if 400 <= code < 500:
+                raise MarketDataBadRequest("invalid upstream parameters") from exc
+            raise MarketDataUnavailable("market data provider unavailable") from exc
 
-            except (httpx.TimeoutException, httpx.NetworkError) as e:
-                # Record latency on network/timeout as well
-                elapsed = monotonic() - t0
-                stacklion_market_data_gateway_latency_seconds.labels(
-                    "marketstack", endpoint, interval_label
-                ).observe(elapsed)
 
-                market_data_errors_total.labels("unavailable", endpoint).inc()
-                if attempts <= self._cfg.max_retries:
-                    raise MarketDataUnavailable("market data provider unavailable") from e
-                raise MarketDataUnavailable("market data provider unavailable") from e
+# ------------------------------------------------------------------------- #
+# Module utilities                                                          #
+# ------------------------------------------------------------------------- #
 
-            except httpx.HTTPStatusError as e:
-                # Already observed latency above for the HTTP call
-                code = e.response.status_code if e.response is not None else 0
-                if 400 <= code < 500:
-                    market_data_errors_total.labels("bad_request", endpoint).inc()
-                    raise MarketDataBadRequest("invalid upstream parameters") from e
-                market_data_errors_total.labels("unavailable", endpoint).inc()
-                raise MarketDataUnavailable("market data provider unavailable") from e
 
-            # IMPORTANT: Domain exceptions must propagate unchanged.
-            except (MarketDataRateLimited, MarketDataBadRequest, MarketDataQuotaExceeded):
-                raise
+def _normalize_symbols(symbols: Sequence[str]) -> list[str]:
+    """Normalize symbols once (uppercase/strip) to avoid downstream drift.
 
-            except Exception as e:
-                # Parsing/shape errors after a response was received; latency was observed
-                market_data_errors_total.labels("validation", endpoint).inc()
-                raise MarketDataValidationError("invalid provider response") from e
+    Args:
+        symbols: Raw symbols as provided by callers.
 
-            # Parse & validate payload
-            try:
-                if (
-                    not isinstance(raw, dict)
-                    or "data" not in raw
-                    or not isinstance(raw["data"], list)
-                ):
-                    raise MarketDataValidationError("unexpected provider payload")
+    Returns:
+        list[str]: Uppercased, de-blanked symbols.
+    """
+    return [s.strip().upper() for s in symbols if str(s).strip()]
 
-                data = raw["data"]
-                pagination = raw.get("pagination", {}) or {}
-                total = int(pagination.get("total", len(data)))
 
-                items: list[HistoricalBarDTO] = []
-                for row in data:
-                    sym = str(row["symbol"]).upper()
-                    ts = datetime.fromisoformat(str(row["date"]).replace("Z", "+00:00")).astimezone(
-                        UTC
-                    )
-                    open_ = Decimal(str(row["open"]))
-                    high = Decimal(str(row["high"]))
-                    low = Decimal(str(row["low"]))
-                    close = Decimal(str(row["close"]))
-                    vol_raw = row.get("volume")
-                    vol = Decimal(str(vol_raw)) if vol_raw is not None else None
+def _extract_etag(resp: httpx.Response) -> str | None:
+    """Extract an upstream ETag header value, case-insensitively.
 
-                    items.append(
-                        HistoricalBarDTO(
-                            ticker=sym,
-                            timestamp=ts,
-                            open=open_,
-                            high=high,
-                            low=low,
-                            close=close,
-                            volume=vol,
-                            interval=q.interval,
-                        )
-                    )
+    Args:
+        resp: HTTP response.
 
-                market_data_success_total.labels("marketstack", interval_label).inc()
-                return items, total
+    Returns:
+        str | None: The ETag value if present, otherwise ``None``.
+    """
+    return resp.headers.get("ETag") or resp.headers.get("Etag") or resp.headers.get("etag")
 
-            except Exception as e:
-                market_data_errors_total.labels("validation", endpoint).inc()
-                raise MarketDataValidationError("unexpected provider payload") from e
+
+__all__ = ["MarketstackClient"]

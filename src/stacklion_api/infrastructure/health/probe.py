@@ -1,4 +1,3 @@
-# src/stacklion_api/infrastructure/health/probe.py
 # Copyright (c) Stacklion.
 # SPDX-License-Identifier: MIT
 """
@@ -18,17 +17,13 @@ Design:
       latency is recorded whether the probe succeeds or fails.
     - Public API is intentionally small: `DbRedisProbe.db()` and
       `DbRedisProbe.redis()` each return `(success: bool, detail: str | None)`.
-
-Usage:
-    probe = DbRedisProbe(session_factory, redis_client)
-    ok_db, detail_db = await probe.db()
-    ok_redis, detail_redis = await probe.redis()
 """
 
 from __future__ import annotations
 
 import time
 from threading import Lock
+from typing import Any
 
 from prometheus_client import REGISTRY, Histogram
 from redis.asyncio import Redis
@@ -51,11 +46,8 @@ _REDIS_LOCK = Lock()
 def readyz_db_latency() -> Histogram:
     """Return the singleton Histogram for DB readiness latency.
 
-    The collector is created lazily and reuses any existing collector with the
-    same name in the default registry to avoid duplicate-timeseries errors.
-
     Returns:
-        A `Histogram` bound to the default CollectorRegistry.
+        Histogram: Bound to the default CollectorRegistry.
     """
     global _DB_HIST
     if _DB_HIST is not None:
@@ -83,11 +75,8 @@ def readyz_db_latency() -> Histogram:
 def readyz_redis_latency() -> Histogram:
     """Return the singleton Histogram for Redis readiness latency.
 
-    The collector is created lazily and reuses any existing collector with the
-    same name in the default registry to avoid duplicate-timeseries errors.
-
     Returns:
-        A `Histogram` bound to the default CollectorRegistry.
+        Histogram: Bound to the default CollectorRegistry.
     """
     global _REDIS_HIST
     if _REDIS_HIST is not None:
@@ -130,7 +119,9 @@ class DbRedisProbe:
         redis: Async Redis client instance.
     """
 
-    def __init__(self, session_factory: async_sessionmaker[AsyncSession], redis: Redis) -> None:
+    def __init__(
+        self, session_factory: async_sessionmaker[AsyncSession], redis: Redis[Any]
+    ) -> None:
         """Initialize the probe with DB session factory and Redis client.
 
         Args:
@@ -138,46 +129,32 @@ class DbRedisProbe:
             redis: Redis client for connectivity checks.
         """
         self._session_factory = session_factory
-        self._redis = redis
+        self._redis: Redis[Any] = redis
 
     async def db(self) -> tuple[bool, str | None]:
-        """Probe Postgres by executing a trivial `SELECT 1`.
+        """Probe Postgres by executing a trivial ``SELECT 1``.
 
         Returns:
-            A tuple of:
-                - success (bool): True if the probe succeeded, False otherwise.
-                - detail (str | None): Error string when failed; None on success.
-
-        Notes:
-            Latency is always recorded to the `readyz_db_latency_seconds` histogram,
-            even when the probe fails.
+            tuple[bool, str | None]: (success, diagnostic detail or ``None``).
         """
         start = time.perf_counter()
         ok = True
         detail: str | None = None
         try:
             async with self._session_factory() as session:
-                # Use a trivial text query; no row materialization required.
                 await session.execute(text("SELECT 1"))
-        except Exception as exc:  # failure path exercised in integration tests
+        except Exception as exc:  # exercised in integration tests
             ok = False
             detail = str(exc)
         finally:
-            duration = time.perf_counter() - start
-            readyz_db_latency().observe(duration)
+            readyz_db_latency().observe(time.perf_counter() - start)
         return ok, detail
 
     async def redis(self) -> tuple[bool, str | None]:
-        """Probe Redis by issuing a `PING`.
+        """Probe Redis by issuing a ``PING``.
 
         Returns:
-            A tuple of:
-                - success (bool): True if a valid PONG was received, False otherwise.
-                - detail (str | None): Error string when failed; None on success.
-
-        Notes:
-            Latency is always recorded to the `readyz_redis_latency_seconds` histogram,
-            even when the probe fails.
+            tuple[bool, str | None]: (success, diagnostic detail or ``None``).
         """
         start = time.perf_counter()
         ok = True
@@ -187,10 +164,9 @@ class DbRedisProbe:
             ok = bool(pong)
             if not ok:
                 detail = "unexpected PONG value"
-        except Exception as exc:  # failure path exercised in integration tests
+        except Exception as exc:  # exercised in integration tests
             ok = False
             detail = str(exc)
         finally:
-            duration = time.perf_counter() - start
-            readyz_redis_latency().observe(duration)
+            readyz_redis_latency().observe(time.perf_counter() - start)
         return ok, detail

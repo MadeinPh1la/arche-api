@@ -102,3 +102,11 @@ def test_metrics_error_paths_increment_counters(client: TestClient):
     # Adjust label filters to your actual implementation (e.g., reason="rate_limited").
     assert "stacklion_market_data_errors_total" in body
     assert 'reason="rate_limited"' in body or "rate_limited" in body
+
+
+@pytest.fixture(autouse=True)
+def _force_real_gateway(monkeypatch):
+    # Ensure DI does NOT choose the deterministic stub
+    monkeypatch.setenv("ENVIRONMENT", "dev")  # not "test"
+    monkeypatch.setenv("MARKETSTACK_ACCESS_KEY", "x")  # non-empty dummy key
+    monkeypatch.delenv("STACKLION_TEST_MODE", raising=False)
