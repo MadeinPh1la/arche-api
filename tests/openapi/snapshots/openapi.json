@@ -138,19 +138,6 @@
         "title": "ErrorObject",
         "type": "object"
       },
-      "HTTPValidationError": {
-        "properties": {
-          "detail": {
-            "items": {
-              "$ref": "#/components/schemas/ValidationError"
-            },
-            "title": "Detail",
-            "type": "array"
-          }
-        },
-        "title": "HTTPValidationError",
-        "type": "object"
-      },
       "HealthState": {
         "description": "Overall health classification.",
         "enum": [
@@ -271,39 +258,6 @@
         ],
         "title": "SuccessEnvelope",
         "type": "object"
-      },
-      "ValidationError": {
-        "properties": {
-          "loc": {
-            "items": {
-              "anyOf": [
-                {
-                  "type": "string"
-                },
-                {
-                  "type": "integer"
-                }
-              ]
-            },
-            "title": "Location",
-            "type": "array"
-          },
-          "msg": {
-            "title": "Message",
-            "type": "string"
-          },
-          "type": {
-            "title": "Error Type",
-            "type": "string"
-          }
-        },
-        "required": [
-          "loc",
-          "msg",
-          "type"
-        ],
-        "title": "ValidationError",
-        "type": "object"
       }
     }
   },
@@ -364,6 +318,7 @@
     },
     "/healthz": {
       "get": {
+        "description": "Simple process liveness endpoint.",
         "operationId": "_healthz_healthz_get",
         "responses": {
           "200": {
@@ -432,16 +387,16 @@
     },
     "/v1/quotes/historical": {
       "get": {
-        "description": "Return historical OHLCV bars (End-of-Day or intraday) for one or more tickers over a time range. Supports pagination and conditional requests via the `If-None-Match` header (ETag).",
-        "operationId": "list_historical_quotes_v1",
+        "description": "Returns historical OHLCV bars for the requested tickers and time window. Supports daily (1d) and intraday (1m) intervals. Results are paginated and conditionally cacheable via ETag (weak).",
+        "operationId": "get_historical_quotes_v1_quotes_historical_get",
         "parameters": [
           {
-            "description": "One or more ticker symbols (comma-separated), e.g., AAPL, MSFT.",
+            "description": "List of tickers",
             "in": "query",
             "name": "tickers",
             "required": true,
             "schema": {
-              "description": "One or more ticker symbols (comma-separated), e.g., AAPL, MSFT.",
+              "description": "List of tickers",
               "items": {
                 "type": "string"
               },
@@ -452,84 +407,67 @@
             }
           },
           {
-            "description": "Start date (YYYY-MM-DD), inclusive; normalized to 00:00:00Z.",
+            "description": "Start date (YYYY-MM-DD)",
             "in": "query",
             "name": "from_",
             "required": true,
             "schema": {
-              "description": "Start date (YYYY-MM-DD), inclusive; normalized to 00:00:00Z.",
-              "format": "date",
+              "description": "Start date (YYYY-MM-DD)",
               "title": "From ",
               "type": "string"
             }
           },
           {
-            "description": "End date (YYYY-MM-DD), inclusive; normalized to 23:59:59.999999Z.",
+            "description": "End date (YYYY-MM-DD)",
             "in": "query",
             "name": "to",
             "required": true,
             "schema": {
-              "description": "End date (YYYY-MM-DD), inclusive; normalized to 23:59:59.999999Z.",
-              "format": "date",
+              "description": "End date (YYYY-MM-DD)",
               "title": "To",
               "type": "string"
             }
           },
           {
-            "description": "Bar interval (one of: 1m, 5m, 15m, 30m, 1h, 1d).",
+            "description": "Bar interval (1d or 1m)",
             "in": "query",
             "name": "interval",
             "required": true,
             "schema": {
-              "description": "Bar interval (one of: 1m, 5m, 15m, 30m, 1h, 1d).",
-              "pattern": "^(1d|1m|5m|15m|30m|1h)$",
+              "description": "Bar interval (1d or 1m)",
+              "enum": [
+                "1d",
+                "1m"
+              ],
               "title": "Interval",
               "type": "string"
             }
           },
           {
-            "description": "1-based page number.",
+            "description": "1-based page",
             "in": "query",
             "name": "page",
             "required": false,
             "schema": {
               "default": 1,
-              "description": "1-based page number.",
+              "description": "1-based page",
               "minimum": 1,
               "title": "Page",
               "type": "integer"
             }
           },
           {
-            "description": "Items per page (≤ 1000).",
+            "description": "Items per page",
             "in": "query",
             "name": "page_size",
             "required": false,
             "schema": {
               "default": 50,
-              "description": "Items per page (≤ 1000).",
-              "maximum": 1000,
+              "description": "Items per page",
+              "maximum": 500,
               "minimum": 1,
               "title": "Page Size",
               "type": "integer"
-            }
-          },
-          {
-            "description": "ETag from a previous response to enable conditional GET.",
-            "in": "header",
-            "name": "If-None-Match",
-            "required": false,
-            "schema": {
-              "anyOf": [
-                {
-                  "type": "string"
-                },
-                {
-                  "type": "null"
-                }
-              ],
-              "description": "ETag from a previous response to enable conditional GET.",
-              "title": "If-None-Match"
             }
           }
         ],
@@ -544,9 +482,6 @@
             },
             "description": "Successful Response"
           },
-          "304": {
-            "description": "Not Modified (ETag matched)."
-          },
           "400": {
             "content": {
               "application/json": {
@@ -555,7 +490,7 @@
                 }
               }
             },
-            "description": "Validation or parameter error."
+            "description": "Bad request (validation or parameter)"
           },
           "401": {
             "content": {
@@ -575,7 +510,7 @@
                 }
               }
             },
-            "description": "Forbidden (insufficient permissions)."
+            "description": "Forbidden (insufficient permissions)"
           },
           "404": {
             "content": {
@@ -585,7 +520,7 @@
                 }
               }
             },
-            "description": "Not Found."
+            "description": "Not found"
           },
           "409": {
             "content": {
@@ -595,17 +530,17 @@
                 }
               }
             },
-            "description": "Conflict."
+            "description": "Conflict"
           },
           "422": {
             "content": {
               "application/json": {
                 "schema": {
-                  "$ref": "#/components/schemas/HTTPValidationError"
+                  "$ref": "#/components/schemas/ErrorEnvelope"
                 }
               }
             },
-            "description": "Validation Error"
+            "description": "Unprocessable content"
           },
           "429": {
             "content": {
@@ -615,7 +550,7 @@
                 }
               }
             },
-            "description": "Rate limited / quota exceeded."
+            "description": "Rate limit exceeded"
           },
           "500": {
             "content": {
@@ -625,7 +560,7 @@
                 }
               }
             },
-            "description": "Server error."
+            "description": "Internal server error"
           },
           "503": {
             "content": {
@@ -635,10 +570,10 @@
                 }
               }
             },
-            "description": "Upstream unavailable."
+            "description": "Service unavailable"
           }
         },
-        "summary": "Historical quotes",
+        "summary": "Get historical quotes (OHLCV bars)",
         "tags": [
           "Market Data"
         ]

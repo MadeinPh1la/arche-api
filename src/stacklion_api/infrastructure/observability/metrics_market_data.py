@@ -1,178 +1,144 @@
+# src/stacklion_api/infrastructure/observability/metrics_market_data.py
 # Copyright (c) Stacklion.
 # SPDX-License-Identifier: MIT
-"""Market Data Observability Metrics.
+"""Market Data observability helpers and Prometheus metrics.
 
-Prometheus metrics for market-data interactions (success/error counters,
-cache hit/miss counters, and latency histograms) plus small helpers to
-record labeled observations.
+Exports used across the codebase:
+    - market_data_gateway_latency_seconds  (Histogram)
+    - market_data_errors_total             (Counter)
+    - market_data_cache_hits_total         (Counter)
+    - market_data_cache_misses_total       (Counter)
+    - stacklion_usecase_historical_quotes_latency_seconds (Histogram)
+    - observe_upstream_request(...)        (context manager)
+    - inc_market_data_error(...)           (helper to increment error counter)
 
-Label model (stable):
-    * stacklion_market_data_success_total(provider, interval)
-    * stacklion_market_data_errors_total(reason, endpoint)
-    * stacklion_market_data_upstream_request_duration_seconds(provider, endpoint, interval, status)
-    * stacklion_market_data_gateway_latency_seconds(provider, endpoint, interval)
-    * stacklion_market_data_cache_{hits,misses}_total(surface)
-    * stacklion_usecase_historical_quotes_latency_seconds(interval, outcome)
-
-This module is framework-agnostic and safe to import anywhere.
+Prometheus metric names (what /metrics exposes and tests scan for):
+    * stacklion_market_data_gateway_latency_seconds  (Histogram)
+    * stacklion_market_data_errors_total             (Counter)
+    * stacklion_market_data_cache_hits_total         (Counter)
+    * stacklion_market_data_cache_misses_total       (Counter)
+    * stacklion_usecase_historical_quotes_latency_seconds (Histogram)
 """
 
 from __future__ import annotations
 
+import time
 from collections.abc import Generator
 from contextlib import contextmanager
-from time import monotonic
-from typing import Literal
+from dataclasses import dataclass
 
 from prometheus_client import Counter, Histogram
 
 # ---------------------------------------------------------------------------
-# Counters
+# Core metrics (names are part of the public contract for tests / dashboards)
 # ---------------------------------------------------------------------------
 
-#: Total successful upstream market-data fetches.
-market_data_success_total: Counter = Counter(
-    "stacklion_market_data_success_total",
-    "Total successful upstream market data fetches",
-    labelnames=("provider", "interval"),
-)
-
-#: Total failed upstream market-data fetches by coarse reason and logical endpoint.
-market_data_errors_total: Counter = Counter(
-    "stacklion_market_data_errors_total",
-    "Total failed upstream market data fetches by reason",
-    labelnames=("reason", "endpoint"),
-)
-
-#: Cache hit counter for a given logical surface (e.g., 'historical_quotes').
-market_data_cache_hits_total: Counter = Counter(
-    "stacklion_market_data_cache_hits_total",
-    "Total cache hits for market data surfaces",
-    labelnames=("surface",),
-)
-
-#: Cache miss counter for a given logical surface.
-market_data_cache_misses_total: Counter = Counter(
-    "stacklion_market_data_cache_misses_total",
-    "Total cache misses for market data surfaces",
-    labelnames=("surface",),
-)
-
-# ---------------------------------------------------------------------------
-# Histograms
-# ---------------------------------------------------------------------------
-
-#: Upstream request latency in seconds with coarse status classification.
-upstream_request_duration_seconds: Histogram = Histogram(
-    "stacklion_market_data_upstream_request_duration_seconds",
-    "Latency of upstream market data requests (seconds)",
-    labelnames=("provider", "endpoint", "interval", "status"),
-    buckets=(0.05, 0.1, 0.25, 0.5, 1.0, 2.5, 5.0, 10.0),
-)
-
-#: Back-compat histogram for gateway-level latency (used by tests).
-stacklion_market_data_gateway_latency_seconds: Histogram = Histogram(
+market_data_gateway_latency_seconds = Histogram(
     "stacklion_market_data_gateway_latency_seconds",
-    "Latency of market data gateway calls (seconds)",
+    "Latency seconds for upstream market data provider requests",
     labelnames=("provider", "endpoint", "interval"),
-    buckets=(0.05, 0.1, 0.25, 0.5, 1.0, 2.5, 5.0, 10.0),
+    buckets=(0.01, 0.025, 0.05, 0.1, 0.25, 0.5, 1, 2.5, 5, 10, 30),
 )
 
-#: Use-case latency for Historical Quotes.
-stacklion_usecase_historical_quotes_latency_seconds: Histogram = Histogram(
+market_data_errors_total = Counter(
+    "stacklion_market_data_errors_total",
+    "Total market data errors by reason and route",
+    labelnames=("reason", "route"),
+)
+
+market_data_cache_hits_total = Counter(
+    "stacklion_market_data_cache_hits_total",
+    "Cache hit count for market data lookups",
+    labelnames=("use_case",),
+)
+market_data_cache_misses_total = Counter(
+    "stacklion_market_data_cache_misses_total",
+    "Cache miss count for market data lookups",
+    labelnames=("use_case",),
+)
+
+stacklion_usecase_historical_quotes_latency_seconds = Histogram(
     "stacklion_usecase_historical_quotes_latency_seconds",
-    "Latency of GetHistoricalQuotesUseCase.execute (seconds)",
-    labelnames=("interval", "outcome"),
-    buckets=(0.01, 0.025, 0.05, 0.1, 0.25, 0.5, 1.0, 2.5, 5.0, 10.0),
+    "End-to-end latency seconds for the historical quotes use case",
 )
 
+
 # ---------------------------------------------------------------------------
-# Helpers
+# Helper API
 # ---------------------------------------------------------------------------
-
-StatusLabel = Literal["success", "error"]
-
-
-def inc_market_data_error(reason: str, endpoint: str) -> None:
-    """Increment the labeled market-data error counter.
-
-    Args:
-        reason: Coarse error cause (e.g., ``"rate_limited"``, ``"validation"``,
-            ``"bad_request"``, ``"unavailable"``, ``"quota_exceeded"``,
-            ``"not_found"``).
-        endpoint: Logical endpoint name (e.g., ``"eod"``, ``"intraday"``,
-            ``"latest"``, or a public surface like ``"/v1/quotes/historical"``).
-
-    Returns:
-        None
-    """
-    market_data_errors_total.labels(reason=reason, endpoint=endpoint).inc()
-
-
+@dataclass
 class _Observation:
-    """Mutable observation captured by :func:`observe_upstream_request`.
+    """Mutable observation for a single upstream call.
 
     Attributes:
-        status: Outcome label to record on exit. Defaults to ``"success"`` and
-            should be set to ``"error"`` by the caller when appropriate.
+        _start_ns: Monotonic start time (ns).
+        provider: Upstream provider (e.g., "marketstack").
+        endpoint: Provider endpoint (e.g., "eod", "intraday").
+        interval: Aggregation interval label ("1d", "1m", etc.).
+        _has_error: Whether an error was recorded.
+        _error_reason: Stable, machine-readable error reason (optional).
     """
 
-    __slots__ = ("status",)
+    _start_ns: int
+    provider: str
+    endpoint: str
+    interval: str
+    _has_error: bool = False
+    _error_reason: str | None = None
 
-    def __init__(self) -> None:
-        self.status: StatusLabel = "success"
+    def mark_error(self, *, reason: str) -> None:
+        """Mark this observation as an error for metrics purposes.
+
+        Args:
+            reason: Stable error label such as "rate_limited", "unavailable",
+                "validation", "bad_request".
+        """
+        self._has_error = True
+        self._error_reason = reason
 
 
 @contextmanager
 def observe_upstream_request(
-    *,
-    provider: str,
-    endpoint: str,
-    interval: str,
+    *, provider: str, endpoint: str, interval: str
 ) -> Generator[_Observation, None, None]:
-    """Observe latency for an upstream request.
+    """Observe an upstream provider request for metrics.
 
-    Yields a mutable observation whose ``status`` can be flipped by the caller.
-    If an exception escapes the context, ``status`` is recorded as ``"error"``.
+    Records a latency bucket in ``stacklion_market_data_gateway_latency_seconds``.
+    If ``mark_error(reason=...)`` is called within the context, increments the
+    ``stacklion_market_data_errors_total`` counter with the given reason and a
+    route label derived from the endpoint.
 
     Args:
-        provider: External provider label (e.g., ``"marketstack"``).
-        endpoint: Provider resource (e.g., ``"eod"``, ``"intraday"``, ``"latest"``).
-        interval: Bar interval (e.g., ``"1d"``, ``"1m"``) or ``"latest"``.
+        provider: Provider name (e.g., "marketstack").
+        endpoint: Endpoint name (e.g., "eod", "intraday").
+        interval: Interval label ("1d", "1m", etc.).
 
     Yields:
-        _Observation: An observation handle with a ``status`` attribute.
-
-    Raises:
-        Exception: Any exception from the body is propagated after recording
-            an ``"error"`` observation.
-
-    Example:
-        >>> with observe_upstream_request(provider="marketstack", endpoint="eod", interval="1d") as obs:
-        ...     # perform HTTP call
-        ...     obs.status = "success"
+        A mutable observation object with ``mark_error``.
     """
-    start = monotonic()
-    obs = _Observation()
+    obs = _Observation(
+        _start_ns=time.monotonic_ns(),
+        provider=provider,
+        endpoint=endpoint,
+        interval=interval,
+    )
     try:
         yield obs
-    except Exception:
-        obs.status = "error"
-        raise
     finally:
-        upstream_request_duration_seconds.labels(provider, endpoint, interval, obs.status).observe(
-            monotonic() - start
-        )
+        elapsed_s = (time.monotonic_ns() - obs._start_ns) / 1e9
+        market_data_gateway_latency_seconds.labels(provider, endpoint, interval).observe(elapsed_s)
+
+        if obs._has_error and obs._error_reason:
+            market_data_errors_total.labels(
+                obs._error_reason, f"/v1/quotes/historical:{endpoint}"
+            ).inc()
 
 
-__all__ = [
-    "market_data_success_total",
-    "market_data_errors_total",
-    "market_data_cache_hits_total",
-    "market_data_cache_misses_total",
-    "upstream_request_duration_seconds",
-    "stacklion_market_data_gateway_latency_seconds",
-    "stacklion_usecase_historical_quotes_latency_seconds",
-    "observe_upstream_request",
-    "inc_market_data_error",
-]
+def inc_market_data_error(reason: str, route: str) -> None:
+    """Increment market data error counter with a stable reason/route.
+
+    Args:
+        reason: Stable error label (e.g., "rate_limited", "validation").
+        route: HTTP route path (e.g., "/v1/quotes/historical").
+    """
+    market_data_errors_total.labels(reason, route).inc()

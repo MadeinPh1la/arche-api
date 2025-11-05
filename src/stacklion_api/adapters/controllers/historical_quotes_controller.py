@@ -1,24 +1,19 @@
 # Copyright (c) Stacklion.
 # SPDX-License-Identifier: MIT
-"""
-Controller: Historical Quotes.
+"""Controller: Historical Quotes.
 
 Synopsis:
-    Thin orchestration layer that adapts adapter-level inputs to the use-case
-    DTOs and returns application-level results (items, total, etag). This
-    controller is HTTP-agnostic and must not import web frameworks.
+    Thin orchestration layer that turns HTTP-friendly parameters into a
+    :class:`HistoricalQueryDTO` and forwards the call to the use-case.
 
 Layer:
     adapters/controllers
 """
-
 from __future__ import annotations
 
-import builtins
 from collections.abc import Sequence
 from datetime import datetime
 
-from stacklion_api.adapters.controllers.base import BaseController
 from stacklion_api.application.schemas.dto.quotes import HistoricalBarDTO, HistoricalQueryDTO
 from stacklion_api.application.use_cases.quotes.get_historical_quotes import (
     GetHistoricalQuotesUseCase,
@@ -26,18 +21,14 @@ from stacklion_api.application.use_cases.quotes.get_historical_quotes import (
 from stacklion_api.domain.entities.historical_bar import BarInterval
 
 
-class HistoricalQuotesController(BaseController):
-    """Controller orchestrating the historical quotes flow.
-
-    Bridges adapter inputs into the application use-case for historical OHLCV
-    retrieval, including pagination.
-    """
+class HistoricalQuotesController:
+    """Controller delegating to :class:`GetHistoricalQuotesUseCase`."""
 
     def __init__(self, uc: GetHistoricalQuotesUseCase) -> None:
         """Initialize the controller.
 
         Args:
-            uc: Use-case instance that executes the historical query.
+            uc: Use-case instance to execute queries against.
         """
         self._uc = uc
 
@@ -50,28 +41,28 @@ class HistoricalQuotesController(BaseController):
         interval: BarInterval,
         page: int,
         page_size: int,
-        if_none_match: str | None = None,  # kept for router compatibility; ignored here
-    ) -> tuple[builtins.list[HistoricalBarDTO], int, str]:
-        """List historical OHLCV bars via the use-case.
+        if_none_match: str | None,
+    ) -> tuple[list[HistoricalBarDTO], int, str]:
+        """List historical OHLCV bars.
 
         Args:
-            tickers: One or more ticker symbols (case-insensitive).
-            from_: Inclusive start datetime (UTC).
-            to: Inclusive end datetime (UTC).
-            interval: Bar interval enum (e.g., BarInterval.I1D, BarInterval.I1M).
-            page: Page number (1-based).
-            page_size: Page size.
-            if_none_match: Optional ETag from client (handled at HTTP layer).
+            tickers: Symbols to query (case-insensitive).
+            from_: Inclusive start bound (UTC).
+            to: Inclusive end bound (UTC).
+            interval: Aggregation interval.
+            page: 1-based page number.
+            page_size: Items per page.
+            if_none_match: Optional conditional ETag.
 
         Returns:
-            Tuple[List[HistoricalBarDTO], int, str]: Items, total count, and ETag.
+            tuple[list[HistoricalBarDTO], int, str]: Items, total, and ETag.
         """
         q = HistoricalQueryDTO(
-            tickers=[t.upper() for t in tickers],
+            tickers=list(tickers),
             from_=from_,
             to=to,
             interval=interval,
             page=page,
             page_size=page_size,
         )
-        return await self._uc.execute(q)
+        return await self._uc.execute(q, if_none_match=if_none_match)

@@ -1,96 +1,109 @@
 # Copyright (c) Stacklion.
 # SPDX-License-Identifier: MIT
-"""Presenter: Historical Quotes → HTTP Envelopes.
+"""Market Data presenters.
 
-Synopsis:
-    Maps application DTOs to stable HTTP schemas and attaches presentation
-    headers (ETag, etc.). Uses canonical envelopes and avoids leaking domain
-    concerns. No business logic or I/O belongs here.
+Overview:
+    Presentation helpers specialized for market data endpoints. Adds support for
+    cache validators (ETag) and conditional responses (304 Not Modified).
 
 Layer:
     adapters/presenters
 
 Design:
-    * Accepts application DTOs (HistoricalBarDTO) and returns HTTP-layer models.
-    * Attaches `ETag` when provided by the use-case to support conditional GETs.
-    * Emits timestamps in RFC 3339/ISO 8601 with trailing 'Z' (UTC).
+    * Extends BasePresenter and returns Contract Registry envelopes.
+    * For list endpoints, prefer `present_paginated` with an optional ETag supplied
+      by the use-case. A helper below can compute a canonical strong ETag when
+      needed (same hashing rules as `BasePresenter`).
 """
 
 from __future__ import annotations
 
-from datetime import UTC, datetime
+from typing import Any
 
 from fastapi import Response
 
-from stacklion_api.adapters.presenters.base_presenter import BasePresenter
+from stacklion_api.adapters.presenters.base_presenter import (
+    BasePresenter,
+    PresentResult,
+    _compute_quoted_etag,
+)
 from stacklion_api.adapters.schemas.http.envelopes import PaginatedEnvelope
-from stacklion_api.adapters.schemas.http.quotes import HistoricalBarHTTP
-from stacklion_api.application.schemas.dto.quotes import HistoricalBarDTO
 
 
-def _iso8601_z(dt: datetime) -> str:
-    """Render an aware/naive datetime as RFC 3339/ISO string with 'Z' suffix.
+def _normalize_if_none_match(value: str | None) -> str | None:
+    """Normalize an ``If-None-Match`` value for weak vs strong comparison.
+
+    RFC 7232 allows weak validators (``W/"..."``) for GET/HEAD. We strip a
+    leading ``W/`` and surrounding whitespace for a pragmatic equality check.
 
     Args:
-        dt: Datetime (aware or naive).
+        value: Raw ``If-None-Match`` header value.
 
     Returns:
-        str: ISO 8601 string normalized to UTC with trailing 'Z'.
+        Normalized tag (still quoted) or ``None`` if input was falsy.
     """
-    dt = dt.replace(tzinfo=UTC) if dt.tzinfo is None else dt.astimezone(UTC)
-    return dt.isoformat().replace("+00:00", "Z")
+    if not value:
+        return None
+    v = value.strip()
+    if v.startswith("W/"):
+        v = v[2:].lstrip()
+    return v
 
 
-class MarketDataPresenter(BasePresenter[HistoricalBarHTTP]):
-    """Presenter for market-data list responses (historical OHLCV)."""
+class MarketDataPresenter(BasePresenter[dict[str, Any]]):
+    """Presenter for market data surfaces (quotes, historical bars)."""
 
+    # ---- Simple wrapper some routers/tests expect ----
     def present_list(
+        self, *, items: list[Any], page: int, page_size: int, total: int
+    ) -> PresentResult[PaginatedEnvelope[Any]]:
+        """Create a canonical PaginatedEnvelope (no conditional logic here)."""
+        return self.present_paginated(
+            items=items, page=page, page_size=page_size, total=total, trace_id=None, etag=None
+        )
+
+    def present_list_with_etag(
         self,
         *,
-        response: Response,
-        items: list[HistoricalBarDTO],
-        total: int,
+        items: list[dict[str, Any]],
         page: int,
         page_size: int,
-        etag: str | None = None,
-    ) -> PaginatedEnvelope[HistoricalBarHTTP]:
-        """Render a paginated list of historical bars as a canonical envelope.
+        total: int,
+        if_none_match: str | None,
+    ) -> PresentResult[PaginatedEnvelope[Any] | None]:
+        """Create a PaginatedEnvelope and attach an ETag; emit 304 if unchanged.
 
         Args:
-            response: Mutable response to attach HTTP headers (e.g., ETag).
-            items: Current page of historical bars.
-            total: Total number of bars available for the query.
-            page: 1-based page index.
+            items: Items for the page.
+            page: 1-based page number.
             page_size: Items per page.
-            etag: Weak/strong ETag to attach (if provided).
+            total: Total matching items.
+            if_none_match: Incoming value of the ``If-None-Match`` request header.
 
         Returns:
-            PaginatedEnvelope[HistoricalBarHTTP]: Canonical HTTP schema instance.
-
-        Notes:
-            * The router/controller handle 304 logic. When a body is returned,
-              we attach the `ETag` header here for clients and caches.
+            PresentResult: Result with body (or ``None`` for 304), headers, and optional status.
         """
-        if etag:
-            response.headers["ETag"] = etag
+        # Build the envelope first (so hashing matches final body shape)
+        body = PaginatedEnvelope[Any](page=page, page_size=page_size, total=total, items=items)
+        etag = _compute_quoted_etag(body.model_dump(mode="python"))
+        provided = _normalize_if_none_match(if_none_match)
 
-        http_items = [
-            HistoricalBarHTTP(
-                ticker=i.ticker,
-                timestamp=_iso8601_z(i.timestamp),
-                open=str(i.open),
-                high=str(i.high),
-                low=str(i.low),
-                close=str(i.close),
-                volume=(str(i.volume) if i.volume is not None else None),
-                interval=i.interval.value,
-            )
-            for i in items
-        ]
+        if provided and provided == etag:
+            # 304 Not Modified, body suppressed but headers carry the ETag.
+            return PresentResult(body=None, headers={"ETag": etag}, status_code=304)
 
-        return PaginatedEnvelope[HistoricalBarHTTP](
-            page=page,
-            page_size=page_size,
-            total=total,
-            items=http_items,
-        )
+        # Normal 200 with body + ETag header
+        return PresentResult(body=body, headers={"ETag": etag})
+
+    def finalize(self, result: PresentResult[Any], response: Response) -> Any | None:
+        """Apply headers/status then return the envelope body (or None for 304).
+
+        Args:
+            result: Presentation result from any method above.
+            response: Outgoing response instance to mutate.
+
+        Returns:
+            The envelope body to be sent (or ``None`` for 304).
+        """
+        self.apply_headers(result, response)
+        return result.body

@@ -6,13 +6,13 @@ import httpx
 import pytest
 import respx
 
+from stacklion_api.adapters.gateways.marketstack_gateway import MarketstackGateway
 from stacklion_api.application.schemas.dto.quotes import HistoricalQueryDTO
 from stacklion_api.domain.entities.historical_bar import BarInterval
 from stacklion_api.domain.exceptions.market_data import (
     MarketDataRateLimited,
     MarketDataValidationError,
 )
-from stacklion_api.infrastructure.external_apis.marketstack.client import MarketstackGateway
 from stacklion_api.infrastructure.external_apis.marketstack.settings import MarketstackSettings
 
 
