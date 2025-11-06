@@ -2,19 +2,14 @@
 # SPDX-License-Identifier: MIT
 """Metrics router.
 
-Exposes Prometheus metrics from the default registry at `/metrics`. We import
-the observability metrics module for its side effects so histogram definitions
-are registered before this endpoint is scraped.
+Exposes Prometheus metrics from the default registry at `/metrics`.
+Registration is lazy: collectors are created when first used via getters.
 """
 
 from __future__ import annotations
 
 from fastapi import APIRouter, Response
 from prometheus_client import CONTENT_TYPE_LATEST, REGISTRY, generate_latest
-
-# Ensure histograms/counters are registered on import.
-# (Module-level import; no runtime cost beyond registration.)
-from stacklion_api.infrastructure.observability import metrics as _obs_metrics  # noqa: F401
 
 router = APIRouter()
 

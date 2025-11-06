@@ -1,31 +1,64 @@
-"""Prometheus metric definitions used across the application.
+# Copyright (c) Stacklion.
+# SPDX-License-Identifier: MIT
+"""Prometheus metrics (lazy/idempotent).
 
-This module centralizes metric instruments (e.g., histograms, counters)
-to avoid scattered definitions and to keep label/bucket policies consistent.
+Summary:
+    Centralizes Prometheus instruments with *on-demand* creation to avoid
+    duplicate registration on re-imports, hot reloads, and test cold-starts.
 
 Design:
-    * Keep labels low-cardinality.
-    * Prefer bounded histogram buckets for short operations like probes.
-    * Definitions only (no registration logic needed for the default registry).
+    * No registration at import time.
+    * Each getter creates the collector once (singleton) and returns it.
+    * Keep labels low-cardinality; use bounded buckets for short probes.
 
-Exposed metrics:
-    * READYZ_DB_LATENCY: Postgres readiness probe latency (seconds).
-    * READYZ_REDIS_LATENCY: Redis readiness probe latency (seconds).
+Exposed getters:
+    - get_readyz_db_latency_seconds()
+    - get_readyz_redis_latency_seconds()
 """
 
 from __future__ import annotations
 
-from prometheus_client import Histogram
+from prometheus_client import REGISTRY, CollectorRegistry, Histogram
 
-# Buckets tuned for sub-second to a few seconds. Avoid excessive cardinality.
-READYZ_DB_LATENCY: Histogram = Histogram(
-    name="readyz_db_latency_seconds",
-    documentation="Latency of Postgres readiness probe (seconds).",
-    buckets=(0.01, 0.025, 0.05, 0.1, 0.25, 0.5, 1.0, 2.5, 5.0),
-)
+# ---------------------------------------------------------------------
+# internal singletons (created on first use, then reused)
+# ---------------------------------------------------------------------
+_readyz_db_latency: Histogram | None = None
+_readyz_redis_latency: Histogram | None = None
 
-READYZ_REDIS_LATENCY: Histogram = Histogram(
-    name="readyz_redis_latency_seconds",
-    documentation="Latency of Redis readiness probe (seconds).",
-    buckets=(0.005, 0.01, 0.025, 0.05, 0.1, 0.25, 0.5, 1.0),
-)
+
+def _registry() -> CollectorRegistry:
+    """Return the active registry (tests can monkeypatch prometheus_client.REGISTRY)."""
+    return REGISTRY
+
+
+def get_readyz_db_latency_seconds() -> Histogram:
+    """Idempotently return the Postgres readiness probe latency histogram."""
+    global _readyz_db_latency
+    if _readyz_db_latency is None:
+        _readyz_db_latency = Histogram(
+            name="readyz_db_latency_seconds",
+            documentation="Latency of Postgres readiness probe (seconds).",
+            buckets=(0.01, 0.025, 0.05, 0.1, 0.25, 0.5, 1.0, 2.5, 5.0),
+            registry=_registry(),
+        )
+    return _readyz_db_latency
+
+
+def get_readyz_redis_latency_seconds() -> Histogram:
+    """Idempotently return the Redis readiness probe latency histogram."""
+    global _readyz_redis_latency
+    if _readyz_redis_latency is None:
+        _readyz_redis_latency = Histogram(
+            name="readyz_redis_latency_seconds",
+            documentation="Latency of Redis readiness probe (seconds).",
+            buckets=(0.005, 0.01, 0.025, 0.05, 0.1, 0.25, 0.5, 1.0),
+            registry=_registry(),
+        )
+    return _readyz_redis_latency
+
+
+__all__ = [
+    "get_readyz_db_latency_seconds",
+    "get_readyz_redis_latency_seconds",
+]

@@ -15,8 +15,8 @@ from sqlalchemy import text
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from stacklion_api.infrastructure.observability.metrics import (
-    READYZ_DB_LATENCY,
-    READYZ_REDIS_LATENCY,
+    get_readyz_db_latency_seconds,
+    get_readyz_redis_latency_seconds,
 )
 
 # Typing-only Redis alias: generic for mypy, non-generic at runtime.
@@ -53,7 +53,8 @@ class PostgresRedisProbe(_RouterHealthProbeContract):
         except Exception as exc:  # noqa: BLE001
             detail = str(exc)
         finally:
-            READYZ_DB_LATENCY.observe(time.perf_counter() - t0)
+            get_readyz_db_latency_seconds().observe(time.perf_counter() - t0)
+
         return ok, detail
 
     async def redis(self) -> tuple[bool, str | None]:
@@ -66,5 +67,6 @@ class PostgresRedisProbe(_RouterHealthProbeContract):
         except Exception as exc:  # noqa: BLE001
             detail = str(exc)
         finally:
-            READYZ_REDIS_LATENCY.observe(time.perf_counter() - t0)
+            get_readyz_redis_latency_seconds().observe(time.perf_counter() - t0)
+
         return ok, detail

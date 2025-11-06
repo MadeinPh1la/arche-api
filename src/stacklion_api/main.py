@@ -64,8 +64,8 @@ from stacklion_api.infrastructure.middleware.request_id import RequestIdMiddlewa
 from stacklion_api.infrastructure.middleware.request_metrics import RequestLatencyMiddleware
 from stacklion_api.infrastructure.middleware.security_headers import SecurityHeadersMiddleware
 from stacklion_api.infrastructure.observability.metrics import (
-    READYZ_DB_LATENCY,
-    READYZ_REDIS_LATENCY,
+    get_readyz_db_latency_seconds,
+    get_readyz_redis_latency_seconds,
 )
 
 # OpenTelemetry init (no-op if not enabled via env)
@@ -249,11 +249,11 @@ def create_app() -> FastAPI:
     # Emit readiness histograms even if no real probe is configured.
     class _MetricsOnlyProbe:
         async def db(self) -> tuple[bool, str | None]:
-            READYZ_DB_LATENCY.observe(0.001)
+            get_readyz_db_latency_seconds().observe(0.001)
             return False, "no db probe configured"
 
         async def redis(self) -> tuple[bool, str | None]:
-            READYZ_REDIS_LATENCY.observe(0.001)
+            get_readyz_redis_latency_seconds().observe(0.001)
             return False, "no redis probe configured"
 
     app.dependency_overrides[_get_probe_dep] = lambda: _MetricsOnlyProbe()
