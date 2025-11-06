@@ -1,4 +1,3 @@
-# src/stacklion_api/main.py
 # Copyright (c) Stacklion.
 # SPDX-License-Identifier: MIT
 """
@@ -19,14 +18,17 @@ Design:
 from __future__ import annotations
 
 import os
-from collections.abc import AsyncGenerator
+from collections.abc import AsyncGenerator, Awaitable, Callable
 from contextlib import asynccontextmanager
+from typing import cast
 
 import httpx
 from fastapi import FastAPI, HTTPException
 from fastapi.exceptions import RequestValidationError
 from fastapi.middleware.cors import CORSMiddleware
 from starlette.middleware.gzip import GZipMiddleware
+from starlette.requests import Request
+from starlette.responses import Response as StarletteResponse
 
 from stacklion_api.adapters.routers.health_router import (
     get_health_probe as _get_probe_dep,
@@ -51,6 +53,7 @@ from stacklion_api.infrastructure.http.errors import (
     handle_unhandled_exception,
     handle_validation_error,
 )
+from stacklion_api.infrastructure.http.middleware.trace import TraceIdMiddleware
 from stacklion_api.infrastructure.logging.logger import configure_root_logging, get_json_logger
 from stacklion_api.infrastructure.middleware.access_log import AccessLogMiddleware
 from stacklion_api.infrastructure.middleware.metrics import (
@@ -192,6 +195,10 @@ def _attach_cors(app: FastAPI, settings: Settings) -> None:
 # -----------------------------------------------------------------------------
 # App Factory
 # -----------------------------------------------------------------------------
+
+Handler = Callable[[Request, Exception], StarletteResponse | Awaitable[StarletteResponse]]
+
+
 def create_app() -> FastAPI:
     """Create and configure the FastAPI application.
 
@@ -222,10 +229,13 @@ def create_app() -> FastAPI:
     _attach_middlewares(app, settings)
     _attach_cors(app, settings)
 
-    # Exception handlers → enforce ErrorEnvelope everywhere
-    app.add_exception_handler(RequestValidationError, handle_validation_error)
-    app.add_exception_handler(HTTPException, handle_http_exception)
-    app.add_exception_handler(Exception, handle_unhandled_exception)
+    app.add_middleware(TraceIdMiddleware)
+
+    # mypy: add_exception_handler expects a generic Exception handler signature.
+    # Our funcs are more specific; cast them to the accepted type.
+    app.add_exception_handler(RequestValidationError, cast(Handler, handle_validation_error))
+    app.add_exception_handler(HTTPException, cast(Handler, handle_http_exception))
+    app.add_exception_handler(Exception, cast(Handler, handle_unhandled_exception))
 
     # /metrics
     app.include_router(metrics_router)
