@@ -92,3 +92,11 @@ alembic.ini
 
 # Build artifacts
 *.egg-info/
+coverage.xml
+.coverage
+htmlcov/
+.pytest_cache/
+.mypy_cache/
+.ruff_cache/
+__pycache__/
+.DS_Store
