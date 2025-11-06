@@ -44,26 +44,23 @@ _LOGGER = get_json_logger(__name__)
 
 
 def _json_default(value: Any) -> str:
-    """Serialize non-JSON-native types deterministically for hashing.
-
-    Args:
-        value: The object encountered by ``json.dumps`` that's not natively
-            serializable (e.g. :class:`decimal.Decimal`, :class:`datetime.datetime`).
-
-    Returns:
-        A JSON-safe representation (string) suitable for hashing.
-
-    Raises:
-        TypeError: If the value cannot be serialized.
-    """
+    """Serialize non-JSON-native types deterministically for hashing."""
     if isinstance(value, datetime):
-        # Use full ISO 8601 with microseconds if present.
         return value.isoformat()
     if isinstance(value, date):
         return value.isoformat()
     if isinstance(value, Decimal):
-        # Preserve numeric value without scientific notation to stabilize hash.
-        return format(value, "f")
+        # Canonicalize: remove insignificant zeros, avoid scientific notation,
+        # collapse -0 to 0, and use integer form when exact.
+        v = value.normalize()  # strips trailing zeros in the coefficient
+        if v == 0:
+            return "0"  # collapse -0 and 0 to the same string
+        # If value is an exact integer, render as integer (no trailing .0)
+        if v == v.to_integral():
+            return format(v.to_integral(), "f")
+        s = format(v, "f")  # fixed-point, no scientific notation
+        s = s.rstrip("0").rstrip(".")  # strip any remaining insignificant zeros/dot
+        return s
     raise TypeError(f"{_pkg_name}: unsupported JSON default for type {type(value)!r}")
 
 
