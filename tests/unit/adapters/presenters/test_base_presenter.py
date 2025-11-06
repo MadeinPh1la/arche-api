@@ -114,7 +114,10 @@ def test__json_default_supported_types() -> None:
     d = date(2025, 1, 2)
     assert _json_default(d) == "2025-01-02"
 
-    assert _json_default(Decimal("123.4500")) == "123.4500"
+    # Canonicalized: no insignificant zeros, no scientific notation
+    assert _json_default(Decimal("123.4500")) == "123.45"
+    assert _json_default(Decimal("100.00")) == "100"  # exact integer collapses
+    assert _json_default(Decimal("-0.0")) == "0"  # collapse negative zero
 
 
 def test__json_default_unsupported_type_raises() -> None:
@@ -127,3 +130,22 @@ def test__compute_quoted_etag_yields_quoted_hex_digest() -> None:
     etag = _compute_quoted_etag(payload)
     assert etag.startswith('"') and etag.endswith('"')
     assert len(etag.strip('"')) == 64  # sha256 hex
+
+
+def test_present_success_etag_deterministic_for_semantically_equal_values() -> None:
+    p = BasePresenter()
+
+    payload1 = {
+        "s": "x",
+        "n": Decimal("1.50"),
+        "ts": datetime(2025, 1, 2, tzinfo=UTC),
+    }
+    payload2 = {
+        "s": "x",
+        "n": Decimal("1.500"),  # same numeric value, different repr
+        "ts": datetime(2025, 1, 2, tzinfo=UTC),  # identical timestamp
+    }
+
+    e1 = p.present_success(data=payload1).headers["ETag"]
+    e2 = p.present_success(data=payload2).headers["ETag"]
+    assert e1 == e2  # canonical JSON hashing stable
