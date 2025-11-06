@@ -38,7 +38,15 @@ def test_missing_token_yields_401_when_auth_enabled(monkeypatch: pytest.MonkeyPa
 
     r = client.get("/v1/protected/ping")  # no Authorization header
     assert r.status_code == 401
-    assert r.json()["detail"] in {"Missing bearer token", "Missing token", "Invalid token"}
+
+    body = r.json()
+    # New canonical shape enforced by your exception handlers:
+    assert set(body) == {"error"} or set(body) == {"error", "trace_id"}
+    err = body["error"]
+    assert err["http_status"] == 401
+    assert err["message"] in {"Missing bearer token", "Missing token", "Invalid token"}
+    # Code may vary depending on where the 401 originated; keep permissive but explicit:
+    assert err["code"] in {"HTTP_ERROR", "UNAUTHORIZED", "AUTH_ERROR"}
 
 
 def test_valid_hs256_token_yields_200(monkeypatch: pytest.MonkeyPatch) -> None:

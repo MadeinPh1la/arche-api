@@ -156,3 +156,14 @@ def app(request: pytest.FixtureRequest):
 def client(app):
     """Default client for tests that rely on TestClient."""
     return TestClient(app)
+
+
+@pytest.fixture
+async def app_client(app) -> AsyncGenerator[httpx.AsyncClient, None]:
+    """Async HTTP client bound to the per-test FastAPI app (respects @use_fake_uc)."""
+    transport = httpx.ASGITransport(app=app)
+    client = httpx.AsyncClient(transport=transport, base_url="http://testserver")
+    try:
+        yield client
+    finally:
+        await client.aclose()

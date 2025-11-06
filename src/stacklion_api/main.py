@@ -23,7 +23,8 @@ from collections.abc import AsyncGenerator
 from contextlib import asynccontextmanager
 
 import httpx
-from fastapi import FastAPI
+from fastapi import FastAPI, HTTPException
+from fastapi.exceptions import RequestValidationError
 from fastapi.middleware.cors import CORSMiddleware
 from starlette.middleware.gzip import GZipMiddleware
 
@@ -44,6 +45,11 @@ from stacklion_api.infrastructure.caching.redis_client import close_redis, init_
 from stacklion_api.infrastructure.database.session import (
     dispose_engine,
     init_engine_and_sessionmaker,
+)
+from stacklion_api.infrastructure.http.errors import (
+    handle_http_exception,
+    handle_unhandled_exception,
+    handle_validation_error,
 )
 from stacklion_api.infrastructure.logging.logger import configure_root_logging, get_json_logger
 from stacklion_api.infrastructure.middleware.access_log import AccessLogMiddleware
@@ -215,6 +221,11 @@ def create_app() -> FastAPI:
 
     _attach_middlewares(app, settings)
     _attach_cors(app, settings)
+
+    # Exception handlers → enforce ErrorEnvelope everywhere
+    app.add_exception_handler(RequestValidationError, handle_validation_error)
+    app.add_exception_handler(HTTPException, handle_http_exception)
+    app.add_exception_handler(Exception, handle_unhandled_exception)
 
     # /metrics
     app.include_router(metrics_router)
