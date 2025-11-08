@@ -25,22 +25,16 @@ import logging
 import os
 from collections.abc import AsyncGenerator
 from contextlib import asynccontextmanager, suppress
-from typing import TYPE_CHECKING
+from typing import cast
 from urllib.parse import urlparse, urlunparse
 
 import redis.asyncio as aioredis
+from redis.asyncio import Redis
 
 from stacklion_api.config.settings import Settings, get_settings
 
-# mypy sees Redis[str] (decode_responses=True -> str); runtime sees plain Redis (non-generic)
-if TYPE_CHECKING:
-    from redis.asyncio import Redis as _Redis
-
-    type RedisT = _Redis[str]
-else:
-    from redis.asyncio import Redis as RedisT  # type: ignore[assignment]
-
-_client: RedisT | None = None
+# Single shared client
+_client: Redis | None = None
 
 # Developer-friendly default URL (fixes local tests)
 _DEFAULT_REDIS_URL = "redis://localhost:6379/0"
@@ -90,13 +84,17 @@ def init_redis(settings: Settings) -> None:
     url = str(settings.redis_url or _DEFAULT_REDIS_URL)
     url = _maybe_swap_hostname(url)
 
-    _client = aioredis.from_url(
-        url=url,
-        encoding="utf-8",
-        decode_responses=True,
-        health_check_interval=15,
-        socket_timeout=3.0,
-        socket_connect_timeout=3.0,
+    # `from_url` is untyped in stubs; cast to satisfy mypy in strict mode.
+    _client = cast(
+        Redis,
+        aioredis.from_url(
+            url=url,
+            encoding="utf-8",
+            decode_responses=True,
+            health_check_interval=15,
+            socket_timeout=3.0,
+            socket_connect_timeout=3.0,
+        ),
     )
 
 
@@ -110,23 +108,23 @@ async def close_redis() -> None:
         _client = None
 
 
-def get_redis_client() -> RedisT:
+def get_redis_client() -> Redis:
     """Return the initialized Redis client.
 
     Returns:
-        RedisT: The global Redis client.
+        Redis: The global Redis client.
     """
     global _client
     if _client is None:
         # Lazy init for tests / contexts that didn't run lifespan.
         init_redis(get_settings())
     if _client is None:
-        # Defensive after lazy init attempt (shouldn't happen, we have a fallback now).
+        # Defensive after lazy init attempt.
         raise RuntimeError("Redis client not initialized (init_redis failed)")
     return _client
 
 
 @asynccontextmanager
-async def redis_dependency() -> AsyncGenerator[RedisT, None]:
+async def redis_dependency() -> AsyncGenerator[Redis, None]:
     """Yield the shared Redis client for DI."""
     yield get_redis_client()

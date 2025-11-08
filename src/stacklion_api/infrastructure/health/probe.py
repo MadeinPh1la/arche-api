@@ -20,7 +20,6 @@ Dependencies:
 from __future__ import annotations
 
 import time
-from typing import Any
 
 from prometheus_client import Histogram
 from redis.asyncio import Redis
@@ -41,7 +40,7 @@ class DbRedisProbe:
     def __init__(
         self,
         session_factory: async_sessionmaker[AsyncSession],
-        redis: Redis[Any],
+        redis: Redis,
     ) -> None:
         """Initialize the probe.
 
@@ -50,7 +49,7 @@ class DbRedisProbe:
             redis: Async Redis client instance for connectivity checks.
         """
         self._session_factory = session_factory
-        self._redis: Redis[Any] = redis
+        self._redis: Redis = redis
         # Bind histograms once (lazy/idempotent underneath)
         self._db_hist: Histogram = get_readyz_db_latency_seconds()
         self._redis_hist: Histogram = get_readyz_redis_latency_seconds()
