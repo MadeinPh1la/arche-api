@@ -54,11 +54,11 @@ from stacklion_api.domain.exceptions.market_data import (
     MarketDataValidationError,
 )
 from stacklion_api.infrastructure.observability.metrics_market_data import (
+    get_market_data_cache_hits_total,
+    get_market_data_cache_misses_total,
+    get_usecase_historical_quotes_latency_seconds,
     inc_market_data_error,
-    market_data_cache_hits_total,
-    market_data_cache_misses_total,
     observe_upstream_request,
-    stacklion_usecase_historical_quotes_latency_seconds,
 )
 
 __all__ = ["GetHistoricalQuotesUseCase"]
@@ -130,12 +130,12 @@ class GetHistoricalQuotesUseCase:
 
         key = self._cache_key(q)
 
-        with stacklion_usecase_historical_quotes_latency_seconds.time():
+        with get_usecase_historical_quotes_latency_seconds().time():
             cached = await self._try_cache_get(q, key)
             if cached is not None:
                 return cached
 
-            market_data_cache_misses_total.labels("historical_quotes").inc()
+            get_market_data_cache_misses_total().labels("historical_quotes").inc()
 
             endpoint = "eod" if str(q.interval).lower() in {"1d", "barinterval.i1d"} else "intraday"
             with observe_upstream_request(
@@ -184,7 +184,7 @@ class GetHistoricalQuotesUseCase:
         cached = await self._cache.get_json(key)
         if not cached:
             return None
-        market_data_cache_hits_total.labels("historical_quotes").inc()
+        get_market_data_cache_hits_total().labels("historical_quotes").inc()
         cached_items = cached.get("items", [])
         cached_total = int(cached.get("total", 0))
         etag = cached.get("etag") or _weak_quoted_etag(

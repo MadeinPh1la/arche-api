@@ -1,26 +1,81 @@
 # Copyright (c) Stacklion.
 # SPDX-License-Identifier: MIT
-"""Metrics router.
+"""Prometheus scrape endpoint (/metrics).
 
-Exposes Prometheus metrics from the default registry at `/metrics`. We import
-the observability metrics module for its side effects so histogram definitions
-are registered before this endpoint is scraped.
+This router exposes a text-format Prometheus endpoint and *warms* lazily
+created histograms so that classic `_bucket`/`_count`/`_sum` series appear
+on the very first scrape (cold start). In particular:
+  • Ensures readiness histograms exist and are observed at 0.0s.
+  • Ensures the canonical server request-duration histogram
+    (`http_server_request_duration_seconds`) exists and is observed with
+    labeled values for the `/metrics` route (GET, "/metrics", "200").
 """
 
 from __future__ import annotations
 
+from collections.abc import Callable
+from contextlib import suppress
+
 from fastapi import APIRouter, Response
-from prometheus_client import CONTENT_TYPE_LATEST, REGISTRY, generate_latest
+from prometheus_client import CONTENT_TYPE_LATEST, Histogram, generate_latest
 
-# Ensure histograms/counters are registered on import.
-# (Module-level import; no runtime cost beyond registration.)
-from stacklion_api.infrastructure.observability import metrics as _obs_metrics  # noqa: F401
+from stacklion_api.infrastructure.logging.logger import get_json_logger
+from stacklion_api.infrastructure.observability.metrics import (
+    get_readyz_db_latency_seconds,
+    get_readyz_redis_latency_seconds,
+)
 
+logger = get_json_logger(__name__)
 router = APIRouter()
 
 
-@router.get("/metrics", include_in_schema=False, name="metrics_probe")
+def _get_server_histogram() -> Histogram | None:
+    """Return the canonical server-side request histogram if available."""
+    # Canonical location (RequestLatencyMiddleware)
+    with suppress(Exception):
+        from stacklion_api.infrastructure.middleware.request_metrics import (
+            get_http_server_request_duration_seconds,
+        )
+
+        return get_http_server_request_duration_seconds()
+
+    # Optional fallback: import for side effects (in case of eager registration).
+    with suppress(Exception):
+        import stacklion_api.infrastructure.middleware.request_metrics as _req_metrics  # noqa: F401
+
+        logger.debug("metrics_router: imported request_metrics for side effects")
+
+    return None
+
+
+def _ensure_observed_once(getter: Callable[[], Histogram], name: str) -> None:
+    """Create (via getter) and ensure at least one observation (0.0 s).
+
+    Some prometheus_client backends only emit classic *_bucket on first observe.
+    """
+    try:
+        hist = getter()
+        hist.observe(0.0)
+    except Exception as exc:
+        logger.debug(
+            "metrics_router: failed warming histogram",
+            extra={"extra": {"metric": name, "error": str(exc)}},
+        )
+
+
+@router.get("/metrics", include_in_schema=False)
 async def metrics_probe() -> Response:
-    """Return Prometheus metrics text exposition from the default registry."""
-    payload = generate_latest(REGISTRY)
-    return Response(payload, media_type=CONTENT_TYPE_LATEST)
+    """Expose Prometheus metrics; warm histograms so buckets exist on cold scrape."""
+    # Warm readiness histograms (idempotent) and force an initial 0.0s observation.
+    _ensure_observed_once(get_readyz_db_latency_seconds, "readyz_db_latency_seconds")
+    _ensure_observed_once(get_readyz_redis_latency_seconds, "readyz_redis_latency_seconds")
+
+    # Warm server-side request histogram: ensure labeled bucket lines exist now.
+    server_hist = _get_server_histogram()
+    if server_hist is not None:
+        with suppress(Exception):
+            # Use the actual route path and an expected status for this scrape.
+            server_hist.labels("GET", "/metrics", "200").observe(0.0)
+            logger.debug("metrics_router: warmed http_server_request_duration_seconds with 0.0s")
+
+    return Response(content=generate_latest(), media_type=CONTENT_TYPE_LATEST)

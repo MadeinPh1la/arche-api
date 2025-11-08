@@ -1,65 +1,69 @@
-# Copyright (c) Stacklion.
+# src/stacklion_api/adapters/routers/health_router.py
+# Copyright (c)
 # SPDX-License-Identifier: MIT
-"""
-Health endpoints for Stacklion.
+"""Health endpoints (Adapters Layer).
 
-This router exposes liveness and readiness checks suitable for container
-orchestrators and load balancers. It is transport-bound (FastAPI) but does not
-depend on infrastructure details. Concrete check functions (DB, Redis, etc.)
-should be injected via FastAPI dependencies so the application layer remains
-decoupled from transport and infra specifics.
+Purpose:
+    Expose liveness and readiness signals suitable for container orchestrators and
+    load balancers while keeping this adapters layer decoupled from infrastructure.
 
-Design
-------
-- `/health/z`     liveness: cheap "is the process up" signal (no external I/O).
-- `/health/ready` readiness: aggregates dependency checks and returns 200 when
-  healthy, 503 when degraded/down. Payload always includes typed check results.
-
-To wire real checks, override `get_health_probe` in your app composition:
-
-    app.dependency_overrides[get_health_probe] = PostgresRedisProbe(session_factory, redis_client)
-
-Do not import SQLAlchemy, Redis, or other infra from this file to preserve the
-adapters boundary.
+Design:
+    * Adapters boundary respected: no direct DB/Redis imports. Probes are injected.
+    * Deterministic OpenAPI: stable operation_id/summary; typed response models.
+    * Non-blocking: probes run concurrently; latencies recorded to Prometheus.
+    * Testability: a provider **instance** (`probe_provider`) is the DI token so
+      overrides match by identity reliably; `use_cache=False` honors late overrides.
+    * Back-compat: `/health/readiness` is canonical (in schema); `/health/ready`
+      is an alias (`include_in_schema=False`) for existing tooling.
 """
 
 from __future__ import annotations
 
 import asyncio
 import typing as t
+from collections.abc import Awaitable, Callable
 from enum import Enum
-from typing import Annotated
+from typing import Annotated, Protocol
 
 from fastapi import APIRouter, Depends, Response, status
 from pydantic import BaseModel, Field
 
 from stacklion_api.infrastructure.logging.logger import get_json_logger
+from stacklion_api.infrastructure.observability.metrics import (
+    get_readyz_db_latency_seconds,
+    get_readyz_redis_latency_seconds,
+)
 
 logger = get_json_logger(__name__)
 router = APIRouter()
 
 
 # -----------------------------------------------------------------------------
-# Contracts (types and DTOs)
+# Contracts (types & DTOs)
 # -----------------------------------------------------------------------------
 
 
 class HealthState(str, Enum):
-    """Overall health classification."""
+    """Overall service health classification."""
 
     OK = "ok"
+    """All checks passed; the service is fully ready."""
+
     DEGRADED = "degraded"
+    """One or more checks failed; the service is not fully ready."""
+
     DOWN = "down"
+    """Reserved for hard failures; not emitted by this router today."""
 
 
 class CheckResult(BaseModel):
     """Result of a single dependency check.
 
     Attributes:
-        name: Logical name of the dependency (e.g., "db", "redis").
-        status: One of {"ok","down"} for the specific check.
-        detail: Optional human-readable detail (e.g., error message).
-        duration_ms: Milliseconds spent on the probe.
+        name: Logical name for the dependency (e.g., "db", "redis").
+        status: Per-check outcome: "ok" when the probe succeeded, otherwise "down".
+        detail: Optional human-readable diagnostic detail (e.g., exception message).
+        duration_ms: Time spent on the probe in milliseconds (float).
     """
 
     name: str = Field(..., examples=["db", "redis"])
@@ -69,11 +73,11 @@ class CheckResult(BaseModel):
 
 
 class ReadinessResponse(BaseModel):
-    """Aggregated readiness response following a problem-details-like shape.
+    """Aggregated readiness response.
 
     Attributes:
-        status: Overall service status classification.
-        checks: Individual dependency check results.
+        status: Overall service classification derived from all checks.
+        checks: Individual dependency results in deterministic order (DB, Redis).
     """
 
     status: HealthState
@@ -87,16 +91,16 @@ class LivenessResponse(BaseModel):
 
 
 # -----------------------------------------------------------------------------
-# Probe interface and default implementation
+# Probe protocol and default implementation
 # -----------------------------------------------------------------------------
 
 
-class HealthProbe(t.Protocol):
-    """Protocol for dependency health checks.
+class HealthProbe(Protocol):
+    """Protocol for minimal, non-destructive dependency checks.
 
-    Implementations should perform minimal I/O (lightweight `SELECT 1`, `PING`,
-    etc.) and return True/False. Exceptions must be handled inside the method
-    and converted to False with an explanatory message when appropriate.
+    Implementations should keep I/O inexpensive (e.g., `SELECT 1`, `PING`)
+    and return a tuple `(is_ok, detail)` where `detail` is an optional diagnostic
+    string suitable for logs/JSON responses.
     """
 
     async def db(self) -> tuple[bool, str | None]: ...
@@ -104,11 +108,10 @@ class HealthProbe(t.Protocol):
 
 
 class NoopProbe:
-    """Default probe that performs no external I/O.
+    """Probe that performs no external I/O and always reports failure.
 
-    This implementation always returns False for each check so that readiness
-    accurately reports a "degraded" service when no checks are wired yet.
-    Replace with a real probe via `dependency_overrides`.
+    This default ensures that readiness surfaces as "degraded" until real
+    probes are supplied via dependency injection.
     """
 
     async def db(self) -> tuple[bool, str | None]:
@@ -118,16 +121,34 @@ class NoopProbe:
         return False, "no redis probe configured"
 
 
-async def get_health_probe() -> HealthProbe:
-    """Dependency provider for `HealthProbe`.
-
-    Override this function in your app composition/root to provide a concrete
-    implementation that talks to Postgres/Redis (or other stores).
+def get_health_probe() -> HealthProbe:
+    """Return the default health probe.
 
     Returns:
-        A `HealthProbe` instance.
+        HealthProbe: Default implementation (NoopProbe) until overridden.
     """
     return NoopProbe()
+
+
+class ProbeProvider:
+    """Dependency token object for readiness routes.
+
+    The instance of this class is used as the DI key for readiness endpoints.
+    Overriding this **instance** in tests/app composition is robust because
+    FastAPI matches overrides by identity, and `use_cache=False` honors late overrides.
+    """
+
+    def __call__(self) -> HealthProbe:
+        """Return the current health probe.
+
+        Returns:
+            HealthProbe: A probe implementation from `get_health_probe()`.
+        """
+        return get_health_probe()
+
+
+# Single, well-known provider instance used by the routes below.
+probe_provider = ProbeProvider()
 
 
 # -----------------------------------------------------------------------------
@@ -138,65 +159,66 @@ async def get_health_probe() -> HealthProbe:
 @router.get(
     "/z",
     summary="Liveness",
+    operation_id="health_liveness",
     response_model=LivenessResponse,
     status_code=status.HTTP_200_OK,
-    operation_id="health_liveness",
 )
 async def liveness() -> LivenessResponse:
-    """Return a fast liveness signal (no external I/O)."""
+    """Return a fast liveness signal.
+
+    Returns:
+        LivenessResponse: Always `{"status": "ok"}` with no external I/O.
+    """
     return LivenessResponse()
 
 
-@router.get(
-    "/ready",
-    summary="Readiness",
-    response_model=ReadinessResponse,
-    responses={503: {"description": "Service degraded or down", "model": ReadinessResponse}},
-    operation_id="health_readiness",
-)
-async def readiness(
-    response: Response,
-    probe: Annotated[HealthProbe, Depends(get_health_probe)],
-) -> ReadinessResponse:
-    """Aggregate dependency checks and return overall readiness.
+async def _readiness_impl(response: Response, probe: HealthProbe) -> ReadinessResponse:
+    """Execute dependency checks concurrently and derive overall readiness.
 
-    The response status code is 200 when all checks are "ok", otherwise 503.
-    Individual check errors are captured in their `detail` field.
+    Behavior:
+        * Times each probe and records latencies to Prometheus histograms (seconds).
+        * Returns HTTP 200 if **all** checks are "ok"; otherwise HTTP 503.
+        * Emits structured JSON logs for observability.
 
     Args:
-        response: FastAPI response object used to mutate the status code.
-        probe: Injected health probe implementing dependency checks.
+        response: FastAPI response object; set to 503 if any check fails.
+        probe: Injected dependency implementing `HealthProbe`.
 
     Returns:
-        A `ReadinessResponse` summarizing dependency health.
+        ReadinessResponse: Aggregated state and individual check results.
     """
-
     loop = asyncio.get_running_loop()
 
     async def _time(
-        name: str, fn: t.Callable[[], t.Awaitable[tuple[bool, str | None]]]
+        name: str,
+        fn: Callable[[], Awaitable[tuple[bool, str | None]]],
+        observe_seconds: Callable[[float], None],
     ) -> CheckResult:
         start = loop.time()
         ok, detail = await fn()
         duration_ms = (loop.time() - start) * 1000.0
+        observe_seconds(duration_ms / 1000.0)  # Prometheus expects seconds
         return CheckResult(
             name=name, status="ok" if ok else "down", detail=detail, duration_ms=duration_ms
         )
 
-    # Run checks concurrently and tolerate exceptions inside probe methods.
+    db_hist = get_readyz_db_latency_seconds()
+    redis_hist = get_readyz_redis_latency_seconds()
+
     results = await asyncio.gather(
-        _time("db", probe.db),
-        _time("redis", probe.redis),
-        return_exceptions=False,
+        _time("db", probe.db, db_hist.observe),
+        _time("redis", probe.redis, redis_hist.observe),
     )
 
-    # Determine overall state.
     all_ok = all(r.status == "ok" for r in results)
-    overall = HealthState.OK if all_ok else HealthState.DEGRADED
+    if not all_ok:
+        response.status_code = status.HTTP_503_SERVICE_UNAVAILABLE
 
-    payload = ReadinessResponse(status=overall, checks=list(results))
+    payload = ReadinessResponse(
+        status=HealthState.OK if all_ok else HealthState.DEGRADED,
+        checks=list(results),
+    )
 
-    # Emit structured log with full details.
     logger.info(
         "readiness_probe",
         extra={
@@ -207,16 +229,34 @@ async def readiness(
         },
     )
 
-    # Warn if any single check is slow (>200ms).
     slow = [r for r in results if r.duration_ms > 200.0]
     if slow:
         logger.warning(
-            "readiness_probe_slow",
-            extra={"extra": {"slow": [r.model_dump() for r in slow]}},
+            "readiness_probe_slow", extra={"extra": {"slow": [r.model_dump() for r in slow]}}
         )
 
-    # Set HTTP 503 when degraded/down, but keep the typed payload.
-    if not all_ok:
-        response.status_code = status.HTTP_503_SERVICE_UNAVAILABLE
-
     return payload
+
+
+@router.get(
+    "/readiness",
+    summary="Readiness",
+    operation_id="health_readiness",
+    response_model=ReadinessResponse,
+    responses={503: {"description": "Service degraded or down", "model": ReadinessResponse}},
+)
+async def readiness(
+    response: Response,
+    probe: Annotated[HealthProbe, Depends(probe_provider, use_cache=False)],
+) -> ReadinessResponse:
+    """Canonical readiness endpoint (published in OpenAPI)."""
+    return await _readiness_impl(response, probe)
+
+
+@router.get("/ready", include_in_schema=False)
+async def readiness_alias(
+    response: Response,
+    probe: Annotated[HealthProbe, Depends(probe_provider, use_cache=False)],
+) -> ReadinessResponse:
+    """Back-compat alias for environments still calling `/health/ready`."""
+    return await _readiness_impl(response, probe)

@@ -30,9 +30,6 @@ from starlette.middleware.gzip import GZipMiddleware
 from starlette.requests import Request
 from starlette.responses import Response as StarletteResponse
 
-from stacklion_api.adapters.routers.health_router import (
-    get_health_probe as _get_probe_dep,
-)
 from stacklion_api.adapters.routers.health_router import router as health_router
 from stacklion_api.adapters.routers.historical_quotes_router import (
     router as historical_quotes_router,
@@ -64,8 +61,8 @@ from stacklion_api.infrastructure.middleware.request_id import RequestIdMiddlewa
 from stacklion_api.infrastructure.middleware.request_metrics import RequestLatencyMiddleware
 from stacklion_api.infrastructure.middleware.security_headers import SecurityHeadersMiddleware
 from stacklion_api.infrastructure.observability.metrics import (
-    READYZ_DB_LATENCY,
-    READYZ_REDIS_LATENCY,
+    get_readyz_db_latency_seconds,
+    get_readyz_redis_latency_seconds,
 )
 
 # OpenTelemetry init (no-op if not enabled via env)
@@ -219,6 +216,15 @@ def create_app() -> FastAPI:
         lifespan=runtime_lifespan,
     )
 
+    # --- Warm readiness histograms so *_bucket exists on the very first scrape ---
+    try:
+        get_readyz_db_latency_seconds().observe(0.0)
+        get_readyz_redis_latency_seconds().observe(0.0)
+    except Exception as exc:  # pragma: no cover
+        logger.debug(
+            "startup: readiness histogram warm-up skipped", extra={"extra": {"error": str(exc)}}
+        )
+
     # Ensure shared HTTP client exists before dependency wiring
     if not hasattr(app.state, "http_client"):
         app.state.http_client = httpx.AsyncClient()
@@ -245,18 +251,6 @@ def create_app() -> FastAPI:
 
     # Health endpoints (/health/z, /health/ready)
     app.include_router(health_router, prefix="/health")
-
-    # Emit readiness histograms even if no real probe is configured.
-    class _MetricsOnlyProbe:
-        async def db(self) -> tuple[bool, str | None]:
-            READYZ_DB_LATENCY.observe(0.001)
-            return False, "no db probe configured"
-
-        async def redis(self) -> tuple[bool, str | None]:
-            READYZ_REDIS_LATENCY.observe(0.001)
-            return False, "no redis probe configured"
-
-    app.dependency_overrides[_get_probe_dep] = lambda: _MetricsOnlyProbe()
 
     # Simple liveness used by rate-limit tests
     @app.get("/healthz")
