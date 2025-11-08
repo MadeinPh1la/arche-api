@@ -43,13 +43,8 @@ def test_present_list_builds_paginated_envelope() -> None:
 
 
 @pytest.mark.anyio
-async def test_present_list_with_etag_returns_200_and_sets_header(monkeypatch) -> None:
+async def test_present_list_with_etag_returns_200_and_sets_header() -> None:
     presenter = MarketDataPresenter()
-
-    monkeypatch.setattr(
-        "stacklion_api.adapters.presenters.market_data_presenter._compute_quoted_etag",
-        lambda _payload: '"ETAG-123"',
-    )
 
     items = [{"a": 1}]
     res = presenter.present_list_with_etag(
@@ -58,30 +53,41 @@ async def test_present_list_with_etag_returns_200_and_sets_header(monkeypatch) -
 
     assert isinstance(res.body, PaginatedEnvelope)
     assert res.status_code is None  # 200 path
-    assert res.headers.get("ETag") == '"ETAG-123"'
+    etag = res.headers.get("ETag")
+    # Strong, quoted SHA-256 hex (64 chars) is expected
+    assert (
+        etag is not None
+        and etag.startswith('"')
+        and etag.endswith('"')
+        and len(etag.strip('"')) == 64
+    )
     assert res.body.items == items
 
 
 @pytest.mark.anyio
-async def test_present_list_with_etag_returns_304_when_tag_matches(monkeypatch) -> None:
+async def test_present_list_with_etag_returns_304_when_tag_matches() -> None:
     presenter = MarketDataPresenter()
 
-    monkeypatch.setattr(
-        "stacklion_api.adapters.presenters.market_data_presenter._compute_quoted_etag",
-        lambda _payload: '"ETAG-XYZ"',
+    # Build the exact payload hashed by presenter
+    payload = {"page": 1, "page_size": 1, "total": 1, "items": [{"x": 1}]}
+    # Import the internal helper just for the test to compute the expected strong tag
+    from stacklion_api.adapters.presenters.market_data_presenter import (  # type: ignore
+        _compute_quoted_etag as _hash,
     )
 
+    expected = _hash(payload)  # e.g., '"abcdef..."' (quoted, strong)
+
     res = presenter.present_list_with_etag(
-        items=[{"x": 1}],
-        page=1,
-        page_size=1,
-        total=1,
-        if_none_match='W/"ETAG-XYZ"',  # weak should normalize and match
+        items=payload["items"],
+        page=payload["page"],
+        page_size=payload["page_size"],
+        total=payload["total"],
+        if_none_match=f"W/{expected}",  # weak variant must normalize and match
     )
 
     assert res.status_code == 304
     assert res.body is None
-    assert res.headers.get("ETag") == '"ETAG-XYZ"'
+    assert res.headers.get("ETag") == expected
 
 
 def test_finalize_applies_headers_and_status_code() -> None:

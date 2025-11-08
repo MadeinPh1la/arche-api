@@ -29,19 +29,25 @@ class _DummyPresenter(BasePresenter[dict]):
     pass
 
 
-def test_present_success_sets_quoted_etag_and_traces(monkeypatch) -> None:
+def test_present_success_sets_quoted_etag_and_traces() -> None:
     p = _DummyPresenter()
-
-    # Keep deterministic to avoid coupling to hashing internals
-    monkeypatch.setattr(
-        "stacklion_api.adapters.presenters.base_presenter._compute_quoted_etag",
-        lambda payload: '"FIXED-ETAG"',
-    )
 
     res = p.present_success(data={"x": 1}, trace_id="abc-123")
     assert isinstance(res.body, SuccessEnvelope)
     assert res.body.data == {"x": 1}
-    assert res.headers == {"X-Request-ID": "abc-123", "ETag": '"FIXED-ETAG"'}
+
+    # headers: X-Request-ID present
+    assert res.headers.get("X-Request-ID") == "abc-123"
+
+    # ETag: quoted, 64-hex strong tag
+    etag = res.headers.get("ETag")
+    assert (
+        etag is not None
+        and etag.startswith('"')
+        and etag.endswith('"')
+        and len(etag.strip('"')) == 64
+    )
+
     assert res.status_code is None
 
 

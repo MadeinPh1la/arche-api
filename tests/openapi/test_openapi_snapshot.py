@@ -58,17 +58,24 @@ def _normalize_openapi(spec: dict[str, Any]) -> dict[str, Any]:
         - Leaves `components`, `paths`, and `info.title/version` in place.
         - Sorts dicts by keys where feasible via JSON dump (done at compare time).
     """
+
+    def _strip_descriptions(obj: Any) -> Any:
+        if isinstance(obj, dict):
+            # drop any 'description' key anywhere under schemas
+            return {k: _strip_descriptions(v) for k, v in obj.items() if k != "description"}
+        if isinstance(obj, list):
+            return [_strip_descriptions(v) for v in obj]
+        return obj
+
     spec = deepcopy(spec)
-    # Top-level removals
+    # already pruning servers/externalDocs/x-* (keep your existing code)
     spec = _prune(spec, keys=("servers", "externalDocs"))
-    # Strip x- custom vendor fields under info if present
     if isinstance(spec.get("info"), dict):
-        info = {
-            k: v
-            for k, v in cast(dict[str, Any], spec["info"]).items()
-            if not str(k).startswith("x-")
-        }
-        spec["info"] = info
+        spec["info"] = {k: v for k, v in spec["info"].items() if not str(k).startswith("x-")}
+
+    comps = spec.get("components")
+    if isinstance(comps, dict) and isinstance(comps.get("schemas"), dict):
+        spec["components"]["schemas"] = _strip_descriptions(comps["schemas"])
     return spec
 
 

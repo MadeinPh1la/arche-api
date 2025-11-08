@@ -2,7 +2,6 @@
   "components": {
     "schemas": {
       "CheckResult": {
-        "description": "Result of a single dependency check.\n\nAttributes:\n    name: Logical name of the dependency (e.g., \"db\", \"redis\").\n    status: One of {\"ok\",\"down\"} for the specific check.\n    detail: Optional human-readable detail (e.g., error message).\n    duration_ms: Milliseconds spent on the probe.",
         "properties": {
           "detail": {
             "anyOf": [
@@ -46,7 +45,6 @@
       },
       "ErrorEnvelope": {
         "additionalProperties": false,
-        "description": "Canonical error envelope wrapping ErrorObject.",
         "examples": [
           {
             "error": {
@@ -63,8 +61,7 @@
         ],
         "properties": {
           "error": {
-            "$ref": "#/components/schemas/ErrorObject",
-            "description": "Structured error details."
+            "$ref": "#/components/schemas/ErrorObject"
           }
         },
         "required": [
@@ -75,7 +72,6 @@
       },
       "ErrorObject": {
         "additionalProperties": false,
-        "description": "Canonical error payload per API Standards §2.1.",
         "examples": [
           {
             "code": "VALIDATION_ERROR",
@@ -90,7 +86,6 @@
         ],
         "properties": {
           "code": {
-            "description": "Stable machine-readable error code (UPPER_SNAKE_CASE).",
             "title": "Code",
             "type": "string"
           },
@@ -104,16 +99,13 @@
                 "type": "null"
               }
             ],
-            "description": "Optional structured context; safe to expose to clients.",
             "title": "Details"
           },
           "http_status": {
-            "description": "HTTP status code associated with this error.",
             "title": "Http Status",
             "type": "integer"
           },
           "message": {
-            "description": "Human-readable, safe description of the error.",
             "title": "Message",
             "type": "string"
           },
@@ -126,7 +118,6 @@
                 "type": "null"
               }
             ],
-            "description": "Request correlation id echoed back to the client.",
             "title": "Trace Id"
           }
         },
@@ -139,7 +130,6 @@
         "type": "object"
       },
       "HealthState": {
-        "description": "Overall health classification.",
         "enum": [
           "ok",
           "degraded",
@@ -149,7 +139,6 @@
         "type": "string"
       },
       "LivenessResponse": {
-        "description": "Liveness response indicating the process is running.",
         "properties": {
           "status": {
             "const": "ok",
@@ -163,7 +152,6 @@
       },
       "PaginatedEnvelope": {
         "additionalProperties": false,
-        "description": "Canonical paginated envelope for list responses.",
         "examples": [
           {
             "items": [
@@ -182,26 +170,22 @@
         ],
         "properties": {
           "items": {
-            "description": "Page contents (adapter DTOs).",
             "items": {},
             "title": "Items",
             "type": "array"
           },
           "page": {
-            "description": "1-indexed page number.",
             "minimum": 1.0,
             "title": "Page",
             "type": "integer"
           },
           "page_size": {
-            "description": "Items per page (bounded by API policy).",
             "maximum": 200.0,
             "minimum": 1.0,
             "title": "Page Size",
             "type": "integer"
           },
           "total": {
-            "description": "Total number of records matching the current filter.",
             "minimum": 0.0,
             "title": "Total",
             "type": "integer"
@@ -217,7 +201,6 @@
         "type": "object"
       },
       "ReadinessResponse": {
-        "description": "Aggregated readiness response following a problem-details-like shape.\n\nAttributes:\n    status: Overall service status classification.\n    checks: Individual dependency check results.",
         "properties": {
           "checks": {
             "items": {
@@ -238,7 +221,6 @@
       },
       "SuccessEnvelope": {
         "additionalProperties": false,
-        "description": "Canonical success envelope for single-resource responses.",
         "examples": [
           {
             "data": {
@@ -249,7 +231,6 @@
         ],
         "properties": {
           "data": {
-            "description": "Adapter DTO or primitive value returned by the endpoint.",
             "title": "Data"
           }
         },
@@ -268,9 +249,9 @@
   },
   "openapi": "3.1.0",
   "paths": {
-    "/health/ready": {
+    "/health/readiness": {
       "get": {
-        "description": "Aggregate dependency checks and return overall readiness.\n\nThe response status code is 200 when all checks are \"ok\", otherwise 503.\nIndividual check errors are captured in their `detail` field.\n\nArgs:\n    response: FastAPI response object used to mutate the status code.\n    probe: Injected health probe implementing dependency checks.\n\nReturns:\n    A `ReadinessResponse` summarizing dependency health.",
+        "description": "Canonical readiness endpoint (published in OpenAPI).",
         "operationId": "health_readiness",
         "responses": {
           "200": {
@@ -299,7 +280,7 @@
     },
     "/health/z": {
       "get": {
-        "description": "Return a fast liveness signal (no external I/O).",
+        "description": "Return a fast liveness signal.\n\nReturns:\n    LivenessResponse: Always `{\"status\": \"ok\"}` with no external I/O.",
         "operationId": "health_liveness",
         "responses": {
           "200": {

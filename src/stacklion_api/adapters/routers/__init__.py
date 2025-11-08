@@ -17,6 +17,6 @@ Layer:
 from __future__ import annotations
 
 from .api_router import router as api_router  # noqa: F401
-from .health_router import router as health_router  # noqa: F401
+from .health_router import router as health  # noqa: F401
 
-__all__ = ["api_router", "health_router"]
+__all__ = ["api_router", "health"]
