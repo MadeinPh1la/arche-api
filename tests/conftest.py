@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 import asyncio
+import time
 from collections.abc import AsyncGenerator, AsyncIterator, Callable, Generator
 from contextlib import AbstractAsyncContextManager, asynccontextmanager
 from datetime import UTC, datetime
@@ -8,6 +9,7 @@ from decimal import Decimal
 from typing import Any
 
 import httpx
+import jwt
 import pytest
 from fastapi.testclient import TestClient
 
@@ -167,3 +169,9 @@ async def app_client(app) -> AsyncGenerator[httpx.AsyncClient, None]:
         yield client
     finally:
         await client.aclose()
+
+
+@pytest.fixture
+def valid_clerk_jwt() -> str:
+    payload = {"sub": "user_123", "iat": int(time.time()), "exp": int(time.time()) + 3600}
+    return jwt.encode(payload, "testsecret", algorithm="HS256")
