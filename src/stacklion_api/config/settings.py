@@ -12,7 +12,7 @@ Summary:
 Design:
     - Pydantic v2 BaseSettings with `extra='forbid'` to catch unknown env.
     - Explicit field declarations with constrained types and ranges.
-    - Environment enumeration for behavior toggles.
+    - Environment enumeration for behavior toggles (now includes TEST).
     - Singleton accessor `get_settings()` with LRU cache.
     - Safe, structured logging (no secrets).
 """
@@ -43,22 +43,16 @@ except Exception:  # pragma: no cover
 
 
 class Environment(str, Enum):
-    """Deployment environment enumeration."""
+    """Deployment environment enumeration (string-backed)."""
 
     DEVELOPMENT = "development"
+    TEST = "test"
     STAGING = "staging"
     PRODUCTION = "production"
 
 
 def _split_env(v: str | None) -> list[str]:
-    """Split a comma/space-separated env var into tokens.
-
-    Args:
-        v: Raw environment variable value (may be None or empty).
-
-    Returns:
-        A list of non-empty, stripped tokens. Returns an empty list for None/blank input.
-    """
+    """Split a comma/space-separated env var into tokens."""
     if not v:
         return []
     parts = [p.strip() for chunk in v.split(",") for p in chunk.split()]
@@ -415,27 +409,16 @@ class Settings(BaseSettings):
     @field_validator("environment", mode="before")
     @classmethod
     def _accept_test_env(cls, v: object) -> object:
-        """Accept ENVIRONMENT=test and coerce to 'development' while flagging test mode.
-
-        Side effect:
-            Sets STACKLION_TEST_MODE=1 so other layers (e.g., app factory) can
-            safely switch to test-safe components (like in-memory cache).
-        """
+        """Accept ENVIRONMENT=test and keep it as 'test'; set test-mode flag."""
         if isinstance(v, str) and v.lower() == "test":
             os.environ["STACKLION_TEST_MODE"] = "1"
-            return Environment.DEVELOPMENT.value
+            return Environment.TEST.value
         return v
 
     @field_validator("cors_allow_origins", mode="before")
     @classmethod
     def _split_cors_origins(cls, v: Any) -> list[str]:
-        """Normalize allowed CORS origins when Pydantic supplies a raw value.
-
-        Accepts:
-            - Comma-separated string ("https://a, https://b")
-            - JSON-like list ('["https://a","https://b"]')
-            - Native list (["https://a","https://b"])
-        """
+        """Normalize allowed CORS origins when Pydantic supplies a raw value."""
         if v is None or v == "":
             return []
         if isinstance(v, list):
@@ -513,17 +496,7 @@ class Settings(BaseSettings):
 
 @lru_cache(maxsize=1)
 def get_settings() -> Settings:
-    """Return a cached singleton `Settings` instance.
-
-    Reads process and `.env` variables according to `model_config`, validates
-    fields, applies cross-field rules, and logs a non-sensitive summary.
-
-    Returns:
-        The validated `Settings` singleton.
-
-    Raises:
-        RuntimeError: If validation fails. The original `ValidationError` is chained.
-    """
+    """Return a cached singleton `Settings` instance."""
     try:
         settings = Settings()
         logger.info(
