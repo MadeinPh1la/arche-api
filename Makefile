@@ -49,6 +49,17 @@ snapshot-refresh:
 
 .PHONY: env-dev env-test env-ci check test
 
+.PHONY: setup ci
+setup:
+	python -m venv .venv && . .venv/bin/activate && pip install -U pip
+	pip install -e ".[dev]"
+ci:
+	ruff check .
+	black --check .
+	mypy .
+	pytest -q
+
+
 # Export ENVIRONMENT to pick the right .env.<env> file
 env-dev:
 	@export ENVIRONMENT=development; \
