@@ -14,15 +14,15 @@ Design:
 
 Dependencies:
     - SQLAlchemy AsyncSession/async_sessionmaker for DB checks
-    - redis.asyncio.Redis for Redis checks
+    - redis.asyncio.Redis for Redis checks (typed via our RedisClient protocol)
 """
 
 from __future__ import annotations
 
 import time
+from typing import Any, Protocol, runtime_checkable
 
 from prometheus_client import Histogram
-from redis.asyncio import Redis
 from sqlalchemy import text
 from sqlalchemy.ext.asyncio import AsyncSession, async_sessionmaker
 
@@ -34,13 +34,21 @@ from stacklion_api.infrastructure.observability.metrics import (
 __all__ = ["DbRedisProbe"]
 
 
+@runtime_checkable
+class RedisClient(Protocol):
+    """Minimal Redis protocol expected by the probe."""
+
+    async def ping(self) -> Any: ...
+    async def close(self) -> None: ...
+
+
 class DbRedisProbe:
     """Readiness probe for Postgres and Redis."""
 
     def __init__(
         self,
         session_factory: async_sessionmaker[AsyncSession],
-        redis: Redis,
+        redis: RedisClient,
     ) -> None:
         """Initialize the probe.
 
@@ -49,7 +57,7 @@ class DbRedisProbe:
             redis: Async Redis client instance for connectivity checks.
         """
         self._session_factory = session_factory
-        self._redis: Redis = redis
+        self._redis: RedisClient = redis
         # Bind histograms once (lazy/idempotent underneath)
         self._db_hist: Histogram = get_readyz_db_latency_seconds()
         self._redis_hist: Histogram = get_readyz_redis_latency_seconds()
