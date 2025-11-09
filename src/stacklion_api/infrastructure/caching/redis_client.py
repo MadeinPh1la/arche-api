@@ -25,10 +25,19 @@ import logging
 import os
 from collections.abc import AsyncGenerator
 from contextlib import asynccontextmanager, suppress
-from typing import Any, Protocol, cast, runtime_checkable
+from typing import TYPE_CHECKING, Any, Protocol, cast, runtime_checkable
 from urllib.parse import urlparse, urlunparse
 
 import redis.asyncio as aioredis
+
+# Provide a *typed* alias for the concrete Redis client that satisfies environments
+# where stubs make redis.asyncio.client.Redis a generic (e.g., Redis[str]).
+if TYPE_CHECKING:
+    from redis.asyncio.client import Redis as _RedisGeneric
+    AioredisRedis = _RedisGeneric[str]
+else:
+    # At runtime, avoid subscripted generics; import the concrete class directly.
+    from redis.asyncio.client import Redis as AioredisRedis  # type: ignore[assignment]
 
 from stacklion_api.config.settings import Settings, get_settings
 
@@ -45,8 +54,8 @@ __all__ = [
 class RedisClient(Protocol):
     """Minimal async Redis protocol used by Stacklion.
 
-    Intentionally small to remain stable across `types-redis` stub changes.
-    Add new methods here only when a caller needs them.
+    Intentionally small to remain stable across redis/typing changes.
+    Extend only when a caller truly needs a new method.
     """
 
     # Health / lifecycle
@@ -60,8 +69,8 @@ class RedisClient(Protocol):
         key: str,
         value: Any,
         *,
-        ex: int | None = None,  # seconds (common pattern)
-        px: int | None = None,  # milliseconds (optional)
+        ex: int | None = None,  # seconds
+        px: int | None = None,  # milliseconds
         nx: bool | None = None,
         xx: bool | None = None,
     ) -> Any: ...
@@ -69,7 +78,7 @@ class RedisClient(Protocol):
     async def expire(self, key: str, seconds: int) -> Any: ...
 
 
-# Single shared client
+# Single shared client (project-wide)
 _client: RedisClient | None = None
 
 # Developer-friendly default URL (fixes local tests)
@@ -103,35 +112,37 @@ def _maybe_swap_hostname(url: str) -> str:
     return url
 
 
-def init_redis(settings: Settings) -> None:
-    """Initialize the global async Redis client.
+def _create_aioredis_client(url: str) -> AioredisRedis:
+    """Build the concrete asyncio Redis client from URL.
 
-    Idempotent: subsequent calls are no-ops.
+    Isolates the construction to keep the rest of the module fully typed.
+    """
+    client = aioredis.from_url(
+        url=url,
+        encoding="utf-8",
+        decode_responses=True,
+        health_check_interval=15,
+        socket_timeout=3.0,
+        socket_connect_timeout=3.0,
+    )
+    # Cast once at the boundary; upstream typing varies by redis-py/stubs version.
+    return cast(AioredisRedis, client)
+
+
+def init_redis(settings: Settings) -> None:
+    """Initialize the global async Redis client (idempotent).
 
     Args:
         settings: Application settings providing `redis_url`.
     """
     global _client
-
     if _client is not None:
         return
 
-    # Use localhost fallback instead of raising when not configured.
     url = str(settings.redis_url or _DEFAULT_REDIS_URL)
     url = _maybe_swap_hostname(url)
 
-    # `from_url` is untyped in stubs; cast to our protocol type.
-    _client = cast(
-        RedisClient,
-        aioredis.from_url(
-            url=url,
-            encoding="utf-8",
-            decode_responses=True,
-            health_check_interval=15,
-            socket_timeout=3.0,
-            socket_connect_timeout=3.0,
-        ),
-    )
+    _client = cast(RedisClient, _create_aioredis_client(url))
 
 
 async def close_redis() -> None:
@@ -144,20 +155,16 @@ async def close_redis() -> None:
 
 
 def get_redis_client() -> RedisClient:
-    """Return the initialized Redis client.
-
-    Returns:
-        RedisClient: The global Redis client.
-
-    Raises:
-        RuntimeError: If initialization failed unexpectedly.
-    """
+    """Return the initialized Redis client (lazy-inits in tests)."""
     global _client
     if _client is None:
         init_redis(get_settings())
     if _client is None:
         raise RuntimeError("Redis client not initialized (init_redis failed)")
     return _client
+
+
+from contextlib import asynccontextmanager
 
 
 @asynccontextmanager
