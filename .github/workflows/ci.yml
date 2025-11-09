@@ -5,6 +5,7 @@ on:
     branches: [ main, setup ]
   pull_request:
     branches: [ main, setup ]
+  workflow_dispatch: {}   # <-- enables manual runs from the Actions tab
 
 concurrency:
   group: ci-${{ github.workflow }}-${{ github.ref }}
@@ -26,7 +27,6 @@ jobs:
     name: Lint • Type • Test (Py${{ matrix.python-version }})
     runs-on: ubuntu-latest
     timeout-minutes: 20
-
     strategy:
       fail-fast: false
       matrix:
