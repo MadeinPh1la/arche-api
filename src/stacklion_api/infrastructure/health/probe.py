@@ -14,19 +14,20 @@ Design:
 
 Dependencies:
     - SQLAlchemy AsyncSession/async_sessionmaker for DB checks
-    - redis.asyncio.Redis for Redis checks
+    - Redis client typed via our RedisClient Protocol (no concrete imports)
 """
 
 from __future__ import annotations
 
 import time
-from typing import Any
 
 from prometheus_client import Histogram
-from redis.asyncio import Redis
 from sqlalchemy import text
 from sqlalchemy.ext.asyncio import AsyncSession, async_sessionmaker
 
+from stacklion_api.infrastructure.caching.redis_client import (
+    RedisClient as RedisProto,
+)
 from stacklion_api.infrastructure.observability.metrics import (
     get_readyz_db_latency_seconds,
     get_readyz_redis_latency_seconds,
@@ -41,16 +42,16 @@ class DbRedisProbe:
     def __init__(
         self,
         session_factory: async_sessionmaker[AsyncSession],
-        redis: Redis[Any],
+        redis: RedisProto,
     ) -> None:
         """Initialize the probe.
 
         Args:
             session_factory: Async SQLAlchemy session factory bound to the DB.
-            redis: Async Redis client instance for connectivity checks.
+            redis: Async Redis client instance for connectivity checks (Protocol).
         """
         self._session_factory = session_factory
-        self._redis: Redis[Any] = redis
+        self._redis: RedisProto = redis
         # Bind histograms once (lazy/idempotent underneath)
         self._db_hist: Histogram = get_readyz_db_latency_seconds()
         self._redis_hist: Histogram = get_readyz_redis_latency_seconds()
@@ -59,7 +60,7 @@ class DbRedisProbe:
         """Probe Postgres using a trivial `SELECT 1`.
 
         Returns:
-            tuple[bool, str | None]: (success, diagnostic detail or None)
+            (success, diagnostic detail or None)
         """
         start = time.perf_counter()
         ok = True
@@ -78,7 +79,7 @@ class DbRedisProbe:
         """Probe Redis using `PING`.
 
         Returns:
-            tuple[bool, str | None]: (success, diagnostic detail or None)
+            (success, diagnostic detail or None)
         """
         start = time.perf_counter()
         ok = True

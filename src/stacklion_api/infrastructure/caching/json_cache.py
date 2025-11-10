@@ -8,7 +8,7 @@ Synopsis:
     Provides namespaced JSON get/set with TTL, without owning a connection.
 
 Design:
-    * Uses the global Redis[str] client via `get_redis_client()`.
+    * Uses the global Redis client via `get_redis_client()`.
     * Pure JSON (utf-8) serialization; no pickle.
     * No key policy here beyond namespacing; higher layers decide keys.
 

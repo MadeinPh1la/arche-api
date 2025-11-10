@@ -1,72 +1,40 @@
 # Copyright (c) Stacklion.
 # SPDX-License-Identifier: MIT
-"""Dependency override for the health router's probe.
+"""FastAPI dependency wiring for health probes.
 
-Provides a concrete probe with real Postgres + Redis checks and emits latency
-metrics via Prometheus histograms, matching the router's expected contract.
+Provides a DI factory that yields a `DbRedisProbe` bound to the app's
+AsyncSession factory and the shared Redis client. This module contains no
+probe logic—only wiring—so the implementation remains in infra.
 """
 
 from __future__ import annotations
 
-import time
-from typing import TYPE_CHECKING, Protocol
+from typing import Annotated
 
-from sqlalchemy import text
-from sqlalchemy.ext.asyncio import AsyncSession
+from fastapi import Depends
+from sqlalchemy.ext.asyncio import AsyncSession, async_sessionmaker
 
-from stacklion_api.infrastructure.observability.metrics import (
-    get_readyz_db_latency_seconds,
-    get_readyz_redis_latency_seconds,
+from stacklion_api.infrastructure.caching.redis_client import (
+    RedisClient as RedisProto,
 )
-
-# Typing-only Redis alias: generic for mypy, non-generic at runtime.
-if TYPE_CHECKING:
-    from redis.asyncio import Redis as _Redis
-
-    type RedisT = _Redis[str]
-else:
-    from redis.asyncio import Redis as RedisT  # type: ignore[assignment]
+from stacklion_api.infrastructure.caching.redis_client import (
+    get_redis_client,
+)
+from stacklion_api.infrastructure.db.session import get_session_factory
+from stacklion_api.infrastructure.health.probe import DbRedisProbe
 
 
-class _RouterHealthProbeContract(Protocol):
-    """Contract expected by `health_router` (returns (ok, detail))."""
+def _build_probe(
+    session_factory: async_sessionmaker[AsyncSession],
+    redis: RedisProto,
+) -> DbRedisProbe:
+    """Construct the concrete probe (kept separate for easy test injection)."""
+    return DbRedisProbe(session_factory=session_factory, redis=redis)
 
-    async def db(self) -> tuple[bool, str | None]: ...
-    async def redis(self) -> tuple[bool, str | None]: ...
 
-
-class PostgresRedisProbe(_RouterHealthProbeContract):
-    """Concrete health probe that checks Postgres and Redis."""
-
-    def __init__(self, session: AsyncSession, redis: RedisT) -> None:
-        self._session = session
-        self._redis = redis
-
-    async def db(self) -> tuple[bool, str | None]:
-        """Return (ok, detail) for a trivial Postgres round-trip."""
-        t0 = time.perf_counter()
-        ok = False
-        detail: str | None = None
-        try:
-            await self._session.execute(text("SELECT 1"))
-            ok = True
-        except Exception as exc:  # noqa: BLE001
-            detail = str(exc)
-        finally:
-            get_readyz_db_latency_seconds().observe(time.perf_counter() - t0)
-
-        return ok, detail
-
-    async def redis(self) -> tuple[bool, str | None]:
-        """Return (ok, detail) for a Redis PING."""
-        t0 = time.perf_counter()
-        ok = False
-        detail: str | None = None
-        try:
-            ok = bool(await self._redis.ping())
-        except Exception as exc:  # noqa: BLE001
-            detail = str(exc)
-        finally:
-            get_readyz_redis_latency_seconds().observe(time.perf_counter() - t0)
-
-        return ok, detail
+async def probe_dependency(
+    session_factory: Annotated[async_sessionmaker[AsyncSession], Depends(get_session_factory)],
+) -> DbRedisProbe:
+    """FastAPI dependency that provides a ready-to-use `DbRedisProbe` instance."""
+    redis = get_redis_client()
+    return _build_probe(session_factory, redis)
