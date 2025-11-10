@@ -20,7 +20,6 @@ Dependencies:
 from __future__ import annotations
 
 import time
-from typing import Any
 
 from prometheus_client import Histogram
 from sqlalchemy import text

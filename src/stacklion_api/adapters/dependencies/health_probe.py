@@ -14,12 +14,14 @@ from typing import Annotated
 from fastapi import Depends
 from sqlalchemy.ext.asyncio import AsyncSession, async_sessionmaker
 
-from stacklion_api.infrastructure.health.probe import DbRedisProbe
-from stacklion_api.infrastructure.db.session import get_session_factory
 from stacklion_api.infrastructure.caching.redis_client import (
     RedisClient as RedisProto,
+)
+from stacklion_api.infrastructure.caching.redis_client import (
     get_redis_client,
 )
+from stacklion_api.infrastructure.db.session import get_session_factory
+from stacklion_api.infrastructure.health.probe import DbRedisProbe
 
 
 def _build_probe(
