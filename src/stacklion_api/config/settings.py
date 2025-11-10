@@ -489,7 +489,9 @@ class Settings(BaseSettings):
         # Auth requirements (conditional)
         if self.auth_enabled:
             hs256_ok = bool(self.auth_hs256_secret)
-            clerk_ok = bool(self.clerk_issuer and (self.clerk_jwks_url or self.auth_rs256_public_key_pem))
+            clerk_ok = bool(
+                self.clerk_issuer and (self.clerk_jwks_url or self.auth_rs256_public_key_pem)
+            )
             if not (hs256_ok or clerk_ok):
                 raise ValueError(
                     "AUTH_ENABLED=true requires either: "
@@ -521,7 +523,11 @@ def get_settings() -> Settings:
                 "cors_count": len(settings.cors_allow_origins),
                 "cors_has_wildcard": any(o == "*" for o in settings.cors_allow_origins),
                 "auth_enabled": settings.auth_enabled,
-                "auth_mode": "hs256" if settings.auth_hs256_secret else ("clerk" if settings.clerk_issuer else "none"),
+                "auth_mode": (
+                    "hs256"
+                    if settings.auth_hs256_secret
+                    else ("clerk" if settings.clerk_issuer else "none")
+                ),
                 "rate_limit": {
                     "enabled": settings.rate_limit_enabled,
                     "backend": settings.rate_limit_backend,
