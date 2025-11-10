@@ -83,7 +83,10 @@ def _maybe_swap_hostname(url: str) -> str:
 
 def _create_aioredis_client(url: str) -> AioredisRedis:
     """Build the concrete asyncio Redis client from URL."""
-    client = aioredis.from_url(
+    # Make the vendor call through an untyped shim so mypy won't care whether
+    # redis stubs define a typed or untyped `from_url` in the current env.
+    _from_url: Any = aioredis.from_url
+    client = _from_url(
         url=url,
         encoding="utf-8",
         decode_responses=True,
