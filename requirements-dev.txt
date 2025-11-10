@@ -9,3 +9,4 @@ types-requests
 python-jose[cryptography]==3.3.0
 respx>=0.21
 tenacity>=8.2
+PyJWT>=2.8.0,<3
