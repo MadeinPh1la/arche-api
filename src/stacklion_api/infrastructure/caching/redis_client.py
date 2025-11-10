@@ -114,7 +114,8 @@ async def close_redis() -> None:
     global _client
     if _client is not None:
         with suppress(RuntimeError):
-            await _client.aclose()
+            # redis.asyncio clients expose an awaitable `.close()`
+            await _client.close()
         _client = None
 
 
