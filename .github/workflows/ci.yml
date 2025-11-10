@@ -5,7 +5,7 @@ on:
     branches: [ main, setup ]
   pull_request:
     branches: [ main, setup ]
-  workflow_dispatch: {}   # <-- enables manual runs from the Actions tab
+  workflow_dispatch: {}  # manual runs
 
 concurrency:
   group: ci-${{ github.workflow }}-${{ github.ref }}
@@ -13,14 +13,6 @@ concurrency:
 
 permissions:
   contents: read
-
-env:
-  ENVIRONMENT: staging
-  SERVICE_VERSION: 0.0.0
-  LOG_LEVEL: INFO
-  AUTH_ENABLED: "false"
-  RATE_LIMIT_ENABLED: "false"
-  ALLOWED_ORIGINS: "*"
 
 jobs:
   test:
@@ -56,8 +48,14 @@ jobs:
           --health-retries=10
 
     env:
+      # Runtime env for the app under test
+      ENVIRONMENT: test
+      LOG_LEVEL: INFO
       DATABASE_URL: postgresql+asyncpg://stacklion:stacklion@127.0.0.1:5432/stacklion_test
       REDIS_URL: redis://127.0.0.1:6379/2
+      AUTH_ENABLED: "false"
+      RATE_LIMIT_ENABLED: "false"
+      ALLOWED_ORIGINS: "*"
 
     steps:
       - name: Checkout (PR head or push ref)
@@ -83,6 +81,10 @@ jobs:
           python -m pip install --upgrade pip
           if [ -f requirements.txt ]; then pip install -r requirements.txt; fi
           if [ -f requirements-dev.txt ]; then pip install -r requirements-dev.txt; fi
+          # Ensure the project itself is importable
+          if [ -f pyproject.toml ] || [ -f setup.cfg ] || [ -f setup.py ]; then
+            pip install -e ".[dev]" || pip install -e .
+          fi
 
       - name: Wait for Postgres (belt & suspenders)
         run: |
@@ -104,9 +106,10 @@ jobs:
         run: ruff check .
 
       - name: Type check (mypy)
-        run: mypy .
+        run: |
+          mypy -p stacklion_api -p tests
 
-      - name: Run tests (pytest)
+      - name: Run tests (pytest, quiet)
         run: python -m pytest -q
 
       - name: Upload pytest artifacts on failure
@@ -121,7 +124,13 @@ jobs:
           if-no-files-found: ignore
 
       - name: Run tests with coverage
-        run: pytest
+        run: |
+          pytest \
+            --cov=src/stacklion_api \
+            --cov=tests \
+            --cov-report=term-missing \
+            --cov-report=xml \
+            --cov-report=html
 
       - name: Upload coverage.xml
         if: always()
@@ -142,3 +151,4 @@ jobs:
         with:
           files: coverage.xml
           fail_ci_if_error: true
+          # token: ${{ secrets.CODECOV_TOKEN }}   # Required for private repos
