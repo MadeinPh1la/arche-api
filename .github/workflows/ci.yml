@@ -93,23 +93,17 @@ jobs:
             sleep 1
           done
 
-      - name: Pre-commit (style & format)
-        run: |
-          if [ -f .pre-commit-config.yaml ] || [ -f .pre-commit-config.yml ]; then
-            pip install pre-commit
-            pre-commit run --all-files
-          else
-            echo "No pre-commit config found; skipping pre-commit."
-          fi
+      - name: Format (black --check)
+        run: black --check .
 
       - name: Lint (ruff)
         run: ruff check .
 
       - name: Type check (mypy)
-        run: |
-          mypy -p stacklion_api -p tests
+        run: mypy -p stacklion_api -p tests
 
       - name: Run tests (pytest, quiet)
+        id: pytest_quiet
         run: python -m pytest -q
 
       - name: Upload pytest artifacts on failure
@@ -124,6 +118,8 @@ jobs:
           if-no-files-found: ignore
 
       - name: Run tests with coverage
+        if: ${{ steps.pytest_quiet.outcome == 'success' }}
+        id: pytest_cov
         run: |
           pytest \
             --cov=src/stacklion_api \
@@ -133,20 +129,21 @@ jobs:
             --cov-report=html
 
       - name: Upload coverage.xml
-        if: always()
+        if: ${{ steps.pytest_cov.outcome == 'success' && hashFiles('coverage.xml') != '' }}
         uses: actions/upload-artifact@v4
         with:
           name: coverage-xml
           path: coverage.xml
 
       - name: Upload HTML coverage
-        if: always()
+        if: ${{ steps.pytest_cov.outcome == 'success' && hashFiles('htmlcov/index.html') != '' }}
         uses: actions/upload-artifact@v4
         with:
           name: htmlcov
           path: htmlcov
 
       - name: Upload to Codecov
+        if: ${{ steps.pytest_cov.outcome == 'success' && hashFiles('coverage.xml') != '' }}
         uses: codecov/codecov-action@v4
         with:
           files: coverage.xml
