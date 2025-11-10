@@ -6,7 +6,7 @@ from decimal import Decimal
 
 import pytest
 from fastapi import FastAPI
-from httpx import AsyncClient
+from httpx import ASGITransport, AsyncClient
 from pytest import MonkeyPatch
 
 from stacklion_api.adapters.routers.quotes_router import router
@@ -34,7 +34,8 @@ async def test_get_quotes_200(monkeypatch: MonkeyPatch) -> None:
 
     app.dependency_overrides[dep.get_quotes_uc] = _uc_override
 
-    async with AsyncClient(app=app, base_url="http://test") as client:
+    transport = ASGITransport(app=app)
+    async with AsyncClient(transport=transport, base_url="http://testserver") as client:
         r = await client.get("/v1/quotes", params={"tickers": "AAPL,MSFT"})
         assert r.status_code == 200
         body = r.json()
@@ -51,7 +52,8 @@ async def test_get_quotes_304_with_etag(monkeypatch: MonkeyPatch) -> None:
 
     app.dependency_overrides[dep.get_quotes_uc] = _uc_override
 
-    async with AsyncClient(app=app, base_url="http://test") as client:
+    transport = ASGITransport(app=app)
+    async with AsyncClient(transport=transport, base_url="http://testserver") as client:
         r1 = await client.get("/v1/quotes", params={"tickers": "AAPL"})
         assert r1.status_code == 200
         etag = r1.headers.get("ETag")
