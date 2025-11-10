@@ -26,6 +26,7 @@ import httpx
 from fastapi import FastAPI, HTTPException
 from fastapi.exceptions import RequestValidationError
 from fastapi.middleware.cors import CORSMiddleware
+from fastapi.routing import APIRoute
 from starlette.middleware.gzip import GZipMiddleware
 from starlette.requests import Request
 from starlette.responses import Response as StarletteResponse
@@ -80,6 +81,20 @@ except Exception:  # pragma: no cover
 # -----------------------------------------------------------------------------
 configure_root_logging()
 logger = get_json_logger(__name__)
+
+
+# -----------------------------------------------------------------------------
+# Stable generator
+# -----------------------------------------------------------------------------
+def _stable_operation_id(route: APIRoute) -> str:
+    """Deterministic operationId to stop OpenAPI snapshot churn.
+
+    Format: "<methods>_<path>", e.g. "get__v1_quotes_historical_get"
+    where methods are sorted and path params braces are removed.
+    """
+    methods = ",".join(sorted(route.methods or []))
+    path = route.path_format.replace("/", "_").replace("{", "").replace("}", "")
+    return f"{methods.lower()}_{path.lower()}"
 
 
 # -----------------------------------------------------------------------------
@@ -214,6 +229,7 @@ def create_app() -> FastAPI:
         version=service_version,
         description="Secure, governed financial data API.",
         lifespan=runtime_lifespan,
+        generate_unique_id_function=_stable_operation_id,
     )
 
     # --- Warm readiness histograms so *_bucket exists on the very first scrape ---

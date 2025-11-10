@@ -61,7 +61,11 @@
         ],
         "properties": {
           "error": {
-            "$ref": "#/components/schemas/ErrorObject"
+            "allOf": [
+              {
+                "$ref": "#/components/schemas/ErrorObject"
+              }
+            ]
           }
         },
         "required": [
@@ -92,7 +96,6 @@
           "details": {
             "anyOf": [
               {
-                "additionalProperties": true,
                 "type": "object"
               },
               {
@@ -143,6 +146,9 @@
           "status": {
             "const": "ok",
             "default": "ok",
+            "enum": [
+              "ok"
+            ],
             "title": "Status",
             "type": "string"
           }
@@ -251,8 +257,6 @@
   "paths": {
     "/health/readiness": {
       "get": {
-        "description": "Canonical readiness endpoint (published in OpenAPI).",
-        "operationId": "health_readiness",
         "responses": {
           "200": {
             "content": {
@@ -261,8 +265,7 @@
                   "$ref": "#/components/schemas/ReadinessResponse"
                 }
               }
-            },
-            "description": "Successful Response"
+            }
           },
           "503": {
             "content": {
@@ -271,17 +274,13 @@
                   "$ref": "#/components/schemas/ReadinessResponse"
                 }
               }
-            },
-            "description": "Service degraded or down"
+            }
           }
-        },
-        "summary": "Readiness"
+        }
       }
     },
     "/health/z": {
       "get": {
-        "description": "Return a fast liveness signal.\n\nReturns:\n    LivenessResponse: Always `{\"status\": \"ok\"}` with no external I/O.",
-        "operationId": "health_liveness",
         "responses": {
           "200": {
             "content": {
@@ -290,17 +289,13 @@
                   "$ref": "#/components/schemas/LivenessResponse"
                 }
               }
-            },
-            "description": "Successful Response"
+            }
           }
-        },
-        "summary": "Liveness"
+        }
       }
     },
     "/healthz": {
       "get": {
-        "description": "Simple process liveness endpoint.",
-        "operationId": "_healthz_healthz_get",
         "responses": {
           "200": {
             "content": {
@@ -309,21 +304,17 @@
                   "additionalProperties": {
                     "type": "string"
                   },
-                  "title": "Response  Healthz Healthz Get",
+                  "title": "Response Get  Healthz",
                   "type": "object"
                 }
               }
-            },
-            "description": "Successful Response"
+            }
           }
-        },
-        "summary": " Healthz"
+        }
       }
     },
     "/v1/protected/ping": {
       "get": {
-        "description": "Returns 200 when reachable. Requires valid bearer token when AUTH_ENABLED=true.",
-        "operationId": "ping_v1_protected_ping_get",
         "responses": {
           "200": {
             "content": {
@@ -332,12 +323,11 @@
                   "additionalProperties": {
                     "type": "string"
                   },
-                  "title": "Response Ping V1 Protected Ping Get",
+                  "title": "Response Get  V1 Protected Ping",
                   "type": "object"
                 }
               }
-            },
-            "description": "OK"
+            }
           },
           "401": {
             "content": {
@@ -346,8 +336,7 @@
                   "$ref": "#/components/schemas/ErrorEnvelope"
                 }
               }
-            },
-            "description": "Unauthorized (missing/invalid auth)"
+            }
           },
           "403": {
             "content": {
@@ -356,11 +345,9 @@
                   "$ref": "#/components/schemas/ErrorEnvelope"
                 }
               }
-            },
-            "description": "Forbidden (insufficient permissions)"
+            }
           }
         },
-        "summary": "Auth check ping",
         "tags": [
           "Auth"
         ]
@@ -368,16 +355,12 @@
     },
     "/v1/quotes/historical": {
       "get": {
-        "description": "Returns historical OHLCV bars for the requested tickers and time window. Supports daily (1d) and intraday (1m) intervals. Results are paginated and conditionally cacheable via ETag (weak).",
-        "operationId": "get_historical_quotes_v1_quotes_historical_get",
         "parameters": [
           {
-            "description": "List of tickers",
             "in": "query",
             "name": "tickers",
             "required": true,
             "schema": {
-              "description": "List of tickers",
               "items": {
                 "type": "string"
               },
@@ -388,34 +371,28 @@
             }
           },
           {
-            "description": "Start date (YYYY-MM-DD)",
             "in": "query",
             "name": "from_",
             "required": true,
             "schema": {
-              "description": "Start date (YYYY-MM-DD)",
               "title": "From ",
               "type": "string"
             }
           },
           {
-            "description": "End date (YYYY-MM-DD)",
             "in": "query",
             "name": "to",
             "required": true,
             "schema": {
-              "description": "End date (YYYY-MM-DD)",
               "title": "To",
               "type": "string"
             }
           },
           {
-            "description": "Bar interval (1d or 1m)",
             "in": "query",
             "name": "interval",
             "required": true,
             "schema": {
-              "description": "Bar interval (1d or 1m)",
               "enum": [
                 "1d",
                 "1m"
@@ -425,26 +402,22 @@
             }
           },
           {
-            "description": "1-based page",
             "in": "query",
             "name": "page",
             "required": false,
             "schema": {
               "default": 1,
-              "description": "1-based page",
               "minimum": 1,
               "title": "Page",
               "type": "integer"
             }
           },
           {
-            "description": "Items per page",
             "in": "query",
             "name": "page_size",
             "required": false,
             "schema": {
               "default": 50,
-              "description": "Items per page",
               "maximum": 500,
               "minimum": 1,
               "title": "Page Size",
@@ -460,8 +433,7 @@
                   "$ref": "#/components/schemas/PaginatedEnvelope"
                 }
               }
-            },
-            "description": "Successful Response"
+            }
           },
           "400": {
             "content": {
@@ -470,8 +442,7 @@
                   "$ref": "#/components/schemas/ErrorEnvelope"
                 }
               }
-            },
-            "description": "Bad request (validation or parameter)"
+            }
           },
           "401": {
             "content": {
@@ -480,8 +451,7 @@
                   "$ref": "#/components/schemas/ErrorEnvelope"
                 }
               }
-            },
-            "description": "Unauthorized (missing/invalid auth)"
+            }
           },
           "403": {
             "content": {
@@ -490,8 +460,7 @@
                   "$ref": "#/components/schemas/ErrorEnvelope"
                 }
               }
-            },
-            "description": "Forbidden (insufficient permissions)"
+            }
           },
           "404": {
             "content": {
@@ -500,8 +469,7 @@
                   "$ref": "#/components/schemas/ErrorEnvelope"
                 }
               }
-            },
-            "description": "Not found"
+            }
           },
           "409": {
             "content": {
@@ -510,8 +478,7 @@
                   "$ref": "#/components/schemas/ErrorEnvelope"
                 }
               }
-            },
-            "description": "Conflict"
+            }
           },
           "422": {
             "content": {
@@ -520,8 +487,7 @@
                   "$ref": "#/components/schemas/ErrorEnvelope"
                 }
               }
-            },
-            "description": "Unprocessable content"
+            }
           },
           "429": {
             "content": {
@@ -530,8 +496,7 @@
                   "$ref": "#/components/schemas/ErrorEnvelope"
                 }
               }
-            },
-            "description": "Rate limit exceeded"
+            }
           },
           "500": {
             "content": {
@@ -540,8 +505,7 @@
                   "$ref": "#/components/schemas/ErrorEnvelope"
                 }
               }
-            },
-            "description": "Internal server error"
+            }
           },
           "503": {
             "content": {
@@ -550,11 +514,9 @@
                   "$ref": "#/components/schemas/ErrorEnvelope"
                 }
               }
-            },
-            "description": "Service unavailable"
+            }
           }
         },
-        "summary": "Get historical quotes (OHLCV bars)",
         "tags": [
           "Market Data"
         ]
