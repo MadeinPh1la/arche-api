@@ -1,3 +1,4 @@
+# src/stacklion_api/config/settings.py
 # Copyright (c) Stacklion.
 # SPDX-License-Identifier: MIT
 """
@@ -102,19 +103,67 @@ class Settings(BaseSettings):
     )
 
     # ---------------------------
-    # Security toggles for A2
+    # Security toggles / auth modes
     # ---------------------------
     auth_enabled: bool = Field(
         default=False,
-        description="If true, protected routes require a valid HS256 bearer token.",
+        description="Enable request auth. If true, either HS256 (dev/CI) or Clerk OIDC must be configured.",
         validation_alias="AUTH_ENABLED",
     )
+
+    # HS256 (dev/CI) mode
     auth_hs256_secret: str | None = Field(
         default=None,
-        description="HS256 secret used when AUTH_ENABLED=true (for CI/dev).",
+        description="HS256 secret used when AUTH_ENABLED=true and no Clerk config is provided.",
         validation_alias="AUTH_HS256_SECRET",
     )
 
+    # Clerk OIDC (production) mode — all optional; validated conditionally
+    clerk_issuer: AnyHttpUrl | None = Field(
+        default=None,
+        description="Clerk OIDC issuer URL (e.g., https://<sub>.clerk.accounts.dev). Required if using Clerk.",
+        validation_alias="CLERK_ISSUER",
+    )
+    clerk_audience: str = Field(
+        default="stacklion-ci",
+        min_length=1,
+        max_length=128,
+        description="Expected JWT audience ('aud') configured in Clerk.",
+        validation_alias="CLERK_AUDIENCE",
+    )
+    clerk_jwks_ttl_seconds: int = Field(
+        default=300,
+        ge=60,
+        le=3600,
+        description="JWKS cache TTL in seconds (60–3600).",
+        validation_alias="CLERK_JWKS_TTL_SECONDS",
+    )
+    # Optional Clerk inputs (compatibility / overrides)
+    next_public_clerk_publishable_key: str | None = Field(
+        default=None,
+        description="Optional Clerk publishable key for web clients.",
+        validation_alias="NEXT_PUBLIC_CLERK_PUBLISHABLE_KEY",
+    )
+    clerk_secret_key: str | None = Field(
+        default=None,
+        description="Optional Clerk server secret (not required if using JWKS only).",
+        validation_alias="CLERK_SECRET_KEY",
+    )
+    clerk_jwks_url: AnyHttpUrl | None = Field(
+        default=None,
+        description="Optional explicit JWKS URL override for Clerk (rarely needed).",
+        validation_alias="CLERK_JWKS_URL",
+    )
+    # Compatibility public key input (if you don't want JWKS)
+    auth_rs256_public_key_pem: str | None = Field(
+        default=None,
+        description="PEM public key for RS256 validation as an alternative to JWKS.",
+        validation_alias="AUTH_RS256_PUBLIC_KEY_PEM",
+    )
+
+    # ---------------------------
+    # Rate limiting
+    # ---------------------------
     rate_limit_enabled: bool = Field(
         default=False,
         description="Enable rate limiting middleware.",
@@ -155,48 +204,6 @@ class Settings(BaseSettings):
             "Examples: http://otel-collector:4318/v1/traces or http://otel-collector:4317"
         ),
         validation_alias="OTEL_EXPORTER_OTLP_ENDPOINT",
-    )
-
-    # ---------------------------
-    # Auth (Clerk OIDC/JWT) — primary config
-    # ---------------------------
-    clerk_issuer: AnyHttpUrl = Field(
-        ...,
-        description="Clerk OIDC issuer URL (e.g., https://<sub>.clerk.accounts.dev).",
-        validation_alias="CLERK_ISSUER",
-    )
-    clerk_audience: str = Field(
-        default="stacklion-ci",
-        min_length=1,
-        max_length=128,
-        description="Expected JWT audience ('aud') configured in Clerk.",
-        validation_alias="CLERK_AUDIENCE",
-    )
-    clerk_jwks_ttl_seconds: int = Field(
-        default=300,
-        ge=60,
-        le=3600,
-        description="JWKS cache TTL in seconds (60–3600).",
-        validation_alias="CLERK_JWKS_TTL_SECONDS",
-    )
-
-    # ---------------------------
-    # Auth (Clerk) — compatibility inputs (avoid extra='forbid' failures)
-    # ---------------------------
-    next_public_clerk_publishable_key: str | None = Field(
-        default=None,
-        description="Optional Clerk publishable key for web clients.",
-        validation_alias="NEXT_PUBLIC_CLERK_PUBLISHABLE_KEY",
-    )
-    clerk_secret_key: str | None = Field(
-        default=None,
-        description="Optional Clerk server secret (not required if using JWKS only).",
-        validation_alias="CLERK_SECRET_KEY",
-    )
-    clerk_jwks_url: AnyHttpUrl | None = Field(
-        default=None,
-        description="Optional explicit JWKS URL override for Clerk (rarely needed).",
-        validation_alias="CLERK_JWKS_URL",
     )
 
     # ---------------------------
@@ -390,7 +397,6 @@ class Settings(BaseSettings):
     service_version: str | None = Field(default=None, alias="SERVICE_VERSION")
     log_level: str | None = Field(default=None, alias="LOG_LEVEL")
     edgar_base_url: AnyHttpUrl | None = Field(default=None, alias="EDGAR_BASE_URL")
-    auth_rs256_public_key_pem: str | None = Field(default=None, alias="AUTH_RS256_PUBLIC_KEY_PEM")
 
     # ---------------------------
     # Pydantic Settings config
@@ -457,7 +463,10 @@ class Settings(BaseSettings):
         Rules enforced:
             • In PRODUCTION: CORS may not include '*' and all origins must be HTTPS
               (localhost is exempt for tooling).
-            • If AUTH is enabled, an HS256 secret must be provided.
+            • If AUTH is enabled, either:
+                - HS256 mode: AUTH_HS256_SECRET must be set; or
+                - Clerk OIDC mode: CLERK_ISSUER and (CLERK_JWKS_URL or AUTH_RS256_PUBLIC_KEY_PEM)
+                  must be provided.
             • If rate limiting is enabled with a 'redis' backend, REDIS_URL must be set.
             • If OTEL is enabled, an OTLP endpoint must be provided.
         """
@@ -477,11 +486,18 @@ class Settings(BaseSettings):
                     "Production CORS origins must be HTTPS or localhost. Offenders: " f"{offenders}"
                 )
 
-        # Auth requirements
-        if self.auth_enabled and not self.auth_hs256_secret:
-            raise ValueError(
-                "AUTH_ENABLED=true requires AUTH_HS256_SECRET to be set for HS256 validation."
+        # Auth requirements (conditional)
+        if self.auth_enabled:
+            hs256_ok = bool(self.auth_hs256_secret)
+            clerk_ok = bool(
+                self.clerk_issuer and (self.clerk_jwks_url or self.auth_rs256_public_key_pem)
             )
+            if not (hs256_ok or clerk_ok):
+                raise ValueError(
+                    "AUTH_ENABLED=true requires either: "
+                    "HS256 mode (set AUTH_HS256_SECRET), or Clerk OIDC mode "
+                    "(set CLERK_ISSUER and CLERK_JWKS_URL or AUTH_RS256_PUBLIC_KEY_PEM)."
+                )
 
         # Rate limit backend requirements
         if self.rate_limit_enabled and self.rate_limit_backend == "redis" and not self.redis_url:
@@ -507,6 +523,11 @@ def get_settings() -> Settings:
                 "cors_count": len(settings.cors_allow_origins),
                 "cors_has_wildcard": any(o == "*" for o in settings.cors_allow_origins),
                 "auth_enabled": settings.auth_enabled,
+                "auth_mode": (
+                    "hs256"
+                    if settings.auth_hs256_secret
+                    else ("clerk" if settings.clerk_issuer else "none")
+                ),
                 "rate_limit": {
                     "enabled": settings.rate_limit_enabled,
                     "backend": settings.rate_limit_backend,
