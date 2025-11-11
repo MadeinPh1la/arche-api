@@ -94,7 +94,7 @@ jobs:
           done
 
       - name: Format (black --check)
-        run: black --check .
+        run: black --check --diff .
 
       - name: Lint (ruff)
         run: ruff check .
@@ -141,11 +141,3 @@ jobs:
         with:
           name: htmlcov
           path: htmlcov
-
-      - name: Upload to Codecov
-        if: ${{ steps.pytest_cov.outcome == 'success' && hashFiles('coverage.xml') != '' }}
-        uses: codecov/codecov-action@v4
-        with:
-          files: coverage.xml
-          fail_ci_if_error: true
-          # token: ${{ secrets.CODECOV_TOKEN }}   # Required for private repos
