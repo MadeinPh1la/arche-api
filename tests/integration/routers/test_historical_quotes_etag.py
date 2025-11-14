@@ -26,10 +26,10 @@ PAYLOAD = {
 def test_historical_returns_304_on_matching_etag():
     """First GET returns 200 with ETag; second GET with If-None-Match returns 304."""
     # Mock Marketstack EOD twice with identical payload so ETag is stable
-    respx.get("https://api.marketstack.com/v1/eod").mock(
+    respx.get("https://api.marketstack.com/v2/eod").mock(
         return_value=httpx.Response(200, json=PAYLOAD)
     )
-    respx.get("https://api.marketstack.com/v1/eod").mock(
+    respx.get("https://api.marketstack.com/v2/eod").mock(
         return_value=httpx.Response(200, json=PAYLOAD)
     )
 
@@ -45,13 +45,13 @@ def test_historical_returns_304_on_matching_etag():
         "page_size": 50,
     }
 
-    r1 = client.get("/v1/quotes/historical", params=params)
+    r1 = client.get("/v2/quotes/historical", params=params)
     assert r1.status_code == 200
     etag = r1.headers.get("ETag")
     assert etag, "Expected ETag on first response"
 
     # Send the same request with If-None-Match to trigger 304 path
-    r2 = client.get("/v1/quotes/historical", params=params, headers={"If-None-Match": etag})
+    r2 = client.get("/v2/quotes/historical", params=params, headers={"If-None-Match": etag})
     assert r2.status_code == 304
     # 304 should not have a body; headers still applied by presenter
     assert r2.headers.get("ETag") == etag

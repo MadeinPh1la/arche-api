@@ -1,33 +1,29 @@
 # src/stacklion_api/infrastructure/external_apis/marketstack/client.py
-# Copyright (c) Stacklion.
+# Copyright (c)
 # SPDX-License-Identifier: MIT
-"""Marketstack Transport Client (Option A).
+"""Marketstack Transport Client (V2) — resilient, instrumented, async.
 
-Synopsis:
-    Thin, framework-agnostic HTTP client for Marketstack that:
-      * Builds query parameters for EOD & intraday requests.
-      * Performs asynchronous HTTP with timeouts.
-      * Maps HTTP/transport errors to domain exceptions.
-      * Returns raw provider JSON plus upstream ETag (if present).
+This transport is framework-agnostic and provides:
 
-Design:
-    - Transport-only: no DTO mapping, caching, metrics, or business logic.
-    - Deterministic error mapping:
-        429 → MarketDataRateLimited
-        402 → MarketDataQuotaExceeded
-        400/422 → MarketDataBadRequest
-        timeouts/network/5xx → MarketDataUnavailable
-        non-JSON or unexpected shape → MarketDataValidationError
-    - Normalizes symbols to uppercase to avoid downstream drift.
+* Async HTTP (httpx) with per-request timeout.
+* Jittered exponential retries (bounded); honors ``Retry-After`` seconds.
+* Circuit breaker (CLOSED ↔ OPEN ↔ HALF-OPEN).
+* Conditional GET via ETag (If-None-Match) and IMS (If-Modified-Since).
+* Deterministic mapping to domain errors (402/429/400/401/403/422/5xx).
+* Prometheus metrics + OpenTelemetry spans.
 
-Layer:
-    infrastructure/external_apis
+Return shapes:
+* ``eod`` / ``intraday``: ``(payload, etag)``.
+* ``eod_all`` / ``intraday_all``: ``(rows, meta)`` with optional ETag/Last-Modified.
 """
 
 from __future__ import annotations
 
-from collections.abc import Mapping, Sequence
-from typing import Any
+import asyncio
+import time
+from collections.abc import Awaitable, Callable, Mapping, Sequence
+from contextlib import suppress
+from typing import Any, Final
 
 import httpx
 
@@ -39,28 +35,168 @@ from stacklion_api.domain.exceptions.market_data import (
     MarketDataValidationError,
 )
 from stacklion_api.infrastructure.external_apis.marketstack.settings import MarketstackSettings
+from stacklion_api.infrastructure.observability.metrics_market_data import (
+    get_market_data_errors_total,
+    get_market_data_gateway_latency_seconds,
+)
+from stacklion_api.infrastructure.observability.tracing import traced
+from stacklion_api.infrastructure.resilience.circuit_breaker import CircuitBreaker
+from stacklion_api.infrastructure.resilience.retry import RetryPolicy, retry_async
+
+# --------------------------------------------------------------------------- #
+# Optional imports for additional metrics; safe fallbacks keep client working.
+# --------------------------------------------------------------------------- #
+
+try:
+    from stacklion_api.infrastructure.observability.metrics_market_data import (
+        get_market_data_304_total,
+        get_market_data_breaker_events_total,
+        get_market_data_http_status_total,
+        get_market_data_response_bytes,
+        get_market_data_retries_total,
+    )
+
+    _METRICS_FACTORY_HTTP_STATUS = get_market_data_http_status_total
+    _METRICS_FACTORY_RESPONSE_BYTES = get_market_data_response_bytes
+    _METRICS_FACTORY_RETRIES = get_market_data_retries_total
+    _METRICS_FACTORY_304 = get_market_data_304_total
+    _METRICS_FACTORY_BREAKER_EVENTS = get_market_data_breaker_events_total
+except Exception:  # pragma: no cover
+
+    class _NoopCounter:
+        """Minimal Counter-like object used when Prometheus is unavailable."""
+
+        def labels(self, *args: Any, **kwargs: Any) -> _NoopCounter:
+            """Return self (no-op)."""
+            return self
+
+        def inc(self, *args: Any, **kwargs: Any) -> None:
+            """Increment a counter (no-op)."""
+            return None
+
+    class _NoopHistogram:
+        """Minimal Histogram-like object used when Prometheus is unavailable."""
+
+        def labels(self, *args: Any, **kwargs: Any) -> _NoopHistogram:
+            """Return self (no-op)."""
+            return self
+
+        def observe(self, *args: Any, **kwargs: Any) -> None:
+            """Observe a value (no-op)."""
+            return None
+
+    def _METRICS_FACTORY_HTTP_STATUS() -> Any:
+        """Return a no-op HTTP status counter."""
+        return _NoopCounter()
+
+    def _METRICS_FACTORY_RESPONSE_BYTES() -> Any:
+        """Return a no-op response-bytes histogram."""
+        return _NoopHistogram()
+
+    def _METRICS_FACTORY_RETRIES() -> Any:
+        """Return a no-op retries counter."""
+        return _NoopCounter()
+
+    def _METRICS_FACTORY_304() -> Any:
+        """Return a no-op 304 counter."""
+        return _NoopCounter()
+
+    def _METRICS_FACTORY_BREAKER_EVENTS() -> Any:
+        """Return a no-op breaker-events counter."""
+        return _NoopCounter()
+
+
+# --------------------------------------------------------------------------- #
+# Defaults and headers
+# --------------------------------------------------------------------------- #
+
+_DEFAULT_TIMEOUT: Final[float] = 8.0
+_DEFAULT_TOTAL_RETRIES: Final[int] = 4
+_DEFAULT_BASE_BACKOFF: Final[float] = 0.25
+_DEFAULT_MAX_BACKOFF: Final[float] = 2.5
+
+_DEFAULT_HEADERS: Final[dict[str, str]] = {
+    "Accept": "application/json",
+    "User-Agent": "stacklion-marketstack-client/1.0",
+}
+
+
+def _parse_retry_after(val: str | None) -> float | None:
+    """Parse the HTTP ``Retry-After`` header (seconds form only).
+
+    Args:
+        val: Header value as a string, or ``None``.
+
+    Returns:
+        The seconds to wait as a float if parseable, otherwise ``None``.
+    """
+    if not val:
+        return None
+    try:
+        return max(0.0, float(val))
+    except Exception:
+        return None
 
 
 class MarketstackClient:
-    """Asynchronous transport client for Marketstack.
+    """Resilient, instrumented transport client for Marketstack (V2)."""
 
-    This client is the source of truth for outbound HTTP to Marketstack. It
-    performs network I/O, enforces timeouts, and translates errors to domain
-    exceptions. It **does not** parse payloads into DTOs—mapping belongs in the
-    adapter gateway.
+    def __init__(
+        self,
+        settings: MarketstackSettings,
+        *,
+        http: httpx.AsyncClient | None = None,
+        timeout_s: float = _DEFAULT_TIMEOUT,
+        retry_policy: RetryPolicy | None = None,
+        breaker: CircuitBreaker | None = None,
+    ) -> None:
+        """Initialize the transport client.
 
-    Args:
-        http: Shared :class:`httpx.AsyncClient` with connection pooling.
-        settings: Provider configuration (base URL, access key, timeout).
-    """
+        Args:
+            settings: Provider settings loaded from environment or DI.
+            http: Optional shared ``httpx.AsyncClient``. If omitted, a client
+                is created and owned by this instance.
+            timeout_s: Per-request timeout when creating the internal client.
+            retry_policy: Retry configuration for retryable failures.
+            breaker: Circuit breaker instance to use; created if omitted.
+        """
+        self._settings = settings
+        self._base_url = str(settings.base_url).rstrip("/")  # normalize AnyHttpUrl → str
+        self._timeout = float(timeout_s)
 
-    def __init__(self, http: httpx.AsyncClient, settings: MarketstackSettings) -> None:
-        self._http = http
-        self._cfg = settings
+        self._client = http or httpx.AsyncClient(
+            timeout=self._timeout, headers=_DEFAULT_HEADERS.copy()
+        )
+        if http is not None:
+            # Ensure baseline headers on an injected client too.
+            self._client.headers.update(_DEFAULT_HEADERS)
 
-    # --------------------------------------------------------------------- #
-    # Public API                                                            #
-    # --------------------------------------------------------------------- #
+        self._retry = retry_policy or RetryPolicy(
+            total=_DEFAULT_TOTAL_RETRIES,
+            base=_DEFAULT_BASE_BACKOFF,
+            cap=_DEFAULT_MAX_BACKOFF,
+            jitter=True,
+        )
+        self._breaker = breaker or CircuitBreaker(
+            failure_threshold=5,
+            recovery_timeout_s=30.0,
+            half_open_max_calls=1,
+        )
+
+        self._latency = get_market_data_gateway_latency_seconds()
+        self._errors = get_market_data_errors_total()
+        self._status_total = _METRICS_FACTORY_HTTP_STATUS()
+        self._resp_bytes = _METRICS_FACTORY_RESPONSE_BYTES()
+        self._retries_total = _METRICS_FACTORY_RETRIES()
+        self._not_modified_total = _METRICS_FACTORY_304()
+        self._breaker_events_total = _METRICS_FACTORY_BREAKER_EVENTS()
+
+    async def aclose(self) -> None:
+        """Close the underlying HTTP client if this instance owns it."""
+        if self._client and not self._client.is_closed:
+            await self._client.aclose()
+
+    # ---------------------------- Public API ----------------------------- #
 
     async def eod(
         self,
@@ -70,40 +206,50 @@ class MarketstackClient:
         date_to: str,
         page: int,
         limit: int,
-    ) -> tuple[dict[str, Any], str | None]:
-        """Fetch **End-of-Day** bars as raw JSON plus upstream ETag.
+        etag: str | None = None,
+        if_modified_since: str | None = None,
+    ) -> tuple[Mapping[str, Any], str | None]:
+        """Call the V2 ``/eod`` endpoint and validate payload shape.
 
         Args:
-            tickers: Ticker symbols (case-insensitive); joined by commas.
-            date_from: Inclusive start date in ``YYYY-MM-DD``.
-            date_to: Inclusive end date in ``YYYY-MM-DD``.
-            page: 1-based page number (>= 1).
-            limit: Page size (>= 1).
+            tickers: Sequence of symbols; normalized to uppercase.
+            date_from: Inclusive ISO date (``YYYY-MM-DD``).
+            date_to: Inclusive ISO date (``YYYY-MM-DD``).
+            page: 1-based page index.
+            limit: Page size.
+            etag: Prior ETag for conditional GET (If-None-Match).
+            if_modified_since: Prior Last-Modified for conditional GET.
 
         Returns:
-            tuple[dict[str, Any], str | None]: ``(raw_json, etag)`` where
-            ``raw_json`` contains at least ``{"data": [...]}`` and optionally
-            ``"pagination"``, and ``etag`` is the upstream ETag if present.
+            A tuple ``(payload, etag)`` where ``payload`` is the parsed JSON body.
 
         Raises:
-            MarketDataValidationError: Invalid pagination or unexpected payload shape.
-            MarketDataBadRequest: Upstream 400/422 parameter error.
-            MarketDataQuotaExceeded: Upstream 402 quota exceeded.
-            MarketDataRateLimited: Upstream 429 rate-limited.
-            MarketDataUnavailable: Timeout, network failure, or non-4xx HTTP error.
+            MarketDataValidationError: If the JSON does not contain a ``data`` list.
         """
-        if page < 1 or limit < 1:
-            raise MarketDataValidationError("invalid pagination parameters")
-
-        params = self._params_eod(
-            tickers=_normalize_symbols(tickers),
-            date_from=date_from,
-            date_to=date_to,
-            limit=limit,
-            offset=(page - 1) * limit,
+        effective_limit = max(1, int(limit))
+        params = {
+            "symbols": ",".join(t.upper() for t in tickers),
+            "access_key": self._settings.access_key.get_secret_value(),
+            "date_from": date_from,
+            "date_to": date_to,
+            "limit": effective_limit,
+            "offset": (page - 1) * effective_limit,
+        }
+        payload, etag_out, _last_mod = await self._observe_call(
+            op="eod",
+            interval="1d",
+            path="/eod",
+            params=params,
+            etag=etag,
+            if_modified_since=if_modified_since,
         )
-        url = f"{self._cfg.base_url}/eod"
-        return await self._get(url, params)
+
+        # Shape check to satisfy tests: payload must contain a list under "data".
+        data = payload.get("data")
+        if not isinstance(data, list):
+            raise MarketDataValidationError("bad_shape", details={"expected": "data:list"})
+
+        return payload, etag_out
 
     async def intraday(
         self,
@@ -114,197 +260,296 @@ class MarketstackClient:
         interval: str,
         page: int,
         limit: int,
-    ) -> tuple[dict[str, Any], str | None]:
-        """Fetch **intraday** bars as raw JSON plus upstream ETag.
+        etag: str | None = None,
+        if_modified_since: str | None = None,
+    ) -> tuple[Mapping[str, Any], str | None]:
+        """Call the V2 ``/intraday`` endpoint.
 
         Args:
-            tickers: Ticker symbols (case-insensitive); joined by commas.
-            date_from: Inclusive start instant (ISO-8601, UTC recommended).
-            date_to: Inclusive end instant (ISO-8601, UTC recommended).
-            interval: Bar interval string accepted by Marketstack (e.g., ``"1m"``, ``"5m"``, ``"15m"``, ``"1h"``).
-            page: 1-based page number (>= 1).
-            limit: Page size (>= 1).
-
-        Returns:
-            tuple[dict[str, Any], str | None]: ``(raw_json, etag)`` where
-            ``raw_json`` contains at least ``{"data": [...]}`` and optionally
-            ``"pagination"``, and ``etag`` is the upstream ETag if present.
-
-        Raises:
-            MarketDataValidationError: Invalid pagination or unexpected payload shape.
-            MarketDataBadRequest: Upstream 400/422 parameter error.
-            MarketDataQuotaExceeded: Upstream 402 quota exceeded.
-            MarketDataRateLimited: Upstream 429 rate-limited.
-            MarketDataUnavailable: Timeout, network failure, or non-4xx HTTP error.
-        """
-        if page < 1 or limit < 1:
-            raise MarketDataValidationError("invalid pagination parameters")
-
-        params = self._params_intraday(
-            tickers=_normalize_symbols(tickers),
-            date_from=date_from,
-            date_to=date_to,
-            interval=interval,
-            limit=limit,
-            offset=(page - 1) * limit,
-        )
-        url = f"{self._cfg.base_url}/intraday"
-        return await self._get(url, params)
-
-    # --------------------------------------------------------------------- #
-    # Internal helpers                                                      #
-    # --------------------------------------------------------------------- #
-
-    def _params_base(self) -> dict[str, str]:
-        """Return base query parameters containing the access key.
-
-        Returns:
-            dict[str, str]: Mapping with ``access_key`` set.
-        """
-        return {"access_key": self._cfg.access_key.get_secret_value()}
-
-    def _params_eod(
-        self, *, tickers: list[str], date_from: str, date_to: str, limit: int, offset: int
-    ) -> dict[str, Any]:
-        """Construct query parameters for the EOD endpoint.
-
-        Args:
-            tickers: Uppercased ticker symbols.
-            date_from: Inclusive start date (``YYYY-MM-DD``).
-            date_to: Inclusive end date (``YYYY-MM-DD``).
+            tickers: Sequence of symbols; normalized to uppercase.
+            date_from: Inclusive ISO timestamp (UTC) for window start.
+            date_to: Exclusive ISO timestamp (UTC) for window end.
+            interval: Provider interval label (e.g., ``"1min"``).
+            page: 1-based page index.
             limit: Page size.
-            offset: Zero-based offset.
+            etag: Prior ETag for conditional GET (If-None-Match).
+            if_modified_since: Prior Last-Modified for conditional GET.
 
         Returns:
-            dict[str, Any]: Query mapping for ``/eod``.
+            A tuple ``(payload, etag)`` where ``payload`` is the parsed JSON body.
         """
-        return {
-            **self._params_base(),
-            "symbols": ",".join(tickers),
-            "date_from": date_from,
-            "date_to": date_to,
-            "limit": limit,
-            "offset": offset,
-        }
-
-    def _params_intraday(
-        self,
-        *,
-        tickers: list[str],
-        date_from: str,
-        date_to: str,
-        interval: str,
-        limit: int,
-        offset: int,
-    ) -> dict[str, Any]:
-        """Construct query parameters for the intraday endpoint.
-
-        Args:
-            tickers: Uppercased ticker symbols.
-            date_from: Inclusive start instant (ISO-8601).
-            date_to: Inclusive end instant (ISO-8601).
-            interval: Bar interval string accepted by Marketstack.
-            limit: Page size.
-            offset: Zero-based offset.
-
-        Returns:
-            dict[str, Any]: Query mapping for ``/intraday``.
-        """
-        return {
-            **self._params_base(),
-            "symbols": ",".join(tickers),
+        effective_limit = max(1, min(100, int(limit)))  # v2 intraday cap
+        params = {
+            "symbols": ",".join(t.upper() for t in tickers),
+            "access_key": self._settings.access_key.get_secret_value(),
             "date_from": date_from,
             "date_to": date_to,
             "interval": interval,
-            "limit": limit,
-            "offset": offset,
+            "limit": effective_limit,
+            "offset": (page - 1) * effective_limit,
         }
+        payload, etag_out, _last_mod = await self._observe_call(
+            op="intraday",
+            interval=interval,
+            path="/intraday",
+            params=params,
+            etag=etag,
+            if_modified_since=if_modified_since,
+        )
+        return payload, etag_out
 
-    async def _get(self, url: str, params: Mapping[str, Any]) -> tuple[dict[str, Any], str | None]:
-        """Execute a GET and return raw JSON and ETag with strict error mapping.
+    async def eod_all(
+        self,
+        *,
+        tickers: Sequence[str],
+        date_from: str,
+        date_to: str,
+        page_size: int,
+        max_pages: int | None = None,
+        etag: str | None = None,
+        if_modified_since: str | None = None,
+    ) -> tuple[list[Mapping[str, Any]], dict[str, Any]]:
+        """Fetch multiple pages from ``/eod`` and concatenate the ``data`` rows."""
+        return await self._paged_all(
+            endpoint="eod",
+            interval="1d",
+            build=lambda page: self._observe_call(
+                op="eod",
+                interval="1d",
+                path="/eod",
+                params={
+                    "symbols": ",".join(t.upper() for t in tickers),
+                    "access_key": self._settings.access_key.get_secret_value(),
+                    "date_from": date_from,
+                    "date_to": date_to,
+                    "limit": page_size,
+                    "offset": (page - 1) * page_size,
+                },
+                etag=etag if page == 1 else None,
+                if_modified_since=if_modified_since if page == 1 else None,
+            ),
+            page_size=page_size,
+            max_pages=max_pages,
+        )
 
-        Args:
-            url: Fully qualified endpoint URL.
-            params: Query parameters to send.
+    async def intraday_all(
+        self,
+        *,
+        tickers: Sequence[str],
+        date_from: str,
+        date_to: str,
+        interval: str,
+        page_size: int,
+        max_pages: int | None = None,
+        etag: str | None = None,
+        if_modified_since: str | None = None,
+    ) -> tuple[list[Mapping[str, Any]], dict[str, Any]]:
+        """Fetch multiple pages from ``/intraday`` and concatenate the ``data`` rows."""
+        return await self._paged_all(
+            endpoint="intraday",
+            interval=interval,
+            build=lambda page: self._observe_call(
+                op="intraday",
+                interval=interval,
+                path="/intraday",
+                params={
+                    "symbols": ",".join(t.upper() for t in tickers),
+                    "access_key": self._settings.access_key.get_secret_value(),
+                    "date_from": date_from,
+                    "date_to": date_to,
+                    "interval": interval,
+                    "limit": page_size,
+                    "offset": (page - 1) * page_size,
+                },
+                etag=etag if page == 1 else None,
+                if_modified_since=if_modified_since if page == 1 else None,
+            ),
+            page_size=page_size,
+            max_pages=max_pages,
+        )
 
-        Returns:
-            tuple[dict[str, Any], str | None]: The provider JSON payload and the upstream ETag.
+    # --------------------------- Internal helpers ------------------------- #
 
-        Raises:
-            MarketDataBadRequest: Upstream 400/422 parameter error.
-            MarketDataQuotaExceeded: Upstream 402 quota exceeded.
-            MarketDataRateLimited: Upstream 429 rate-limited.
-            MarketDataUnavailable: Timeout, network failure, or non-4xx HTTP error.
-            MarketDataValidationError: Non-JSON or unexpected payload shape.
-        """
-        try:
-            # Small explicit User-Agent aids observability and vendor-side debugging.
-            headers = {"User-Agent": "stacklion-api/marketstack-client"}
-            resp = await self._http.get(
-                url, params=params, headers=headers, timeout=self._cfg.timeout_s
-            )
+    async def _paged_all(
+        self,
+        *,
+        endpoint: str,
+        interval: str,
+        build: Callable[[int], Awaitable[tuple[Mapping[str, Any], str | None, str | None]]],
+        page_size: int,
+        max_pages: int | None,
+    ) -> tuple[list[Mapping[str, Any]], dict[str, Any]]:
+        """Generic paginator that concatenates provider ``data`` rows."""
+        rows: list[Mapping[str, Any]] = []
+        etag_out: str | None = None
+        last_mod_out: str | None = None
 
-            # Explicitly handle empty 204s (unexpected for these endpoints).
-            if resp.status_code == 204:
-                raise MarketDataValidationError("empty provider response (204)")
+        page = 1
+        while True:
+            payload, etag, last_mod = await build(page)
+            if etag:
+                etag_out = etag
+            if last_mod:
+                last_mod_out = last_mod
 
-            # Classify common 4xx explicitly before generic handler.
-            if resp.status_code == 429:
-                raise MarketDataRateLimited("upstream rate limit exceeded")
-            if resp.status_code in (400, 422):
-                raise MarketDataBadRequest("invalid upstream parameters")
-            if resp.status_code == 402:
-                raise MarketDataQuotaExceeded("provider quota exceeded")
+            data = payload.get("data") if payload else None
+            if not data:
+                break
+            if not isinstance(data, list):
+                raise MarketDataValidationError("bad_shape", details={"expected": "data:list"})
+            rows.extend(data)
 
-            resp.raise_for_status()
+            pagination = payload.get("pagination") if payload else None
+            total = int(pagination.get("total", 0)) if isinstance(pagination, Mapping) else 0
+            if total and len(rows) >= total:
+                break
 
+            page += 1
+            if max_pages is not None and page > max_pages:
+                break
+
+        meta: dict[str, Any] = {}
+        if etag_out:
+            meta["etag"] = etag_out
+        if last_mod_out:
+            meta["last_modified"] = last_mod_out
+        return rows, meta
+
+    async def _observe_call(  # noqa: C901
+        self,
+        *,
+        op: str,
+        interval: str,
+        path: str,
+        params: Mapping[str, Any],
+        etag: str | None,
+        if_modified_since: str | None,
+    ) -> tuple[Mapping[str, Any], str | None, str | None]:
+        """Wrap a GET call with breaker, retry, metrics, and tracing."""
+        provider = "marketstack"
+        url = f"{self._base_url}{path}"
+
+        headers: dict[str, str] = {}
+        if etag:
+            headers["If-None-Match"] = etag
+        if if_modified_since:
+            headers["If-Modified-Since"] = if_modified_since
+
+        async def _call() -> tuple[Mapping[str, Any], str | None, str | None]:  # noqa: C901
+            """Execute a single HTTP GET under breaker control."""
+            # Circuit breaker guard (OPEN/HALF-OPEN failures are counted below).
             try:
-                raw = resp.json()
+                async with self._breaker.guard(provider):
+                    response = await self._client.get(
+                        url,
+                        params=params,
+                        headers=headers,
+                        timeout=self._timeout,
+                    )
+            except RuntimeError as cb_exc:
+                with suppress(Exception):
+                    state = "open" if "open" in str(cb_exc).lower() else "half_open"
+                    self._breaker_events_total.labels(provider, state).inc()
+                raise
+            except httpx.RequestError as exc:
+                # Treat transport/network errors as provider unavailability.
+                raise MarketDataUnavailable() from exc
+
+            # Per-status metrics (best effort).
+            with suppress(Exception):
+                self._status_total.labels(provider, op, str(response.status_code)).inc()
+
+            # Conditional GET path.
+            if response.status_code == 304:
+                with suppress(Exception):
+                    self._not_modified_total.labels(provider, op).inc()
+                return {}, response.headers.get("ETag"), response.headers.get("Last-Modified")
+
+            # Pass-through provider errors for 400/401/403/422 with details.
+            if response.status_code in (400, 401, 403, 422):
+                details: dict[str, Any] = {"status": response.status_code}
+                with suppress(Exception):
+                    body = response.json()
+                    if isinstance(body, dict) and isinstance(body.get("error"), dict):
+                        err = body["error"]
+                        details.update({"code": err.get("code"), "message": err.get("message")})
+                raise MarketDataBadRequest(details=details)
+
+            # Map to domain errors; honor Retry-After for retryable cases.
+            try:
+                self._map_errors(response.status_code)
+            except (MarketDataRateLimited, MarketDataUnavailable) as exc:
+                retry_after = _parse_retry_after(response.headers.get("Retry-After"))
+                if retry_after:
+                    await asyncio.sleep(retry_after)
+                raise exc
+
+            # Observe response bytes (best effort).
+            with suppress(Exception):
+                length = response.headers.get("Content-Length")
+                size = int(length) if length and length.isdigit() else len(response.content)
+                self._resp_bytes.labels(provider, op).observe(float(size))
+
+            # Parse JSON payload.
+            try:
+                payload: Mapping[str, Any] = response.json()
             except Exception as exc:  # noqa: BLE001
-                raise MarketDataValidationError("invalid provider response (non-JSON)") from exc
+                raise MarketDataValidationError("non_json", details={"error": str(exc)}) from exc
 
-            if not isinstance(raw, dict) or "data" not in raw:
-                raise MarketDataValidationError("unexpected provider payload")
+            return payload, response.headers.get("ETag"), response.headers.get("Last-Modified")
 
-            etag = _extract_etag(resp)
-            return raw, etag
+        start = time.perf_counter()
+        error_reason: str | None = None
 
-        except (httpx.TimeoutException, httpx.NetworkError) as exc:
-            raise MarketDataUnavailable("market data provider unavailable") from exc
-        except httpx.HTTPStatusError as exc:
-            code = exc.response.status_code if exc.response is not None else 0
-            if 400 <= code < 500:
-                raise MarketDataBadRequest("invalid upstream parameters") from exc
-            raise MarketDataUnavailable("market data provider unavailable") from exc
+        def _retry_predicate_with_metrics(
+            exc_or_result: Exception | tuple[Mapping[str, Any], str | None, str | None],
+        ) -> bool:
+            """Return True for retryable conditions only.
 
+            We *do not* retry generic exceptions or 4xx.
+            """
+            retryable = isinstance(
+                exc_or_result,
+                (
+                    MarketDataRateLimited,  # 429
+                    MarketDataUnavailable,  # 5xx
+                    httpx.TimeoutException,  # timeouts
+                    httpx.TransportError,  # network/transport
+                ),
+            )
+            if retryable:
+                with suppress(Exception):
+                    self._retries_total.labels(provider, op, type(exc_or_result).__name__).inc()
+            return retryable
 
-# ------------------------------------------------------------------------- #
-# Module utilities                                                          #
-# ------------------------------------------------------------------------- #
+        try:
+            async with traced(
+                f"{provider}.{op}", provider=provider, endpoint=op, interval=interval
+            ):
+                return await retry_async(
+                    _call, policy=self._retry, retry_on=_retry_predicate_with_metrics
+                )
+        except (MarketDataRateLimited, MarketDataUnavailable) as exc:
+            error_reason = type(exc).__name__
+            raise
+        except (MarketDataBadRequest, MarketDataQuotaExceeded, MarketDataValidationError) as exc:
+            error_reason = type(exc).__name__
+            raise
+        finally:
+            elapsed = time.perf_counter() - start
+            with suppress(Exception):
+                self._latency.labels(provider, op, interval).observe(elapsed)
+                if error_reason:
+                    self._errors.labels(error_reason, f"external:{provider}:{op}").inc()
 
-
-def _normalize_symbols(symbols: Sequence[str]) -> list[str]:
-    """Normalize symbols once (uppercase/strip) to avoid downstream drift.
-
-    Args:
-        symbols: Raw symbols as provided by callers.
-
-    Returns:
-        list[str]: Uppercased, de-blanked symbols.
-    """
-    return [s.strip().upper() for s in symbols if str(s).strip()]
-
-
-def _extract_etag(resp: httpx.Response) -> str | None:
-    """Extract an upstream ETag header value, case-insensitively.
-
-    Args:
-        resp: HTTP response.
-
-    Returns:
-        str | None: The ETag value if present, otherwise ``None``.
-    """
-    return resp.headers.get("ETag") or resp.headers.get("Etag") or resp.headers.get("etag")
-
-
-__all__ = ["MarketstackClient"]
+    @staticmethod
+    def _map_errors(status: int) -> None:
+        """Raise domain exceptions for retryable and terminal HTTP statuses."""
+        if status == 429:
+            raise MarketDataRateLimited()
+        if status == 402:
+            raise MarketDataQuotaExceeded()
+        if status in (400, 422):
+            raise MarketDataBadRequest()
+        if status >= 500:
+            raise MarketDataUnavailable()

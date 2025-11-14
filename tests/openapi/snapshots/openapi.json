@@ -347,7 +347,7 @@
         ]
       }
     },
-    "/v1/quotes/historical": {
+    "/v2/quotes/historical": {
       "get": {
         "parameters": [
           {

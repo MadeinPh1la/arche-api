@@ -11,7 +11,7 @@ from stacklion_api.main import create_app
 def test_router_returns_400_on_invalid_date_format():
     c = TestClient(create_app())
     r = c.get(
-        "/v1/quotes/historical",
+        "/v2/quotes/historical",
         params={
             "tickers": ["AAPL"],
             "from_": "not-a-date",

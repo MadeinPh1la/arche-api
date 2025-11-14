@@ -1,5 +1,5 @@
 # Prometheus metrics smoke & assertions for A6.
-# - Hits /v1/quotes/historical
+# - Hits /v2/quotes/historical
 # - Scrapes /metrics
 # - Asserts histogram/counter lines exist post-request
 
@@ -28,7 +28,7 @@ def client(app) -> TestClient:
 @respx.mock
 def test_metrics_exposed_and_increment_after_success(client: TestClient):
     # Mock upstream EOD call
-    respx.get("https://api.marketstack.com/v1/eod").mock(
+    respx.get("https://api.marketstack.com/v2/eod").mock(
         return_value=httpx.Response(
             200,
             json={
@@ -57,7 +57,7 @@ def test_metrics_exposed_and_increment_after_success(client: TestClient):
         "page": 1,
         "page_size": 50,
     }
-    r1 = client.get("/v1/quotes/historical", params=params)
+    r1 = client.get("/v2/quotes/historical", params=params)
     assert r1.status_code == 200
 
     # Scrape metrics
@@ -80,7 +80,7 @@ def test_metrics_exposed_and_increment_after_success(client: TestClient):
 @respx.mock
 def test_metrics_error_paths_increment_counters(client: TestClient):
     # Make upstream return 429 to trigger rate-limited path
-    respx.get("https://api.marketstack.com/v1/intraday").mock(
+    respx.get("https://api.marketstack.com/v2/intraday").mock(
         return_value=httpx.Response(429, json={"error": {"code": "rate_limit"}})
     )
 
@@ -92,7 +92,7 @@ def test_metrics_error_paths_increment_counters(client: TestClient):
         "page": 1,
         "page_size": 1,
     }
-    client.get("/v1/quotes/historical", params=params)
+    client.get("/v2/quotes/historical", params=params)
 
     prom = client.get("/metrics")
     assert prom.status_code == 200

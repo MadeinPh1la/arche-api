@@ -59,6 +59,6 @@ def _params() -> dict:
 def test_router_error_mapping(exc: Exception, expected_status: int, expected_code: str) -> None:
     app = _app_with_uc(_RaisingUC(exc))
     c = TestClient(app)
-    r = c.get("/v1/quotes/historical", params=_params())
+    r = c.get("/v2/quotes/historical", params=_params())
     assert r.status_code == expected_status
     assert r.json()["error"]["code"] == expected_code

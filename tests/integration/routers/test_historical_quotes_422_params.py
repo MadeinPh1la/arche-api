@@ -19,5 +19,5 @@ def test_historical_422_when_missing_tickers() -> None:
         "page": 1,
         "page_size": 50,
     }
-    r = client.get("/v1/quotes/historical", params=params)
+    r = client.get("/v2/quotes/historical", params=params)
     assert r.status_code == 422  # FastAPI validation path

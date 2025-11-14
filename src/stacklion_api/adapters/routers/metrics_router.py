@@ -1,4 +1,4 @@
-# Copyright (c) Stacklion.
+# Copyright (c)
 # SPDX-License-Identifier: MIT
 """Prometheus scrape endpoint (/metrics).
 
@@ -15,9 +15,10 @@ from __future__ import annotations
 
 from collections.abc import Callable
 from contextlib import suppress
+from typing import TYPE_CHECKING
 
 from fastapi import APIRouter, Response
-from prometheus_client import CONTENT_TYPE_LATEST, Histogram, generate_latest
+from prometheus_client import CONTENT_TYPE_LATEST, generate_latest
 
 from stacklion_api.infrastructure.logging.logger import get_json_logger
 from stacklion_api.infrastructure.observability.metrics import (
@@ -25,12 +26,19 @@ from stacklion_api.infrastructure.observability.metrics import (
     get_readyz_redis_latency_seconds,
 )
 
+if TYPE_CHECKING:  # typing-only
+    from prometheus_client import Histogram
+
 logger = get_json_logger(__name__)
 router = APIRouter()
 
 
 def _get_server_histogram() -> Histogram | None:
-    """Return the canonical server-side request histogram if available."""
+    """Return the canonical server-side request histogram if available.
+
+    Returns:
+        Histogram | None: The histogram collector or ``None`` if unavailable.
+    """
     # Canonical location (RequestLatencyMiddleware)
     with suppress(Exception):
         from stacklion_api.infrastructure.middleware.request_metrics import (
@@ -52,11 +60,15 @@ def _ensure_observed_once(getter: Callable[[], Histogram], name: str) -> None:
     """Create (via getter) and ensure at least one observation (0.0 s).
 
     Some prometheus_client backends only emit classic *_bucket on first observe.
+
+    Args:
+        getter: Callable returning a histogram.
+        name: Logical metric name for diagnostics.
     """
     try:
         hist = getter()
         hist.observe(0.0)
-    except Exception as exc:
+    except Exception as exc:  # pragma: no cover (defensive)
         logger.debug(
             "metrics_router: failed warming histogram",
             extra={"extra": {"metric": name, "error": str(exc)}},

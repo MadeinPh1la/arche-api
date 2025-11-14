@@ -36,7 +36,7 @@ async def test_get_quotes_200(monkeypatch: MonkeyPatch) -> None:
 
     transport = ASGITransport(app=app)
     async with AsyncClient(transport=transport, base_url="http://testserver") as client:
-        r = await client.get("/v1/quotes", params={"tickers": "AAPL,MSFT"})
+        r = await client.get("/v2/quotes", params={"tickers": "AAPL,MSFT"})
         assert r.status_code == 200
         body = r.json()
         assert [i["ticker"] for i in body["data"]["items"]] == ["AAPL", "MSFT"]
@@ -54,10 +54,10 @@ async def test_get_quotes_304_with_etag(monkeypatch: MonkeyPatch) -> None:
 
     transport = ASGITransport(app=app)
     async with AsyncClient(transport=transport, base_url="http://testserver") as client:
-        r1 = await client.get("/v1/quotes", params={"tickers": "AAPL"})
+        r1 = await client.get("/v2/quotes", params={"tickers": "AAPL"})
         assert r1.status_code == 200
         etag = r1.headers.get("ETag")
         r2 = await client.get(
-            "/v1/quotes", params={"tickers": "AAPL"}, headers={"If-None-Match": etag}
+            "/v2/quotes", params={"tickers": "AAPL"}, headers={"If-None-Match": etag}
         )
         assert r2.status_code == 304

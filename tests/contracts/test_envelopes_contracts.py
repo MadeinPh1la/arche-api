@@ -16,7 +16,7 @@ async def test_paginated_envelope_shape(app_client: AsyncClient):
         "page": 1,
         "page_size": 50,
     }
-    resp = await app_client.get("/v1/quotes/historical", params=params)
+    resp = await app_client.get("/v2/quotes/historical", params=params)
     assert resp.status_code == 200, resp.text
     body = resp.json()
     # PaginatedEnvelope snapshot shows these top-level keys:
@@ -39,7 +39,7 @@ async def test_error_envelope_shape(app_client: AsyncClient):
         "page": 1,
         "page_size": 0,  # invalid; minimum is 1
     }
-    resp = await app_client.get("/v1/quotes/historical", params=params)
+    resp = await app_client.get("/v2/quotes/historical", params=params)
     assert resp.status_code in (400, 422), resp.text
     payload = resp.json()
 

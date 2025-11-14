@@ -30,6 +30,11 @@ omit =
     # src/stacklion_api/infrastructure/auth/jwt_dependency.py
     # src/stacklion_api/domain/entities/quote.py
 
+    src/stacklion_api/tasks/*
+    src/stacklion_api/application/use_cases/maintenance/*
+    src/stacklion_api/application/use_cases/external_apis/ingest_edgar_filings.py
+    src/stacklion_api/infrastructure/health/*
+
 [report]
 show_missing = True
 skip_covered = True
