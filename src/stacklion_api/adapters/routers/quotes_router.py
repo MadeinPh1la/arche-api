@@ -1,13 +1,16 @@
 # Copyright (c) Stacklion.
 # SPDX-License-Identifier: MIT
 """
-Quotes Router.
+Quotes Router (v2).
 
 Summary:
     Public endpoint returning latest quotes for up to 50 tickers.
 
 Layer:
     adapters/routers
+
+Versioning:
+    This router exposes **v2** only under `/v2/quotes`.
 """
 from __future__ import annotations
 
@@ -30,12 +33,13 @@ from stacklion_api.domain.exceptions.market_data import (
     SymbolNotFound,
 )
 
-router = BaseRouter(version="v1", resource="quotes", tags=["Market Data"])
+# v2 only
+router = BaseRouter(version="v2", resource="quotes", tags=["Market Data"])
 presenter = QuotesPresenter()
 
 
 class QuotesQuery(BaseModel):
-    """Query parameters for `/v1/quotes`."""
+    """Query parameters for `/v2/quotes`."""
 
     model_config = ConfigDict(extra="forbid")
     tickers: list[str] = Field(description="CSV list of tickers (1..50, UPPERCASE)")

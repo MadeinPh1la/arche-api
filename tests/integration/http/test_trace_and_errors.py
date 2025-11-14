@@ -11,7 +11,7 @@ def test_trace_id_header_is_echoed_and_used_in_error_envelope():
 
     # trigger a validation error on a known endpoint (missing required params)
     h = {"x-trace-id": "test-trace-123"}
-    r = client.get("/v1/quotes/historical", headers=h)  # no params -> 422
+    r = client.get("/v2/quotes/historical", headers=h)  # no params -> 422
     assert r.status_code in (400, 422)
     assert r.headers.get("x-trace-id") == "test-trace-123"
 

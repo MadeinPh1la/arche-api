@@ -1,6 +1,6 @@
 # Copyright (c) Stacklion.
 # SPDX-License-Identifier: MIT
-"""Historical Quotes Router (A6).
+"""Historical Quotes Router (A6, v2).
 
 Synopsis:
     HTTP surface for retrieving historical OHLCV bars. Validates query parameters,
@@ -16,6 +16,9 @@ Design:
 
 Layer:
     adapters/routers
+
+Versioning:
+    This router exposes **v2** only under `/v2/quotes/historical`.
 """
 
 from __future__ import annotations
@@ -42,7 +45,8 @@ from stacklion_api.domain.exceptions.market_data import (
     MarketDataValidationError,
 )
 
-router = BaseRouter(version="v1", resource="quotes", tags=["Market Data"])
+# v2 only
+router = BaseRouter(version="v2", resource="quotes", tags=["Market Data"])
 
 
 # --------------------------------------------------------------------------- #

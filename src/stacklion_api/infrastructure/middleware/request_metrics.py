@@ -1,14 +1,13 @@
-# src/stacklion_api/infrastructure/middleware/request_metrics.py
-# Copyright (c) Stacklion.
+# Copyright (c)
 # SPDX-License-Identifier: MIT
-"""Request Latency Middleware (OTEL + Prometheus, OTEL optional).
+"""Request latency middleware (Prometheus + optional OTEL).
 
-Summary:
-    Measures server-side request latency and records to:
-      • OpenTelemetry histogram: `http_server_request_duration_seconds` (optional)
-      • Prometheus histogram:    `http_server_request_duration_seconds_bucket`
-    Both instruments are created lazily and reused to avoid duplicate
-    registration during hot reloads or cold-start tests.
+Measures server-side request latency and records to:
+  • OpenTelemetry histogram: ``http_server_request_duration_seconds`` (optional)
+  • Prometheus histogram:    ``http_server_request_duration_seconds``
+
+Both instruments are created lazily and reused to avoid duplicate registration
+during hot reloads or cold-start tests.
 
 Design:
     * Labels: (method, handler, status). Handler prefers templated route path.
@@ -27,13 +26,17 @@ import logging
 import os
 import time
 from collections.abc import Awaitable, Callable
-from typing import Any
+from typing import TYPE_CHECKING, Any
 
-# Third-party imports MUST be at the top to satisfy E402
-from prometheus_client import REGISTRY, CollectorRegistry, Histogram
 from starlette.middleware.base import BaseHTTPMiddleware
 from starlette.requests import Request
 from starlette.responses import Response
+
+# Use centralized, registry-aware helpers (no direct prometheus_client imports)
+from stacklion_api.infrastructure.observability.metrics import _get_or_create_hist
+
+if TYPE_CHECKING:  # typing-only import
+    from prometheus_client import Histogram
 
 __all__ = ["RequestLatencyMiddleware", "get_http_server_request_duration_seconds"]
 
@@ -45,13 +48,12 @@ logger = logging.getLogger(__name__)
 _OTEL_ENABLED = os.getenv("OTEL_ENABLED", "false").lower() in {"1", "true", "yes"}
 
 try:
-    # Soft dependency: may not be present in CI/dev.
     from opentelemetry import metrics as _otel_metrics
 
     _OTEL_AVAILABLE = True
-except Exception:  # pragma: no cover - executed only when OTEL is missing
+except Exception:  # pragma: no cover - only when OTEL is missing
     _OTEL_AVAILABLE = False
-    _otel_metrics = None
+    _otel_metrics = None  # type: ignore
 
 _OTEL_LATENCY_HIST: Any | None = None  # concrete type depends on SDK/exporter
 
@@ -60,11 +62,16 @@ class _NoopHistogram:
     """No-op substitute for OTEL histogram when OTEL is unavailable/disabled."""
 
     def record(self, *_: Any, **__: Any) -> None:
+        """Drop the sample."""
         return
 
 
 def _otel_hist() -> Any:
-    """Return the process-wide OTEL HTTP server latency histogram (or no-op)."""
+    """Return the process-wide OTEL HTTP server latency histogram (or no-op).
+
+    Returns:
+        Any: OTEL histogram-like object supporting ``record(value, attributes=...)``.
+    """
     global _OTEL_LATENCY_HIST
 
     # If OTEL isn't installed or not enabled, always return a no-op histogram.
@@ -88,14 +95,10 @@ def _otel_hist() -> Any:
 
 
 # -----------------------------------------------------------------------------
-# Prometheus (lazy/idempotent)
+# Prometheus (lazy/idempotent via central helper)
 # -----------------------------------------------------------------------------
 _BUCKETS = (0.005, 0.01, 0.025, 0.05, 0.1, 0.25, 0.5, 1.0, 2.5, 5.0, 10.0)
 _SERVER_HIST: Histogram | None = None
-
-
-def _registry() -> CollectorRegistry:
-    return REGISTRY
 
 
 def get_http_server_request_duration_seconds() -> Histogram:
@@ -105,15 +108,17 @@ def get_http_server_request_duration_seconds() -> Histogram:
         method: Uppercased HTTP method.
         handler: Templated route or raw path.
         status: Response code as string.
+
+    Returns:
+        Histogram: Registry-aware histogram bound to the active registry.
     """
     global _SERVER_HIST
     if _SERVER_HIST is None:
-        _SERVER_HIST = Histogram(
+        _SERVER_HIST = _get_or_create_hist(
             "http_server_request_duration_seconds",
             "Request duration (seconds) — server-side histogram (canonical).",
-            labelnames=("method", "handler", "status"),
             buckets=_BUCKETS,
-            registry=_registry(),
+            labelnames=("method", "handler", "status"),
         )
     return _SERVER_HIST
 
@@ -125,6 +130,7 @@ class RequestLatencyMiddleware(BaseHTTPMiddleware):
     """Record request latency to both Prometheus and (optionally) OpenTelemetry."""
 
     def __init__(self, app: Any) -> None:
+        """Initialize middleware and bind collectors."""
         super().__init__(app)
         self._prom_hist = get_http_server_request_duration_seconds()
 
@@ -133,6 +139,7 @@ class RequestLatencyMiddleware(BaseHTTPMiddleware):
         request: Request,
         call_next: Callable[[Request], Awaitable[Response]],
     ) -> Response:
+        """Measure request latency and record to metrics systems."""
         start = time.perf_counter()
         status_code = 500
         try:

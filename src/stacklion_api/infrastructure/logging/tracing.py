@@ -1,12 +1,24 @@
-# Copyright (c) Stacklion.
+# Copyright (c)
 # SPDX-License-Identifier: MIT
-"""
-Tracing bootstrap (lazy & self-protecting).
+"""OpenTelemetry tracing bootstrap (lazy, idempotent, self-protecting).
 
-- No hard dependency on OTEL packages (soft imports with graceful fallback).
-- Early no-op in tests/CI or when OTEL_SDK_DISABLED is true.
-- Exporter only configured if OTEL_EXPORTER_OTLP_ENDPOINT is set.
-- Idempotent: safe to call multiple times.
+This module bootstraps OpenTelemetry for the *process*:
+- Soft-imports the OTEL SDK and common instrumentations (FastAPI/ASGI, HTTPX, SQLAlchemy).
+- Respects CI/test environments and explicit disable flags.
+- Wires an OTLP HTTP exporter only if an endpoint is provided.
+- Is safe to call multiple times (idempotent) and never crashes the app.
+
+Environment variables:
+    ENVIRONMENT:                 "dev" | "prod" | "test" | "ci" (affects auto-disable)
+    OTEL_SDK_DISABLED:           "1"/"true" to disable the SDK
+    OTEL_SERVICE_NAME:           Service name (default "stacklion-api")
+    SERVICE_VERSION:             Service version (default "0.0.0")
+    OTEL_EXPORTER_OTLP_ENDPOINT: OTLP HTTP endpoint, e.g. "http://otel-collector:4318/v1/traces"
+
+Typical usage:
+    from stacklion_api.infrastructure.logging.tracing import configure_tracing
+    app = FastAPI(...)
+    configure_tracing(app)
 """
 
 from __future__ import annotations
@@ -16,12 +28,21 @@ import os
 import sys
 from typing import Any
 
+__all__ = ["configure_tracing"]
+
 logger = logging.getLogger(__name__)
 _OTEL_CONFIGURED: bool = False
 
 
 def _should_disable() -> bool:
-    """Return True if tracing should be disabled for this process."""
+    """Return True if tracing should be disabled for this process.
+
+    Disables for CI/test envs, explicit SDK disable flag, or pytest detection.
+    This is intentionally conservative: if in doubt, do not initialize tracing.
+
+    Returns:
+        bool: True if tracing bootstrap should be skipped.
+    """
     env = (os.getenv("ENVIRONMENT") or "").strip().lower()
     disabled = os.getenv("OTEL_SDK_DISABLED", "").strip().lower() in {"1", "true", "yes"}
     under_pytest = ("pytest" in sys.modules) or bool(os.getenv("PYTEST_CURRENT_TEST"))
@@ -34,7 +55,13 @@ def _should_disable() -> bool:
 def _import_otel() -> (
     tuple[Any, Any, Any, Any, Any, Any, type[Any] | None, type[Any] | None, type[Any] | None] | None
 ):
-    """Soft-import OTEL SDK & instrumentations; return None if unavailable."""
+    """Soft-import the OpenTelemetry SDK and instrumentations.
+
+    Returns:
+        Optional[tuple]: (trace, Resource, TracerProvider, BatchSpanProcessor,
+        OpenTelemetryMiddleware, FastAPIInstrumentor, HTTPXClientInstrumentor|None,
+        SQLAlchemyInstrumentor|None, OTLPSpanExporter|None) if available; else None.
+    """
     try:
         from opentelemetry import trace
         from opentelemetry.instrumentation.asgi import OpenTelemetryMiddleware
@@ -49,22 +76,21 @@ def _import_otel() -> (
             HTTPXType: type[Any] | None = HTTPXClientInstrumentor
         except Exception:  # pragma: no cover
             HTTPXType = None
+
         try:
-            from opentelemetry.instrumentation.sqlalchemy import (
-                SQLAlchemyInstrumentor,
-            )
+            from opentelemetry.instrumentation.sqlalchemy import SQLAlchemyInstrumentor
 
             SAType: type[Any] | None = SQLAlchemyInstrumentor
         except Exception:  # pragma: no cover
             SAType = None
+
         try:
-            from opentelemetry.exporter.otlp.proto.http.trace_exporter import (
-                OTLPSpanExporter,
-            )
+            from opentelemetry.exporter.otlp.proto.http.trace_exporter import OTLPSpanExporter
 
             OTLPType: type[Any] | None = OTLPSpanExporter
         except Exception:  # pragma: no cover
             OTLPType = None
+
         return (
             trace,
             Resource,
@@ -82,7 +108,16 @@ def _import_otel() -> (
 
 
 def _build_provider(trace: Any, Resource: Any, TracerProvider: Any) -> tuple[Any, str, str]:
-    """Create a provider with a service resource, falling back if one exists."""
+    """Create or reuse a tracer provider and attach a service resource.
+
+    Args:
+        trace: ``opentelemetry.trace`` module.
+        Resource: Resource factory.
+        TracerProvider: Provider class.
+
+    Returns:
+        tuple: (provider, service_name, service_version)
+    """
     service_name = os.getenv("OTEL_SERVICE_NAME", "stacklion-api")
     service_version = os.getenv("SERVICE_VERSION", "0.0.0")
     deployment_env = os.getenv("ENVIRONMENT", "dev")
@@ -98,6 +133,7 @@ def _build_provider(trace: Any, Resource: Any, TracerProvider: Any) -> tuple[Any
         provider = TracerProvider(resource=resource)
         trace.set_tracer_provider(provider)
     except Exception:
+        # Someone else already set the provider; reuse it
         provider = trace.get_tracer_provider()
         logger.info("otel.provider_existing; proceeding with existing provider")
     return provider, service_name, service_version
@@ -106,11 +142,21 @@ def _build_provider(trace: Any, Resource: Any, TracerProvider: Any) -> tuple[Any
 def _wire_exporter(
     provider: Any, BatchSpanProcessor: Any, OTLPSpanExporter: type[Any] | None
 ) -> str:
-    """Wire OTLP HTTP exporter if endpoint is set; return endpoint or ''."""
+    """Wire an OTLP HTTP exporter if an endpoint is configured.
+
+    Args:
+        provider: Tracer provider instance.
+        BatchSpanProcessor: Span processor class.
+        OTLPSpanExporter: OTLP exporter class (or None if not available).
+
+    Returns:
+        str: Endpoint string if exporter was considered; empty string otherwise.
+    """
     endpoint = (os.getenv("OTEL_EXPORTER_OTLP_ENDPOINT") or "").strip()
     if endpoint and BatchSpanProcessor and OTLPSpanExporter:
         try:
-            provider.add_span_processor(BatchSpanProcessor(OTLPSpanExporter(endpoint=endpoint)))
+            processor = BatchSpanProcessor(OTLPSpanExporter(endpoint=endpoint))
+            provider.add_span_processor(processor)
         except Exception:
             logger.exception("otel.exporter_init_failed; continuing without exporter")
     else:
@@ -125,7 +171,15 @@ def _instrument_frameworks(
     HTTPXClientInstrumentor: type[Any] | None,
     SQLAlchemyInstrumentor: type[Any] | None,
 ) -> None:
-    """Instrument FastAPI/ASGI, HTTPX, and SQLAlchemy (global) if available."""
+    """Instrument FastAPI/ASGI, HTTPX, and SQLAlchemy if available.
+
+    Args:
+        app: FastAPI app instance.
+        OpenTelemetryMiddleware: ASGI middleware class.
+        FastAPIInstrumentor: FastAPI instrumentor class.
+        HTTPXClientInstrumentor: HTTPX instrumentor class or None.
+        SQLAlchemyInstrumentor: SQLAlchemy instrumentor class or None.
+    """
     # FastAPI / ASGI
     try:
         FastAPIInstrumentor.instrument_app(app)
@@ -140,7 +194,7 @@ def _instrument_frameworks(
     except Exception:
         logger.info("otel.httpx_instrumentation_missing; skipping")
 
-    # SQLAlchemy (global instrumentation)
+    # SQLAlchemy
     try:
         if SQLAlchemyInstrumentor:
             SQLAlchemyInstrumentor().instrument(
@@ -151,7 +205,13 @@ def _instrument_frameworks(
 
 
 def configure_tracing(app: Any) -> None:
-    """Initialize OpenTelemetry tracing and auto-instrumentation (best-effort)."""
+    """Initialize OpenTelemetry tracing and auto-instrumentation (best-effort).
+
+    Safe to call multiple times; subsequent calls will be ignored.
+
+    Args:
+        app: FastAPI application (or compatible ASGI app).
+    """
     global _OTEL_CONFIGURED
     if _OTEL_CONFIGURED or _should_disable():
         return
@@ -159,6 +219,7 @@ def configure_tracing(app: Any) -> None:
     otel = _import_otel()
     if not otel:
         return
+
     (
         trace,
         Resource,

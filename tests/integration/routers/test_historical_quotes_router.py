@@ -4,7 +4,7 @@
 """Integration tests: Historical Quotes Router (A6).
 
 Synopsis:
-    Verifies the HTTP surface at `/v1/quotes/historical` for:
+    Verifies the HTTP surface at `/v2/quotes/historical` for:
       * 200 success with weak ETag
       * 304 Not Modified when `If-None-Match` matches
 
@@ -98,7 +98,7 @@ def test_200_success_and_etag_header(app: FastAPI) -> None:
     """200: returns PaginatedEnvelope with weak ETag on success."""
     c = TestClient(app)
     r = c.get(
-        "/v1/quotes/historical",
+        "/v2/quotes/historical",
         params={
             "tickers": ["AAPL"],
             "from_": "2025-01-01",
@@ -119,7 +119,7 @@ def test_304_when_if_none_match_matches(app: FastAPI) -> None:
     """304: when If-None-Match matches the UC-provided ETag."""
     c = TestClient(app)
     r = c.get(
-        "/v1/quotes/historical",
+        "/v2/quotes/historical",
         params={
             "tickers": ["AAPL"],
             "from_": "2025-01-01",

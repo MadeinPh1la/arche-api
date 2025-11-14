@@ -19,7 +19,7 @@ def test_historical_400_when_from_after_to() -> None:
         "page": 1,
         "page_size": 50,
     }
-    r = client.get("/v1/quotes/historical", params=params)
+    r = client.get("/v2/quotes/historical", params=params)
     # The use-case raises MarketDataValidationError; router maps to 400 VALIDATION_ERROR
     assert r.status_code == 400
     body = r.json()

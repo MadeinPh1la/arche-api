@@ -1,11 +1,11 @@
-# Copyright (c) Stacklion.
+# Copyright (c)
 # SPDX-License-Identifier: MIT
 """Readiness probes for Postgres & Redis (with Prometheus histograms).
 
-Summary:
-    Provides fast, safe readiness checks for Postgres and Redis and records
-    their latencies to Prometheus histograms. Collectors are obtained lazily
-    from the centralized observability module to avoid duplicate registration.
+This module provides fast, safe readiness checks for Postgres and Redis and
+records their latencies to Prometheus histograms. Collectors are obtained
+lazily from the centralized observability module to avoid duplicate
+registration and to remain registry-aware in tests.
 
 Design:
     * Always observe latency, whether probe succeeds or fails.
@@ -20,18 +20,19 @@ Dependencies:
 from __future__ import annotations
 
 import time
+from typing import TYPE_CHECKING
 
-from prometheus_client import Histogram
 from sqlalchemy import text
 from sqlalchemy.ext.asyncio import AsyncSession, async_sessionmaker
 
-from stacklion_api.infrastructure.caching.redis_client import (
-    RedisClient as RedisProto,
-)
+from stacklion_api.infrastructure.caching.redis_client import RedisClient as RedisProto
 from stacklion_api.infrastructure.observability.metrics import (
     get_readyz_db_latency_seconds,
     get_readyz_redis_latency_seconds,
 )
+
+if TYPE_CHECKING:  # Import for typing only; avoid runtime dependency here.
+    from prometheus_client import Histogram
 
 __all__ = ["DbRedisProbe"]
 
@@ -57,10 +58,10 @@ class DbRedisProbe:
         self._redis_hist: Histogram = get_readyz_redis_latency_seconds()
 
     async def db(self) -> tuple[bool, str | None]:
-        """Probe Postgres using a trivial `SELECT 1`.
+        """Probe Postgres using a trivial ``SELECT 1``.
 
         Returns:
-            (success, diagnostic detail or None)
+            tuple[bool, str | None]: (success, diagnostic detail or None).
         """
         start = time.perf_counter()
         ok = True
@@ -76,10 +77,10 @@ class DbRedisProbe:
         return ok, detail
 
     async def redis(self) -> tuple[bool, str | None]:
-        """Probe Redis using `PING`.
+        """Probe Redis using ``PING``.
 
         Returns:
-            (success, diagnostic detail or None)
+            tuple[bool, str | None]: (success, diagnostic detail or None).
         """
         start = time.perf_counter()
         ok = True
