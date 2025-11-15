@@ -18,13 +18,6 @@ This module provides two categories of metrics helpers:
 All histograms use explicit buckets so ``_bucket/_count/_sum`` series appear
 after the first ``observe(...)`` call.
 
-Design notes:
-- We *intentionally* reuse the default registry (``prom.REGISTRY``) to be
-  compatible with Prometheus’ default exposition middleware. For test isolation,
-  swap the registry and call the accessors again.
-- Labelled metrics are created exactly once per registry. Callers should
-  immediately ``.labels(...).observe/inc`` as usual.
-
 Example:
     db_hist = get_readyz_db_latency_seconds()
     db_hist.observe(0.012)

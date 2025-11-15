@@ -270,7 +270,10 @@
               }
             }
           }
-        }
+        },
+        "tags": [
+          "Health"
+        ]
       }
     },
     "/health/z": {
@@ -285,7 +288,10 @@
               }
             }
           }
-        }
+        },
+        "tags": [
+          "Health"
+        ]
       }
     },
     "/healthz": {
@@ -294,13 +300,7 @@
           "200": {
             "content": {
               "application/json": {
-                "schema": {
-                  "additionalProperties": {
-                    "type": "string"
-                  },
-                  "title": "Response Get  Healthz",
-                  "type": "object"
-                }
+                "schema": {}
               }
             }
           }
@@ -343,6 +343,7 @@
           }
         },
         "tags": [
+          "Auth",
           "Auth"
         ]
       }
@@ -512,6 +513,7 @@
           }
         },
         "tags": [
+          "Market Data",
           "Market Data"
         ]
       }

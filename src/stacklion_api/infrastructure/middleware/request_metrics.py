@@ -1,3 +1,4 @@
+# src/stacklion_api/infrastructure/middleware/request_metrics.py
 # Copyright (c)
 # SPDX-License-Identifier: MIT
 """Request latency middleware (Prometheus + optional OTEL).
@@ -32,7 +33,6 @@ from starlette.middleware.base import BaseHTTPMiddleware
 from starlette.requests import Request
 from starlette.responses import Response
 
-# Use centralized, registry-aware helpers (no direct prometheus_client imports)
 from stacklion_api.infrastructure.observability.metrics import _get_or_create_hist
 
 if TYPE_CHECKING:  # typing-only import
@@ -53,7 +53,7 @@ try:
     _OTEL_AVAILABLE = True
 except Exception:  # pragma: no cover - only when OTEL is missing
     _OTEL_AVAILABLE = False
-    _otel_metrics = None  # type: ignore
+    _otel_metrics = None
 
 _OTEL_LATENCY_HIST: Any | None = None  # concrete type depends on SDK/exporter
 

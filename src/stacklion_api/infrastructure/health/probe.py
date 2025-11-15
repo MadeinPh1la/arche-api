@@ -1,3 +1,4 @@
+# src/stacklion_api/infrastructure/health/probe.py
 # Copyright (c)
 # SPDX-License-Identifier: MIT
 """Readiness probes for Postgres & Redis (with Prometheus histograms).
@@ -53,7 +54,7 @@ class DbRedisProbe:
         """
         self._session_factory = session_factory
         self._redis: RedisProto = redis
-        # Bind histograms once (lazy/idempotent underneath)
+        # Bind histograms once (lazy/idempotent underneath).
         self._db_hist: Histogram = get_readyz_db_latency_seconds()
         self._redis_hist: Histogram = get_readyz_redis_latency_seconds()
 
