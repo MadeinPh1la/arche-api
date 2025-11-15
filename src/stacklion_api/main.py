@@ -1,3 +1,4 @@
+# src/stacklion_api/main.py
 # Copyright (c) Stacklion.
 # SPDX-License-Identifier: MIT
 """
@@ -18,63 +19,51 @@ Design:
 from __future__ import annotations
 
 import os
-from collections.abc import AsyncGenerator, Awaitable, Callable
+from collections.abc import AsyncGenerator
 from contextlib import asynccontextmanager
-from typing import cast
 
-import httpx
 from fastapi import FastAPI, HTTPException
 from fastapi.exceptions import RequestValidationError
 from fastapi.middleware.cors import CORSMiddleware
 from fastapi.routing import APIRoute
 from starlette.middleware.gzip import GZipMiddleware
 from starlette.requests import Request
+from starlette.responses import JSONResponse
 from starlette.responses import Response as StarletteResponse
 
-from stacklion_api.adapters.routers.health_router import router as health_router
-from stacklion_api.adapters.routers.historical_quotes_router import (
-    router as historical_quotes_router,
-)
+from stacklion_api.adapters.routers.api_router import router as api_router
 from stacklion_api.adapters.routers.metrics_router import router as metrics_router
 from stacklion_api.adapters.routers.openapi_registry import (
     attach_openapi_contract_registry,
 )
-from stacklion_api.adapters.routers.protected_router import get_router as get_protected_router
 from stacklion_api.config.settings import Settings, get_settings
-from stacklion_api.infrastructure.caching.redis_client import close_redis, init_redis
-from stacklion_api.infrastructure.database.session import (
-    dispose_engine,
-    init_engine_and_sessionmaker,
-)
+from stacklion_api.dependencies.core.bootstrap import bootstrap
 from stacklion_api.infrastructure.http.errors import (
     handle_http_exception,
     handle_unhandled_exception,
     handle_validation_error,
 )
 from stacklion_api.infrastructure.http.middleware.trace import TraceIdMiddleware
-from stacklion_api.infrastructure.logging.logger import configure_root_logging, get_json_logger
+from stacklion_api.infrastructure.logging.logger import (
+    configure_root_logging,
+    get_json_logger,
+)
 from stacklion_api.infrastructure.middleware.access_log import AccessLogMiddleware
 from stacklion_api.infrastructure.middleware.metrics import (
     PromMetricsMiddleware,  # optional extra counters
 )
 from stacklion_api.infrastructure.middleware.rate_limit import RateLimitMiddleware
 from stacklion_api.infrastructure.middleware.request_id import RequestIdMiddleware
-from stacklion_api.infrastructure.middleware.request_metrics import RequestLatencyMiddleware
-from stacklion_api.infrastructure.middleware.security_headers import SecurityHeadersMiddleware
+from stacklion_api.infrastructure.middleware.request_metrics import (
+    RequestLatencyMiddleware,
+)
+from stacklion_api.infrastructure.middleware.security_headers import (
+    SecurityHeadersMiddleware,
+)
 from stacklion_api.infrastructure.observability.metrics import (
     get_readyz_db_latency_seconds,
     get_readyz_redis_latency_seconds,
 )
-
-# OpenTelemetry init (no-op if not enabled via env)
-try:  # pragma: no cover
-    from stacklion_api.infrastructure.observability.otel import init_otel
-except Exception:  # pragma: no cover
-
-    def init_otel(*_args: object, **_kwargs: object) -> None:
-        """Graceful no-op when OTEL is not available."""
-        return
-
 
 # -----------------------------------------------------------------------------
 # Logging
@@ -89,8 +78,15 @@ logger = get_json_logger(__name__)
 def _stable_operation_id(route: APIRoute) -> str:
     """Deterministic operationId to stop OpenAPI snapshot churn.
 
-    Format: "<methods>_<path>", e.g. "get__v1_quotes_historical_get"
-    where methods are sorted and path params braces are removed.
+    Format:
+        "<methods>_<path>", e.g. "get__v1_protected_ping"
+        where methods are sorted and path params braces are removed.
+
+    Args:
+        route: FastAPI APIRoute.
+
+    Returns:
+        str: Stable operationId for OpenAPI.
     """
     methods = ",".join(sorted(route.methods or []))
     path = route.path_format.replace("/", "_").replace("{", "").replace("}", "")
@@ -102,37 +98,23 @@ def _stable_operation_id(route: APIRoute) -> str:
 # -----------------------------------------------------------------------------
 @asynccontextmanager
 async def runtime_lifespan(app: FastAPI) -> AsyncGenerator[None, None]:
-    """Initialize and teardown shared infrastructure (DB/Redis/HTTP clients).
+    """Initialize and teardown shared infrastructure via the core bootstrap.
 
-    This context manager is invoked once when the application starts and ends,
-    ensuring connection pools are reused and disposed deterministically.
+    This context manager delegates initialization of settings, logging, database
+    engine, Redis client, HTTP clients, and tracing to the shared
+    :func:`bootstrap` helper. It also exposes the resolved settings and shared
+    HTTP client on ``app.state`` for downstream dependencies.
+
+    Args:
+        app: FastAPI application instance.
 
     Yields:
         None: Control back to FastAPI to serve requests.
     """
-    settings: Settings = get_settings()
-    init_engine_and_sessionmaker(settings)
-    init_redis(settings)
-
-    try:
+    async with bootstrap(app) as state:
+        app.state.settings = state.settings
+        app.state.http_client = state.http_client
         yield
-    finally:
-        client = getattr(app.state, "http_client", None)
-        if isinstance(client, httpx.AsyncClient):
-            try:
-                await client.aclose()
-            except Exception as exc:  # pragma: no cover
-                logger.warning("http_client_close_failed", extra={"error": str(exc)})
-
-        try:
-            await close_redis()
-        except Exception as exc:  # pragma: no cover
-            logger.warning("redis_close_failed", extra={"error": str(exc)})
-
-        try:
-            await dispose_engine()
-        except Exception as exc:  # pragma: no cover
-            logger.warning("db_dispose_failed", extra={"error": str(exc)})
 
 
 # -----------------------------------------------------------------------------
@@ -156,7 +138,7 @@ def _attach_middlewares(app: FastAPI, settings: Settings) -> None:
 
     app.add_middleware(SecurityHeadersMiddleware)
 
-    # Rate limit (env or settings).
+    # Rate limit (settings + env legacy overrides).
     env_enabled = os.getenv("RATE_LIMIT_ENABLED", "").strip().lower() == "true"
     enabled = env_enabled or settings.rate_limit_enabled
     if enabled:
@@ -176,41 +158,52 @@ def _attach_middlewares(app: FastAPI, settings: Settings) -> None:
 
 
 def _attach_cors(app: FastAPI, settings: Settings) -> None:
-    """Attach CORS with explicit exposed headers if configured.
+    """Attach CORS middleware based on settings.
 
     Args:
         app: FastAPI application.
-        settings: Runtime settings including CORS allow list.
+        settings: Runtime settings containing CORS config.
     """
-    allowed = settings.cors_allow_origins
-    if allowed:
-        allow_origins = [] if allowed == ["*"] else allowed
-        allow_origin_regex = ".*" if allowed == ["*"] else None
-        app.add_middleware(
-            CORSMiddleware,
-            allow_origins=allow_origins,
-            allow_origin_regex=allow_origin_regex,
-            allow_credentials=True,
-            allow_methods=["GET", "POST", "PUT", "PATCH", "DELETE", "OPTIONS"],
-            allow_headers=["*"],
-            expose_headers=[
-                "ETag",
-                "X-Request-ID",
-                "X-RateLimit-Limit",
-                "X-RateLimit-Remaining",
-                "X-RateLimit-Reset",
-                "Retry-After",
-            ],
-        )
+    allow_origins = settings.cors_allow_origins or ["*"]
+    allow_credentials = True
+    allow_methods = ["*"]
+    allow_headers = ["*"]
+
+    app.add_middleware(
+        CORSMiddleware,
+        allow_origins=allow_origins,
+        allow_credentials=allow_credentials,
+        allow_methods=allow_methods,
+        allow_headers=allow_headers,
+    )
+
+
+def _patch_exception_handlers(app: FastAPI) -> None:
+    """Patch default exception handlers with structured equivalents.
+
+    Args:
+        app: FastAPI application.
+    """
+
+    async def _http_error_handler(request: Request, exc: HTTPException) -> StarletteResponse:
+        return await handle_http_exception(request, exc)
+
+    async def _validation_error_handler(
+        request: Request, exc: RequestValidationError
+    ) -> StarletteResponse:
+        return await handle_validation_error(request, exc)
+
+    async def _unhandled_error_handler(request: Request, exc: Exception) -> StarletteResponse:
+        return await handle_unhandled_exception(request, exc)
+
+    app.add_exception_handler(HTTPException, _http_error_handler)
+    app.add_exception_handler(RequestValidationError, _validation_error_handler)
+    app.add_exception_handler(Exception, _unhandled_error_handler)
 
 
 # -----------------------------------------------------------------------------
-# App Factory
+# App factory
 # -----------------------------------------------------------------------------
-
-Handler = Callable[[Request, Exception], StarletteResponse | Awaitable[StarletteResponse]]
-
-
 def create_app() -> FastAPI:
     """Create and configure the FastAPI application.
 
@@ -222,8 +215,6 @@ def create_app() -> FastAPI:
     service_name = "stacklion-api"
     service_version = os.getenv("SERVICE_VERSION") or settings.service_version or "0.0.0"
 
-    init_otel(service_name=service_name, service_version=service_version)
-
     app = FastAPI(
         title="Stacklion API",
         version=service_version,
@@ -231,6 +222,11 @@ def create_app() -> FastAPI:
         lifespan=runtime_lifespan,
         generate_unique_id_function=_stable_operation_id,
     )
+
+    # Attach trace-id middleware early so logs can correlate requests.
+    app.add_middleware(TraceIdMiddleware)
+
+    _patch_exception_handlers(app)
 
     # --- Warm readiness histograms so *_bucket exists on the very first scrape ---
     try:
@@ -241,53 +237,33 @@ def create_app() -> FastAPI:
             "startup: readiness histogram warm-up skipped", extra={"extra": {"error": str(exc)}}
         )
 
-    # Ensure shared HTTP client exists before dependency wiring
-    if not hasattr(app.state, "http_client"):
-        app.state.http_client = httpx.AsyncClient()
-
     # Contract Registry FIRST to stabilize OpenAPI snapshots.
     attach_openapi_contract_registry(app)
 
     _attach_middlewares(app, settings)
     _attach_cors(app, settings)
 
-    app.add_middleware(TraceIdMiddleware)
+    # Mount all API routers via the aggregator (health, historical, protected, etc.)
+    app.include_router(api_router)
 
-    # mypy: add_exception_handler expects a generic Exception handler signature.
-    # Our funcs are more specific; cast them to the accepted type.
-    app.add_exception_handler(RequestValidationError, cast(Handler, handle_validation_error))
-    app.add_exception_handler(HTTPException, cast(Handler, handle_http_exception))
-    app.add_exception_handler(Exception, cast(Handler, handle_unhandled_exception))
-
-    # /metrics
+    # Metrics router (typically exposes /metrics).
     app.include_router(metrics_router)
 
-    # Protected sample surface (auth feature-flag)
-    app.include_router(get_protected_router())
-
-    # Health endpoints (/health/z, /health/ready)
-    app.include_router(health_router, prefix="/health")
-
-    # Simple liveness used by rate-limit tests
+    # Simple /healthz endpoint used by rate-limit header tests.
     @app.get("/healthz")
-    async def _healthz() -> dict[str, str]:
-        """Simple process liveness endpoint."""
-        return {"status": "ok"}
+    async def healthz() -> JSONResponse:
+        """Lightweight health endpoint behind rate limiting.
 
-    # ------------------------------------------------------------------
-    # Routers
-    # ------------------------------------------------------------------
-    # A6 historical quotes router: the actual gateway/UC is provided via DI
-    # in `dependencies/market_data.py` (which handles test vs. prod wiring).
-    app.include_router(historical_quotes_router)
+        Returns:
+            JSONResponse: Simple status payload, used to exercise RateLimitMiddleware.
+        """
+        return JSONResponse({"status": "ok"})
 
     logger.info(
         "service_startup",
         extra={
             "service": service_name,
-            "env": str(
-                getattr(settings, "environment", None) or os.getenv("ENVIRONMENT", "unknown")
-            ),
+            "env": settings.environment.value,
             "version": service_version,
             "status": "starting",
         },

@@ -13,51 +13,45 @@ Summary:
 Design:
     - Pydantic v2 BaseSettings with `extra='forbid'` to catch unknown env.
     - Explicit field declarations with constrained types and ranges.
-    - Environment enumeration for behavior toggles (now includes TEST).
+    - Environment enumeration for behavior toggles (includes TEST).
     - Singleton accessor `get_settings()` with LRU cache.
     - Safe, structured logging (no secrets).
 """
 
 from __future__ import annotations
 
+import logging
 import os
 from enum import Enum
 from functools import lru_cache
-from typing import Any, Literal
+from typing import Literal
 
-from pydantic import AnyHttpUrl, Field, ValidationError, field_validator, model_validator
+from pydantic import AnyHttpUrl, Field, ValidationError, model_validator
 from pydantic_settings import BaseSettings, SettingsConfigDict
 
-# Structured logger (graceful fallback if infra logger isn't available yet)
-try:  # pragma: no cover
-    from stacklion_api.infrastructure.logging.logger import (
-        configure_root_logging,
-        get_json_logger,
-    )
-
-    configure_root_logging()
-    logger = get_json_logger("stacklion.config")
-except Exception:  # pragma: no cover
-    import logging
-
-    logger = logging.getLogger("stacklion.config")
+# Local logger (global logging configuration is owned by bootstrap())
+logging.basicConfig(level=logging.INFO)
+logger = logging.getLogger(__name__)
 
 
 class Environment(str, Enum):
-    """Deployment environment enumeration (string-backed)."""
+    """Logical deployment environment.
+
+    This is a thin classification used for coarse-grained behavior toggles.
+    """
 
     DEVELOPMENT = "development"
     TEST = "test"
+    CI = "ci"
     STAGING = "staging"
     PRODUCTION = "production"
 
 
-def _split_env(v: str | None) -> list[str]:
-    """Split a comma/space-separated env var into tokens."""
-    if not v:
-        return []
-    parts = [p.strip() for chunk in v.split(",") for p in chunk.split()]
-    return [p for p in parts if p]
+class PaddleEnvironment(str, Enum):
+    """Paddle environment enumeration."""
+
+    SANDBOX = "sandbox"
+    PRODUCTION = "production"
 
 
 class Settings(BaseSettings):
@@ -83,23 +77,53 @@ class Settings(BaseSettings):
         validation_alias="DATABASE_URL",
     )
 
+    db_schema: str | None = Field(
+        default="public",
+        description="Default PostgreSQL schema for core tables.",
+        validation_alias="DB_SCHEMA",
+    )
+
     redis_url: str = Field(
         ...,
         description="Redis connection URL used for caching, telemetry, and rate limiting.",
         validation_alias="REDIS_URL",
     )
 
-    # Raw env; parse manually to avoid pydantic JSON decoding on list[str]
-    cors_allow_origins_raw: str | None = Field(
-        default=None,
-        alias="ALLOWED_ORIGINS",
-        description="Raw env for allowed CORS origins; parsed into cors_allow_origins.",
+    redis_health_check_interval_s: int = Field(
+        default=15,
+        ge=1,
+        le=3600,
+        description="Health check interval for Redis clients in seconds.",
+        validation_alias="REDIS_HEALTH_CHECK_INTERVAL_S",
+    )
+    redis_socket_timeout_s: float = Field(
+        default=3.0,
+        ge=0.1,
+        le=60.0,
+        description="Socket timeout in seconds for Redis commands.",
+        validation_alias="REDIS_SOCKET_TIMEOUT_S",
+    )
+    redis_socket_connect_timeout_s: float = Field(
+        default=3.0,
+        ge=0.1,
+        le=60.0,
+        description="Socket connect timeout in seconds for Redis.",
+        validation_alias="REDIS_SOCKET_CONNECT_TIMEOUT_S",
     )
 
-    # Parsed, canonical list
+    # Raw env for CORS; we compute the parsed list in a model validator.
+    cors_allow_origins_raw: str | None = Field(
+        default=None,
+        description="Raw env for allowed CORS origins (comma-separated).",
+        validation_alias="ALLOWED_ORIGINS",
+    )
+
     cors_allow_origins: list[str] = Field(
         default_factory=list,
-        description="Allowed CORS origins. In dev, '*' is allowed. In production, '*' is rejected.",
+        description=(
+            "Allowed CORS origins. Derived from ALLOWED_ORIGINS. "
+            "In development/test, '*' is allowed; in production-like envs, '*' is rejected."
+        ),
     )
 
     # ---------------------------
@@ -107,7 +131,10 @@ class Settings(BaseSettings):
     # ---------------------------
     auth_enabled: bool = Field(
         default=False,
-        description="Enable request auth. If true, either HS256 (dev/CI) or Clerk OIDC must be configured.",
+        description=(
+            "Enable request auth. If true, either HS256 (dev/CI) or Clerk OIDC "
+            "must be configured."
+        ),
         validation_alias="AUTH_ENABLED",
     )
 
@@ -118,31 +145,30 @@ class Settings(BaseSettings):
         validation_alias="AUTH_HS256_SECRET",
     )
 
-    # Clerk OIDC (production) mode — all optional; validated conditionally
-    clerk_issuer: AnyHttpUrl | None = Field(
+    # Clerk / OIDC mode
+    clerk_frontend_api: str | None = Field(
         default=None,
-        description="Clerk OIDC issuer URL (e.g., https://<sub>.clerk.accounts.dev). Required if using Clerk.",
-        validation_alias="CLERK_ISSUER",
+        description="Clerk frontend API base URL, used to validate tokens issued for this frontend.",
+        validation_alias="CLERK_FRONTEND_API",
     )
-    clerk_audience: str = Field(
-        default="stacklion-ci",
-        min_length=1,
-        max_length=128,
-        description="Expected JWT audience ('aud') configured in Clerk.",
-        validation_alias="CLERK_AUDIENCE",
+    clerk_publisher: str | None = Field(
+        default=None,
+        description="Expected 'azp' (authorized party) / publisher claim for Clerk tokens.",
+        validation_alias="CLERK_PUBLISHER",
+    )
+    clerk_jwks_cache_seconds: int = Field(
+        default=300,
+        ge=60,
+        le=24 * 60 * 60,
+        description="TTL for JWKS cache used when validating Clerk-issued tokens.",
+        validation_alias="CLERK_JWKS_CACHE_SECONDS",
     )
     clerk_jwks_ttl_seconds: int = Field(
         default=300,
         ge=60,
-        le=3600,
-        description="JWKS cache TTL in seconds (60–3600).",
+        le=24 * 60 * 60,
+        description="TTL for Clerk JWKS entries in Redis.",
         validation_alias="CLERK_JWKS_TTL_SECONDS",
-    )
-    # Optional Clerk inputs (compatibility / overrides)
-    next_public_clerk_publishable_key: str | None = Field(
-        default=None,
-        description="Optional Clerk publishable key for web clients.",
-        validation_alias="NEXT_PUBLIC_CLERK_PUBLISHABLE_KEY",
     )
     clerk_secret_key: str | None = Field(
         default=None,
@@ -154,6 +180,7 @@ class Settings(BaseSettings):
         description="Optional explicit JWKS URL override for Clerk (rarely needed).",
         validation_alias="CLERK_JWKS_URL",
     )
+
     # Compatibility public key input (if you don't want JWKS)
     auth_rs256_public_key_pem: str | None = Field(
         default=None,
@@ -161,63 +188,134 @@ class Settings(BaseSettings):
         validation_alias="AUTH_RS256_PUBLIC_KEY_PEM",
     )
 
+    # --- Legacy / frontend-oriented Clerk inputs (accepted, not used by API) ---
+    next_public_clerk_publishable_key: str | None = Field(
+        default=None,
+        description=(
+            "Frontend Clerk publishable key (NEXT_PUBLIC_CLERK_PUBLISHABLE_KEY). "
+            "Accepted to avoid extra_forbid when sharing env files with the frontend; "
+            "not used by the API runtime."
+        ),
+        validation_alias="NEXT_PUBLIC_CLERK_PUBLISHABLE_KEY",
+    )
+    clerk_issuer: str | None = Field(
+        default=None,
+        description=(
+            "Clerk issuer/issuer URL (CLERK_ISSUER). Accepted for compatibility with "
+            "shared env; not used directly by the API runtime."
+        ),
+        validation_alias="CLERK_ISSUER",
+    )
+    clerk_audience: str | None = Field(
+        default=None,
+        description=(
+            "Expected Clerk audience (CLERK_AUDIENCE). Accepted for compatibility with "
+            "shared env; not used directly by the API runtime."
+        ),
+        validation_alias="CLERK_AUDIENCE",
+    )
+
+    # ---------------------------
+    # OpenAPI / docs
+    # ---------------------------
+    docs_url: str | None = Field(
+        default="/docs",
+        description="Swagger UI docs URL. Set to None to disable interactive docs.",
+        validation_alias="DOCS_URL",
+    )
+    redoc_url: str | None = Field(
+        default=None,
+        description="ReDoc docs URL. Set to None to disable ReDoc.",
+        validation_alias="REDOC_URL",
+    )
+    openapi_url: str | None = Field(
+        default="/openapi.json",
+        description="OpenAPI JSON schema URL. Set to None to disable OpenAPI exposure.",
+        validation_alias="OPENAPI_URL",
+    )
+
+    # ---------------------------
+    # Service identity / metadata
+    # ---------------------------
+    service_name: str | None = Field(
+        default="stacklion-api",
+        description="Logical service name for logging and tracing.",
+        validation_alias="SERVICE_NAME",
+    )
+    service_version: str | None = Field(
+        default=None,
+        description="Service version used for logging and tracing.",
+        validation_alias="SERVICE_VERSION",
+    )
+    api_base_url: AnyHttpUrl | None = Field(
+        default=None,
+        description="Public base URL for the API (used in links and docs).",
+        validation_alias="API_BASE_URL",
+    )
+
+    # ---------------------------
+    # Logging
+    # ---------------------------
+    log_level: str | None = Field(
+        default=None,
+        description="Override log level (e.g., 'DEBUG', 'INFO'). If not set, defaults are used.",
+        validation_alias="LOG_LEVEL",
+    )
+
+    # ---------------------------
+    # OTEL / observability
+    # ---------------------------
+    otel_enabled: bool = Field(
+        default=False,
+        description="Enable OpenTelemetry tracing and metrics exporters.",
+        validation_alias="OTEL_ENABLED",
+    )
+    otel_exporter_otlp_endpoint: AnyHttpUrl | None = Field(
+        default=None,
+        description="OTLP endpoint for OTEL exporters (traces/metrics).",
+        validation_alias="OTEL_EXPORTER_OTLP_ENDPOINT",
+    )
+
     # ---------------------------
     # Rate limiting
     # ---------------------------
     rate_limit_enabled: bool = Field(
         default=False,
-        description="Enable rate limiting middleware.",
+        description="Enable global rate limiting.",
         validation_alias="RATE_LIMIT_ENABLED",
     )
-    rate_limit_backend: Literal["memory", "redis"] = Field(
-        default="memory",
-        description="Rate limit storage backend.",
+    rate_limit_backend: str = Field(
+        default="redis",
+        description="Backend used for rate limiting (currently only 'redis').",
         validation_alias="RATE_LIMIT_BACKEND",
     )
-    rate_limit_burst: int = Field(
-        default=5,
-        ge=1,
-        le=10_000,
-        description="Requests allowed per window before 429.",
-        validation_alias="RATE_LIMIT_BURST",
-    )
     rate_limit_window_seconds: int = Field(
-        default=1,
+        default=60,
         ge=1,
-        le=86_400,
-        description="Size of rate limit window in seconds.",
+        le=24 * 60 * 60,
+        description="Rate limiting window size in seconds.",
         validation_alias="RATE_LIMIT_WINDOW_SECONDS",
     )
-
-    # ---------------------------
-    # Observability (OTEL)
-    # ---------------------------
-    otel_enabled: bool = Field(
-        default=False,
-        description="Enable OpenTelemetry instrumentation.",
-        validation_alias="OTEL_ENABLED",
-    )
-    otel_exporter_otlp_endpoint: AnyHttpUrl | None = Field(
-        default=None,
-        description=(
-            "OTLP endpoint for traces/metrics/logs. "
-            "Examples: http://otel-collector:4318/v1/traces or http://otel-collector:4317"
-        ),
-        validation_alias="OTEL_EXPORTER_OTLP_ENDPOINT",
+    rate_limit_burst: int = Field(
+        default=60,
+        ge=1,
+        le=10_000,
+        description="Maximum number of requests per key in a single window.",
+        validation_alias="RATE_LIMIT_BURST",
     )
 
     # ---------------------------
-    # Public surface (optional)
+    # Paddle / billing
     # ---------------------------
-    docs_url: AnyHttpUrl | None = Field(
+    paddle_env: PaddleEnvironment | None = Field(
         default=None,
-        description="External docs base URL (e.g., https://docs.stacklion.io).",
-        validation_alias="DOCS_URL",
+        description="Paddle environment (sandbox/production).",
+        validation_alias="PADDLE_ENV",
     )
-    api_base_url: AnyHttpUrl | None = Field(
+    paddle_webhook_secret: str | None = Field(
         default=None,
-        description="Externally visible API base URL (e.g., https://api.stacklion.io).",
-        validation_alias="API_BASE_URL",
+        description="Paddle webhook shared secret.",
+        validation_alias="PADDLE_WEBHOOK_SECRET",
     )
 
     # ---------------------------
@@ -266,8 +364,30 @@ class Settings(BaseSettings):
     # ---------------------------
     # MarketStack (optional)
     # ---------------------------
+    marketstack_base_url: str = Field(
+        default="https://api.marketstack.com/v1",
+        description="MarketStack base URL used by HTTP clients and ingest.",
+        validation_alias="MARKETSTACK_BASE_URL",
+    )
+    marketstack_timeout_s: float = Field(
+        default=8.0,
+        ge=0.1,
+        le=60.0,
+        description="Per-request timeout in seconds for MarketStack HTTP calls.",
+        validation_alias="MARKETSTACK_TIMEOUT_S",
+    )
+    marketstack_max_retries: int = Field(
+        default=4,
+        ge=0,
+        le=10,
+        description="Max retries for MarketStack HTTP calls.",
+        validation_alias="MARKETSTACK_MAX_RETRIES",
+    )
+
     marketstack_api_key: str | None = Field(
-        default=None, description="MarketStack API key.", validation_alias="MARKETSTACK_API_KEY"
+        default=None,
+        description="MarketStack API key.",
+        validation_alias="MARKETSTACK_API_KEY",
     )
     marketstack_company_fallback: Literal["warn", "skip", "fail"] | None = Field(
         default="warn",
@@ -290,229 +410,73 @@ class Settings(BaseSettings):
     )
     admin_api_key: str | None = Field(
         default=None,
-        description="Legacy local admin API key (development only).",
+        description="Legacy admin API key (development only).",
         validation_alias="ADMIN_API_KEY",
     )
 
-    # ---------------------------
-    # Internal service JWT (not end-user auth)
-    # ---------------------------
-    jwt_secret_key: str | None = Field(
-        default=None,
-        description="HMAC secret for internal service-issued JWTs.",
-        validation_alias="JWT_SECRET_KEY",
-    )
-    jwt_algorithm: str | None = Field(
-        default="HS256",
-        description="JWT algorithm for internal tokens (e.g., HS256).",
-        validation_alias="JWT_ALGORITHM",
-    )
-    jwt_access_token_minutes: int | None = Field(
-        default=60,
-        ge=5,
-        le=24 * 60,
-        description="TTL (minutes) for internal tokens.",
-        validation_alias="JWT_ACCESS_TOKEN_MINUTES",
-    )
-    jwt_issuer: str | None = Field(
-        default=None,
-        description="Issuer for internal tokens, if used.",
-        validation_alias="JWT_ISSUER",
-    )
-    jwt_audience: str | None = Field(
-        default=None,
-        description="Audience for internal tokens, if used.",
-        validation_alias="JWT_AUDIENCE",
-    )
-
-    # ---------------------------
-    # Clerk webhook (Svix) (optional)
-    # ---------------------------
-    clerk_webhook_secret: str | None = Field(
-        default=None,
-        description="Clerk (Svix) webhook secret for user/org events.",
-        validation_alias="CLERK_WEBHOOK_SECRET",
-    )
-
-    # ---------------------------
-    # Paddle (optional)
-    # ---------------------------
-    paddle_env: Literal["sandbox", "live"] | None = Field(
-        default=None, description="Paddle environment.", validation_alias="PADDLE_ENV"
-    )
-    paddle_api_key: str | None = Field(
-        default=None, description="Paddle API key.", validation_alias="PADDLE_API_KEY"
-    )
-    paddle_webhook_secret: str | None = Field(
-        default=None, description="Paddle webhook secret.", validation_alias="PADDLE_WEBHOOK_SECRET"
-    )
-    paddle_api_base_url: AnyHttpUrl | None = Field(
-        default=None,
-        description="Override for Paddle API base URL.",
-        validation_alias="PADDLE_API_BASE_URL",
-    )
-    paddle_webhook_max_skew_seconds: int | None = Field(
-        default=300,
-        ge=60,
-        le=900,
-        description="Webhook timestamp tolerance (seconds).",
-        validation_alias="PADDLE_WEBHOOK_MAX_SKEW_SECONDS",
-    )
-
-    # ---------------------------
-    # Developer API key issuance (optional)
-    # ---------------------------
-    api_key_pepper_b64: str | None = Field(
-        default=None,
-        description="Base64-encoded pepper used during API key hashing.",
-        validation_alias="API_KEY_PEPPER_B64",
-    )
-    api_key_old_pepper_b64: str | None = Field(
-        default=None,
-        description="Previous pepper accepted during rotation window.",
-        validation_alias="API_KEY_OLD_PEPPER_B64",
-    )
-    api_key_prefix_test: str | None = Field(
-        default="sl_test_",
-        description="Prefix for test keys.",
-        validation_alias="API_KEY_PREFIX_TEST",
-    )
-    api_key_prefix_live: str | None = Field(
-        default="sl_live_",
-        description="Prefix for live keys.",
-        validation_alias="API_KEY_PREFIX_LIVE",
-    )
-    api_key_min_bytes: int | None = Field(
-        default=32,
-        ge=16,
-        le=64,
-        description="Min random bytes for key generation.",
-        validation_alias="API_KEY_MIN_BYTES",
-    )
-
-    # ---------------------------
-    # Compatibility / accepted env (avoid extra='forbid' failures)
-    # ---------------------------
-    service_name: str | None = Field(default=None, alias="SERVICE_NAME")
-    service_version: str | None = Field(default=None, alias="SERVICE_VERSION")
-    log_level: str | None = Field(default=None, alias="LOG_LEVEL")
-    edgar_base_url: AnyHttpUrl | None = Field(default=None, alias="EDGAR_BASE_URL")
-
-    # ---------------------------
-    # Pydantic Settings config
-    # ---------------------------
     model_config = SettingsConfigDict(
         env_file=".env",
-        env_file_encoding="utf-8",
-        case_sensitive=False,
         extra="forbid",
-        validate_default=True,
+        case_sensitive=False,
     )
 
-    # ---------------------------
-    # Validators
-    # ---------------------------
-    @field_validator("environment", mode="before")
-    @classmethod
-    def _accept_test_env(cls, v: object) -> object:
-        """Accept ENVIRONMENT=test and keep it as 'test'; set test-mode flag."""
-        if isinstance(v, str) and v.lower() == "test":
-            os.environ["STACKLION_TEST_MODE"] = "1"
-            return Environment.TEST.value
-        return v
-
-    @field_validator("cors_allow_origins", mode="before")
-    @classmethod
-    def _split_cors_origins(cls, v: Any) -> list[str]:
-        """Normalize allowed CORS origins when Pydantic supplies a raw value."""
-        if v is None or v == "":
-            return []
-        if isinstance(v, list):
-            return [str(x).strip() for x in v if str(x).strip()]
-        if isinstance(v, str):
-            s = v.strip()
-            if s.startswith("[") and s.endswith("]"):
-                s = s.strip("[]")
-                parts = [p.strip().strip('"').strip("'") for p in s.split(",")]
-                return [p for p in parts if p]
-            return [x.strip() for x in s.split(",") if x.strip()]
-        raise ValueError("Invalid CORS origins format; use comma-separated string or list.")
-
     @model_validator(mode="after")
-    def _coerce_cors_list(self) -> Settings:
-        """Coerce ALLOWED_ORIGINS / CORS_ALLOW_ORIGINS into `cors_allow_origins`."""
-        raw = self.cors_allow_origins_raw or os.getenv("CORS_ALLOW_ORIGINS")
-        if not self.cors_allow_origins:
-            self.cors_allow_origins = _split_env(raw)
+    def _compute_cors_and_auth(self) -> Settings:
+        """Compute CORS list and validate auth configuration."""
+        # --- CORS parsing from raw string ---
+        raw = (self.cors_allow_origins_raw or "").strip()
+        if not raw:
+            self.cors_allow_origins = []
+        else:
+            entries = [e.strip() for e in raw.split(",") if e.strip()]
+            if entries:
+                if any(e == "*" for e in entries) and self.environment not in (
+                    Environment.DEVELOPMENT,
+                    Environment.TEST,
+                ):
+                    raise ValueError(
+                        "'*' CORS origin is only allowed in development/test environments."
+                    )
+                self.cors_allow_origins = entries
+            else:
+                self.cors_allow_origins = []
+
+        # --- Auth cross-field validation ---
+        if self.auth_enabled:
+            has_hs256 = bool(self.auth_hs256_secret)
+            has_clerk = bool(self.clerk_frontend_api and self.clerk_publisher)
+            if not (has_hs256 or has_clerk):
+                raise ValueError(
+                    "AUTH_ENABLED is true but neither HS256 nor Clerk configuration is present. "
+                    "Set AUTH_HS256_SECRET or configure Clerk (CLERK_FRONTEND_API + CLERK_PUBLISHER)."
+                )
+
         return self
 
-    @field_validator("database_url")
-    @classmethod
-    def _ensure_asyncpg(cls, v: str) -> str:
-        """Validate that the database driver is AsyncPG."""
-        if v.startswith("postgresql://"):
-            raise ValueError("Use 'postgresql+asyncpg://...' for async SQLAlchemy.")
-        if not v.startswith("postgresql+asyncpg://"):
-            raise ValueError("Unsupported DB driver. Expected 'postgresql+asyncpg://'.")
-        return v
-
     @model_validator(mode="after")
-    def _post_validate_security_and_env(self) -> Settings:
-        """Enforce cross-field security and environment constraints.
+    def _validate_environment_side_effects(self) -> Settings:
+        """Apply environment-related side effects.
 
-        Rules enforced:
-            • In PRODUCTION: CORS may not include '*' and all origins must be HTTPS
-              (localhost is exempt for tooling).
-            • If AUTH is enabled, either:
-                - HS256 mode: AUTH_HS256_SECRET must be set; or
-                - Clerk OIDC mode: CLERK_ISSUER and (CLERK_JWKS_URL or AUTH_RS256_PUBLIC_KEY_PEM)
-                  must be provided.
-            • If rate limiting is enabled with a 'redis' backend, REDIS_URL must be set.
-            • If OTEL is enabled, an OTLP endpoint must be provided.
+        In particular, force STACKLION_TEST_MODE=1 when ENVIRONMENT=test to
+        ensure consistent deterministic behavior across tests.
         """
-        # CORS hardening
-        if self.environment == Environment.PRODUCTION:
-            if any(origin == "*" for origin in self.cors_allow_origins):
-                raise ValueError(
-                    "In production, ALLOWED_ORIGINS/CORS_ALLOW_ORIGINS cannot contain '*'."
-                )
-            offenders = [
-                origin
-                for origin in self.cors_allow_origins
-                if not (origin.startswith("https://") or origin.startswith("http://localhost"))
-            ]
-            if offenders:
-                raise ValueError(
-                    "Production CORS origins must be HTTPS or localhost. Offenders: " f"{offenders}"
-                )
-
-        # Auth requirements (conditional)
-        if self.auth_enabled:
-            hs256_ok = bool(self.auth_hs256_secret)
-            clerk_ok = bool(
-                self.clerk_issuer and (self.clerk_jwks_url or self.auth_rs256_public_key_pem)
-            )
-            if not (hs256_ok or clerk_ok):
-                raise ValueError(
-                    "AUTH_ENABLED=true requires either: "
-                    "HS256 mode (set AUTH_HS256_SECRET), or Clerk OIDC mode "
-                    "(set CLERK_ISSUER and CLERK_JWKS_URL or AUTH_RS256_PUBLIC_KEY_PEM)."
-                )
-
-        # Rate limit backend requirements
-        if self.rate_limit_enabled and self.rate_limit_backend == "redis" and not self.redis_url:
-            raise ValueError("RATE_LIMIT_BACKEND=redis requires REDIS_URL to be set.")
-
-        # OTEL requirements
-        if self.otel_enabled and not self.otel_exporter_otlp_endpoint:
-            raise ValueError("OTEL_ENABLED=true requires OTEL_EXPORTER_OTLP_ENDPOINT to be set.")
+        if self.environment is Environment.TEST and os.getenv("STACKLION_TEST_MODE") != "1":
+            os.environ["STACKLION_TEST_MODE"] = "1"
+            logger.info("STACKLION_TEST_MODE enabled due to ENVIRONMENT=test")
 
         return self
 
 
 @lru_cache(maxsize=1)
 def get_settings() -> Settings:
-    """Return a cached singleton `Settings` instance."""
+    """Return a cached singleton `Settings` instance.
+
+    Returns:
+        Settings: Validated application settings.
+
+    Raises:
+        RuntimeError: If configuration is invalid.
+    """
     try:
         settings = Settings()
         logger.info(
@@ -522,26 +486,33 @@ def get_settings() -> Settings:
                 "test_mode": os.getenv("STACKLION_TEST_MODE") == "1",
                 "cors_count": len(settings.cors_allow_origins),
                 "cors_has_wildcard": any(o == "*" for o in settings.cors_allow_origins),
-                "auth_enabled": settings.auth_enabled,
-                "auth_mode": (
-                    "hs256"
-                    if settings.auth_hs256_secret
-                    else ("clerk" if settings.clerk_issuer else "none")
-                ),
+                "redis_url_set": bool(settings.redis_url),
+                "docs": {
+                    "docs_url": settings.docs_url,
+                    "redoc_url": settings.redoc_url,
+                    "openapi_url": settings.openapi_url,
+                },
+                "auth": {
+                    "enabled": settings.auth_enabled,
+                    "has_hs256": bool(settings.auth_hs256_secret),
+                    "has_clerk": bool(settings.clerk_frontend_api and settings.clerk_publisher),
+                },
                 "rate_limit": {
                     "enabled": settings.rate_limit_enabled,
                     "backend": settings.rate_limit_backend,
+                    "window": settings.rate_limit_window_seconds,
                     "burst": settings.rate_limit_burst,
-                    "window_s": settings.rate_limit_window_seconds,
                 },
-                "jwks_ttl": settings.clerk_jwks_ttl_seconds,
-                "docs_url_set": bool(settings.docs_url),
-                "api_base_url_set": bool(settings.api_base_url),
-                "has_celery": bool(settings.celery_broker_url and settings.celery_result_backend),
-                "ingest_on_start": settings.run_ingestion_on_startup,
                 "paddle_env": settings.paddle_env if settings.paddle_env else None,
                 "otel_enabled": settings.otel_enabled,
                 "otel_endpoint_set": bool(settings.otel_exporter_otlp_endpoint),
+                "db_schema": settings.db_schema,
+                "marketstack_base_url": settings.marketstack_base_url,
+                "marketstack_timeout_s": settings.marketstack_timeout_s,
+                "marketstack_max_retries": settings.marketstack_max_retries,
+                "redis_health_check_interval_s": settings.redis_health_check_interval_s,
+                "redis_socket_timeout_s": settings.redis_socket_timeout_s,
+                "redis_socket_connect_timeout_s": settings.redis_socket_connect_timeout_s,
             },
         )
         return settings

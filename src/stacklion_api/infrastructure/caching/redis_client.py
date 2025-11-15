@@ -36,13 +36,12 @@ __all__ = [
     "redis_dependency",
 ]
 
+logger = logging.getLogger(__name__)
+
 
 @runtime_checkable
 class RedisClient(Protocol):
-    """Minimal async Redis protocol used by Stacklion."""
-
-    async def ping(self) -> Any: ...
-    async def close(self) -> None: ...
+    """Protocol for the subset of Redis methods used by the application."""
 
     async def get(self, key: str) -> Any: ...
     async def set(
@@ -57,6 +56,8 @@ class RedisClient(Protocol):
     ) -> Any: ...
     async def exists(self, *keys: str) -> Any: ...
     async def expire(self, key: str, seconds: int) -> Any: ...
+    async def ping(self) -> Any: ...
+    async def close(self) -> Any: ...
 
 
 _client: RedisClient | None = None
@@ -64,6 +65,14 @@ _DEFAULT_REDIS_URL = "redis://localhost:6379/0"
 
 
 def _maybe_swap_hostname(url: str) -> str:
+    """Swap docker-compose-style hostnames with localhost in dev when needed.
+
+    Args:
+        url: Original Redis URL.
+
+    Returns:
+        str: Possibly rewritten Redis URL (e.g. redis -> localhost).
+    """
     try:
         parsed = urlparse(url)
         if parsed.hostname == "redis" and not os.getenv("CI"):
@@ -81,24 +90,34 @@ def _maybe_swap_hostname(url: str) -> str:
     return url
 
 
-def _create_aioredis_client(url: str) -> AioredisRedis:
-    """Build the concrete asyncio Redis client from URL."""
-    # Make the vendor call through an untyped shim so mypy won't care whether
-    # redis stubs define a typed or untyped `from_url` in the current env.
+def _create_aioredis_client(url: str, settings: Settings) -> AioredisRedis:
+    """Build the concrete asyncio Redis client from URL and settings.
+
+    Args:
+        url: Redis URL.
+        settings: Canonical application settings.
+
+    Returns:
+        AioredisRedis: Configured Redis client.
+    """
     _from_url: Any = aioredis.from_url
     client = _from_url(
         url=url,
         encoding="utf-8",
         decode_responses=True,
-        health_check_interval=15,
-        socket_timeout=3.0,
-        socket_connect_timeout=3.0,
+        health_check_interval=settings.redis_health_check_interval_s,
+        socket_timeout=settings.redis_socket_timeout_s,
+        socket_connect_timeout=settings.redis_socket_connect_timeout_s,
     )
     return cast(AioredisRedis, client)
 
 
 def init_redis(settings: Settings) -> None:
-    """Initialize the global async Redis client (idempotent)."""
+    """Initialize the global async Redis client (idempotent).
+
+    Args:
+        settings: Canonical application settings.
+    """
     global _client
     if _client is not None:
         return
@@ -106,7 +125,7 @@ def init_redis(settings: Settings) -> None:
     url = str(settings.redis_url or _DEFAULT_REDIS_URL)
     url = _maybe_swap_hostname(url)
 
-    _client = cast(RedisClient, _create_aioredis_client(url))
+    _client = cast(RedisClient, _create_aioredis_client(url, settings))
 
 
 async def close_redis() -> None:
@@ -114,13 +133,19 @@ async def close_redis() -> None:
     global _client
     if _client is not None:
         with suppress(RuntimeError):
-            # redis.asyncio clients expose an awaitable `.close()`
             await _client.close()
         _client = None
 
 
 def get_redis_client() -> RedisClient:
-    """Return the initialized Redis client (lazy-inits in tests)."""
+    """Return the initialized Redis client (lazy-inits in tests).
+
+    Returns:
+        RedisClient: Shared Redis client instance.
+
+    Raises:
+        RuntimeError: If client could not be initialized.
+    """
     global _client
     if _client is None:
         init_redis(get_settings())
@@ -131,5 +156,9 @@ def get_redis_client() -> RedisClient:
 
 @asynccontextmanager
 async def redis_dependency() -> AsyncGenerator[RedisClient, None]:
-    """Yield the shared Redis client for DI."""
+    """Yield the shared Redis client for DI.
+
+    Yields:
+        RedisClient: Shared client instance.
+    """
     yield get_redis_client()

@@ -1,5 +1,5 @@
-"""
-Clerk Principal Dependency (Infrastructure Layer)
+# src/stacklion_api/infrastructure/auth/clerk_principal_dependency.py
+"""Clerk Principal Dependency (Infrastructure Layer).
 
 Purpose:
     Authenticate requests via Clerk-issued JWTs and return a typed `Principal`
@@ -59,17 +59,21 @@ async def require_clerk_principal(
 
     token: str = authorization.split(" ", 1)[1].strip()
     jwks = ClerkJWKSClient(
-        issuer=str(settings.clerk_issuer),  # normalize in case of pydantic Url
+        issuer=str(settings.clerk_issuer),
         ttl_seconds=settings.clerk_jwks_ttl_seconds,
     )
 
+    # Build verify_clerk_token kwargs so we only pass audience when present.
+    verify_kwargs: dict[str, Any] = {
+        "token": token,
+        "jwks_client": jwks,
+        "issuer": str(settings.clerk_issuer),
+    }
+    if settings.clerk_audience is not None:
+        verify_kwargs["audience"] = settings.clerk_audience
+
     try:
-        claims: dict[str, Any] = await verify_clerk_token(
-            token=token,
-            jwks_client=jwks,
-            issuer=str(settings.clerk_issuer),
-            audience=settings.clerk_audience,
-        )
+        claims: dict[str, Any] = await verify_clerk_token(**verify_kwargs)
     except Exception as exc:
         logger.warning("jwt_verification_failed", extra={"reason": str(exc)})
         raise HTTPException(

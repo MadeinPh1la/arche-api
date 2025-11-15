@@ -1,3 +1,4 @@
+# src/stacklion_api/tasks/cli.py
 # Copyright (c)
 # SPDX-License-Identifier: MIT
 """Stacklion CLI: operational commands (ingest, partitions, replay).
@@ -60,7 +61,7 @@ def _sessionmaker(database_url: str) -> async_sessionmaker[AsyncSession]:
         database_url: Async SQLAlchemy URL.
 
     Returns:
-        A configured ``async_sessionmaker`` for ``AsyncSession`` instances.
+        async_sessionmaker[AsyncSession]: Configured session factory.
     """
     engine = create_async_engine(database_url, future=True)
     return async_sessionmaker(engine, expire_on_commit=False, class_=AsyncSession)
@@ -73,8 +74,7 @@ def _ms_settings_from_env() -> MarketstackSettings:
         MarketstackSettings: Settings object populated from env vars.
 
     Notes:
-        We do NOT rely on pydantic BaseSettings here; this explicitly reads
-        env vars to avoid surprises. Expected envs:
+        This explicitly reads env vars to avoid surprises. Expected envs:
           - MARKETSTACK_BASE_URL (defaults to v2)
           - MARKETSTACK_ACCESS_KEY (required)
           - MARKETSTACK_ALLOWED_INTRADAY_INTERVALS (comma-separated, optional)
@@ -89,11 +89,11 @@ def _ms_settings_from_env() -> MarketstackSettings:
     if not access_key:
         raise RuntimeError("MARKETSTACK_ACCESS_KEY is not set")
 
-    # Comma-separated allow-list (robust to spaces & case)
+    # Comma-separated allow-list (robust to spaces & case).
     raw_allowed = os.getenv("MARKETSTACK_ALLOWED_INTRADAY_INTERVALS", "1h")
     allowed_list = [s.strip().lower() for s in raw_allowed.split(",") if s.strip()]
 
-    # Optional overrides
+    # Optional overrides.
     timeout_s = float(os.getenv("MARKETSTACK_TIMEOUT_S", "8.0"))
     max_retries = int(os.getenv("MARKETSTACK_MAX_RETRIES", "4"))
 
@@ -106,7 +106,7 @@ def _ms_settings_from_env() -> MarketstackSettings:
     )
 
 
-@ingest_app.command("intraday")
+@ingest_app.command("intraday")  # type: ignore[misc]
 def ingest_intraday(
     database_url: str = typer.Option(
         ..., envvar="DATABASE_URL", help="Async SQLAlchemy URL."
@@ -137,7 +137,7 @@ def ingest_intraday(
             settings,
             timeout_s=settings.timeout_s,
             retry_policy=RetryPolicy(
-                total=settings.max_retries,  # number of retries beyond first attempt
+                total=settings.max_retries,
                 base=0.25,
                 cap=2.5,
                 jitter=True,
@@ -206,7 +206,7 @@ def ingest_intraday(
     asyncio.run(_run())
 
 
-@partitions_app.command("create")
+@partitions_app.command("create")  # type: ignore[misc]
 def partitions_create(
     database_url: str = typer.Option(..., envvar="DATABASE_URL"),  # noqa: B008
     months: int = typer.Option(3, min=1, help="How many months ahead to create."),  # noqa: B008
@@ -230,7 +230,7 @@ def partitions_create(
     asyncio.run(_run())
 
 
-@replay_app.command("staging-to-md")
+@replay_app.command("staging-to-md")  # type: ignore[misc]
 def replay_staging_to_md(
     database_url: str = typer.Option(..., envvar="DATABASE_URL"),  # noqa: B008
     source: str = typer.Option("marketstack"),  # noqa: B008
@@ -283,7 +283,7 @@ def replay_staging_to_md(
 
 
 # Colon alias for convenience.
-@app.command("ingest:intraday")
+@app.command("ingest:intraday")  # type: ignore[misc]
 def ingest_intraday_alias(
     database_url: str = typer.Option(..., envvar="DATABASE_URL"),  # noqa: B008
     symbol_id: UUID = typer.Option(...),  # noqa: B008
