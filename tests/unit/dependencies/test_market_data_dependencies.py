@@ -8,6 +8,7 @@ from datetime import UTC, datetime
 from decimal import Decimal
 
 import pytest
+from pydantic import SecretStr
 
 from stacklion_api.application.schemas.dto.quotes import HistoricalBarDTO
 from stacklion_api.dependencies.market_data import (
@@ -84,5 +85,43 @@ async def test_deterministic_gateway_raises_on_bad_window() -> None:
             date_to=datetime(2025, 1, 2, tzinfo=UTC),
             interval=BarInterval.I1D,
             limit=1,
+            offset=0,
+        )
+
+
+def _ms_settings_with_key(key: str) -> MarketstackSettings:
+    return MarketstackSettings(
+        base_url="https://api.marketstack.com/v1",
+        access_key=SecretStr(key),
+        timeout_s=2.0,
+        max_retries=0,
+    )
+
+
+def test_is_deterministic_mode_false_with_access_key(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    """Non-empty key and no test flags should select real gateway mode."""
+    ms_settings = _ms_settings_with_key("non-empty")
+    monkeypatch.delenv("ENVIRONMENT", raising=False)
+    monkeypatch.delenv("STACKLION_TEST_MODE", raising=False)
+
+    assert _is_deterministic_mode(ms_settings) is False
+
+
+@pytest.mark.anyio
+async def test_deterministic_gateway_raises_on_invalid_range() -> None:
+    """date_from > date_to should yield a MarketDataValidationError."""
+    gateway = DeterministicMarketDataGateway()
+    date_from = datetime(2025, 1, 3, tzinfo=UTC)
+    date_to = datetime(2025, 1, 1, tzinfo=UTC)
+
+    with pytest.raises(MarketDataValidationError):
+        await gateway.get_historical_bars(
+            tickers=["AAPL"],
+            date_from=date_from,
+            date_to=date_to,
+            interval=BarInterval.I1D,
+            limit=10,
             offset=0,
         )

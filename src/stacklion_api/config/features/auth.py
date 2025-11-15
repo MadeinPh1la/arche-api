@@ -19,10 +19,11 @@ Notes:
 from __future__ import annotations
 
 import os
+from typing import Any
 
 from pydantic import BaseModel, Field
 
-from stacklion_api.config.settings import get_settings
+import stacklion_api.config.settings as _settings_module
 
 __all__ = ["AuthSettings", "get_auth_settings"]
 
@@ -31,9 +32,11 @@ class AuthSettings(BaseModel):
     """Narrow view of auth configuration used by adapters/infrastructure.
 
     Attributes:
-        enabled: When true, protected routes must validate a bearer token.
-        hs256_secret: Shared secret for HS256 validation in dev/CI simple mode.
-                      May be None if auth is disabled.
+        enabled:
+            When true, protected routes must validate a bearer token.
+        hs256_secret:
+            Shared secret for HS256 validation in dev/CI simple mode.
+            May be None if auth is disabled.
     """
 
     enabled: bool = Field(default=False)
@@ -43,6 +46,16 @@ class AuthSettings(BaseModel):
 def _to_bool(val: str | None) -> bool:
     """Return True for common truthy strings ('1','true','yes','on')."""
     return (val or "").strip().lower() in {"1", "true", "yes", "on"}
+
+
+def get_settings() -> Any:
+    """Thin wrapper around the global settings accessor.
+
+    Defined here so tests can reliably monkeypatch
+    ``stacklion_api.config.features.auth.get_settings`` and have
+    `get_auth_settings()` respect it.
+    """
+    return _settings_module.get_settings()
 
 
 def get_auth_settings() -> AuthSettings:

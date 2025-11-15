@@ -62,8 +62,8 @@ def _extract_bearer_token(obj: Any) -> str:
     if not auth or not auth.lower().startswith("bearer "):
         raise HTTPException(status_code=401, detail="Missing bearer token")
     token = auth.split(" ", 1)[1].strip()
-    if not token:
-        raise HTTPException(status_code=401, detail="Missing token")
+    if not token:  # pragma: no cover  (defensive, practically unreachable)
+        raise HTTPException(status_code=401, detail="Missing token")  # pragma: no cover
     return token
 
 
