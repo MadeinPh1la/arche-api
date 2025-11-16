@@ -1,7 +1,7 @@
 # tests/unit/application/test_ingest_marketstack_intraday.py
-
 from __future__ import annotations
 
+import os
 from datetime import UTC, datetime, timedelta
 from typing import Any
 from uuid import uuid4
@@ -15,6 +15,12 @@ from stacklion_api.application.use_cases.external_apis.ingest_marketstack_intrad
     IngestMarketstackIntradayBars,
 )
 
+# Use CI-friendly DB URL by default, overridable via env for local dev.
+TEST_DATABASE_URL = os.getenv(
+    "DATABASE_URL",
+    "postgresql+asyncpg://stacklion:stacklion@127.0.0.1:5432/stacklion_test",
+)
+
 
 class FakeGateway(MarketDataGateway):
     async def fetch_intraday_bars(
@@ -26,7 +32,7 @@ class FakeGateway(MarketDataGateway):
         interval: str,
         page_size: int,
     ) -> tuple[list[dict[str, str]], dict[str, Any]]:
-        # Produce a single deterministic bar
+        """Produce a single deterministic intraday bar."""
         ts = start.replace(tzinfo=UTC, microsecond=0).isoformat().replace("+00:00", "Z")
         bars = [
             {
@@ -47,10 +53,7 @@ class FakeGateway(MarketDataGateway):
 
 @pytest.mark.anyio
 async def test_ingest_intraday_basic() -> None:
-    # NOTE: you still need the local postgres running for this engine URL to work
-    engine = create_async_engine(
-        "postgresql+asyncpg://postgres:postgres@localhost:5435/stacklion_test"
-    )
+    engine = create_async_engine(TEST_DATABASE_URL)
     Session = async_sessionmaker(engine, expire_on_commit=False, class_=AsyncSession)
 
     async with Session() as session:

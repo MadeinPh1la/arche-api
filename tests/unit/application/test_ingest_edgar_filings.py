@@ -1,6 +1,7 @@
 # tests/unit/application/test_ingest_edgar_filings.py
-
 from __future__ import annotations
+
+import os
 
 import pytest
 from sqlalchemy.ext.asyncio import AsyncSession, async_sessionmaker, create_async_engine
@@ -11,10 +12,16 @@ from stacklion_api.application.use_cases.external_apis.ingest_edgar_filings impo
     IngestEdgarRequest,
 )
 
+# Use CI-friendly DB URL by default, overridable via env for local dev.
+TEST_DATABASE_URL = os.getenv(
+    "DATABASE_URL",
+    "postgresql+asyncpg://stacklion:stacklion@127.0.0.1:5432/stacklion_test",
+)
+
 
 class FakeEdgarGateway(EdgarGateway):
     async def fetch_recent_filings(self, *, cik: str, limit: int = 100) -> dict[str, object]:
-        # Minimal deterministic payload
+        """Return a minimal deterministic EDGAR payload."""
         return {
             "cik": cik,
             "filings": [
@@ -26,9 +33,7 @@ class FakeEdgarGateway(EdgarGateway):
 
 @pytest.mark.anyio
 async def test_ingest_edgar_filings_counts_filings_and_persists_raw() -> None:
-    engine = create_async_engine(
-        "postgresql+asyncpg://postgres:postgres@localhost:5435/stacklion_test"
-    )
+    engine = create_async_engine(TEST_DATABASE_URL)
     Session = async_sessionmaker(engine, expire_on_commit=False, class_=AsyncSession)
 
     async with Session() as session:
@@ -40,5 +45,5 @@ async def test_ingest_edgar_filings_counts_filings_and_persists_raw() -> None:
         # We returned 2 filings in the fake, so the UC should report 2
         assert count == 2
 
-        # You can optionally assert staging rows exist here if you want deeper coverage
-        # e.g. via direct SELECT on the staging tables
+        # Optionally, assert staging rows here if you want deeper coverage
+        # via direct SELECTs on the staging tables.

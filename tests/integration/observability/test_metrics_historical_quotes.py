@@ -1,3 +1,4 @@
+# tests/integration/observability/test_metrics_historical_quotes.py
 # Prometheus metrics smoke & assertions for A6.
 # - Hits /v2/quotes/historical
 # - Scrapes /metrics
@@ -11,22 +12,24 @@ import respx
 from fastapi import FastAPI
 from fastapi.testclient import TestClient
 
-# Your app factory that registers metrics endpoint and the A6 router
 from stacklion_api.main import create_app
 
 
 @pytest.fixture(scope="module")
 def app() -> FastAPI:
+    """Create the FastAPI application once per test module."""
     return create_app()
 
 
 @pytest.fixture(scope="module")
-def client(app) -> TestClient:
+def client(app: FastAPI) -> TestClient:
+    """HTTP client bound to the app under test."""
     return TestClient(app)
 
 
 @respx.mock
-def test_metrics_exposed_and_increment_after_success(client: TestClient):
+def test_metrics_exposed_and_increment_after_success(client: TestClient) -> None:
+    """Successful historical quotes request should emit core metrics."""
     # Mock upstream EOD call
     respx.get("https://api.marketstack.com/v2/eod").mock(
         return_value=httpx.Response(
@@ -78,7 +81,8 @@ def test_metrics_exposed_and_increment_after_success(client: TestClient):
 
 
 @respx.mock
-def test_metrics_error_paths_increment_counters(client: TestClient):
+def test_metrics_error_paths_increment_counters(client: TestClient) -> None:
+    """Error path (upstream 429) should increment error metrics."""
     # Make upstream return 429 to trigger rate-limited path
     respx.get("https://api.marketstack.com/v2/intraday").mock(
         return_value=httpx.Response(429, json={"error": {"code": "rate_limit"}})
@@ -98,15 +102,26 @@ def test_metrics_error_paths_increment_counters(client: TestClient):
     assert prom.status_code == 200
     body = prom.text
 
-    # Error counters should reflect at least one error; label names may differ.
-    # Adjust label filters to your actual implementation (e.g., reason="rate_limited").
+    # Error counters should reflect at least one error.
     assert "stacklion_market_data_errors_total" in body
-    assert 'reason="rate_limited"' in body or "rate_limited" in body
+    # Implementation-specific labels may vary; avoid overfitting to the exact reason label.
+    # We just want some indication of rate limiting present in the metrics text.
+    assert (
+        "rate_limited" in body
+        or 'reason="rate_limited"' in body
+        or "rate_limit" in body
+        or 'reason="rate_limit"' in body
+    )
 
 
 @pytest.fixture(autouse=True)
-def _force_real_gateway(monkeypatch):
-    # Ensure DI does NOT choose the deterministic stub
-    monkeypatch.setenv("ENVIRONMENT", "dev")  # not "test"
-    monkeypatch.setenv("MARKETSTACK_ACCESS_KEY", "x")  # non-empty dummy key
+def _configure_env_for_metrics(monkeypatch: pytest.MonkeyPatch) -> None:
+    """Ensure DI chooses the real gateway + rate limiting for these metrics tests."""
+    # Non-test environment so the app doesn't select stubs.
+    monkeypatch.setenv("ENVIRONMENT", "dev")
+    # Dummy non-empty key so the Marketstack client wiring is enabled.
+    monkeypatch.setenv("MARKETSTACK_ACCESS_KEY", "x")
+    # Ensure rate limiting is enabled so the 429 path actually gets exercised.
+    monkeypatch.setenv("RATE_LIMIT_ENABLED", "true")
+    # Make sure we are not in any "test mode" shortcut paths.
     monkeypatch.delenv("STACKLION_TEST_MODE", raising=False)

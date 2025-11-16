@@ -145,6 +145,12 @@ class Settings(BaseSettings):
         validation_alias="AUTH_HS256_SECRET",
     )
 
+    auth_algorithm: str = Field(
+        default="HS256",
+        description="JWT signing algorithm used in HS256 dev/test mode.",
+        validation_alias="AUTH_ALGORITHM",
+    )
+
     # Clerk / OIDC mode
     clerk_frontend_api: str | None = Field(
         default=None,
@@ -179,6 +185,12 @@ class Settings(BaseSettings):
         default=None,
         description="Optional explicit JWKS URL override for Clerk (rarely needed).",
         validation_alias="CLERK_JWKS_URL",
+    )
+
+    clerk_webhook_secret: str | None = Field(
+        default=None,
+        description="Shared secret used to validate Clerk webhooks.",
+        validation_alias="CLERK_WEBHOOK_SECRET",
     )
 
     # Compatibility public key input (if you don't want JWKS)
@@ -286,7 +298,7 @@ class Settings(BaseSettings):
     )
     rate_limit_backend: str = Field(
         default="redis",
-        description="Backend used for rate limiting (currently only 'redis').",
+        description="Backend used for rate limiting (e.g., 'redis', 'memory').",
         validation_alias="RATE_LIMIT_BACKEND",
     )
     rate_limit_window_seconds: int = Field(
@@ -359,6 +371,12 @@ class Settings(BaseSettings):
         default=None,
         description="Human label for ingestion cadence (e.g., '3x').",
         validation_alias="INGESTION_FREQUENCY",
+    )
+
+    edgar_base_url: str = Field(
+        default="https://data.sec.gov",
+        description="Base URL for SEC EDGAR data APIs.",
+        validation_alias="EDGAR_BASE_URL",
     )
 
     # ---------------------------
@@ -513,6 +531,7 @@ def get_settings() -> Settings:
                 "redis_health_check_interval_s": settings.redis_health_check_interval_s,
                 "redis_socket_timeout_s": settings.redis_socket_timeout_s,
                 "redis_socket_connect_timeout_s": settings.redis_socket_connect_timeout_s,
+                "edgar_base_url": str(settings.edgar_base_url),
             },
         )
         return settings

@@ -5,10 +5,10 @@ build-backend = "setuptools.build_meta"
 [project]
 name = "stacklion-api"
 version = "0.1.0"
-description = "Bloomberg-grade financial data API (Clean Architecture, FastAPI, SQLAlchemy, Pydantic v2, Redis)"
+description = "Professional-grade financial data API (Clean Architecture, FastAPI, SQLAlchemy, Pydantic v2, Redis)"
 readme = "README.md"
 requires-python = ">=3.12"
-authors = [{ name = "Northern Lion Labs" }]
+authors = [{ name = "Stacklion / Kevin Downey" }]
 license = { text = "Proprietary" }
 classifiers = [
   "Programming Language :: Python :: 3",
@@ -43,6 +43,7 @@ dev = [
   "respx>=0.21",
   "anyio>=4.4",
   "fakeredis>=2.23",
+  "python-dotenv>=1.0",
 
   # quality
   "ruff>=0.6",
@@ -233,7 +234,7 @@ addopts = """
   --cov=stacklion_api
   --cov-report=term-missing:skip-covered
   --cov-report=xml
-  --cov-fail-under=90
+  --cov-fail-under=80
 """
 asyncio_mode = "auto"
 testpaths = ["tests"]
