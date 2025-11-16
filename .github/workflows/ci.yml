@@ -93,9 +93,31 @@ jobs:
             sleep 1
           done
 
-      - name: Run database migrations (alembic upgrade head)
+      - name: Bootstrap test database schema (SQLAlchemy metadata)
         run: |
-          alembic upgrade head
+          python - << 'PY'
+          import asyncio
+          import os
+
+          from sqlalchemy import text
+          from sqlalchemy.ext.asyncio import create_async_engine
+
+          from stacklion_api.infrastructure.database.models.base import Base
+
+          async def main() -> None:
+            database_url = os.environ["DATABASE_URL"]
+            engine = create_async_engine(database_url)
+
+            async with engine.begin() as conn:
+              # Ensure staging schema exists for staging tables (e.g., staging.ingest_runs)
+              await conn.execute(text("CREATE SCHEMA IF NOT EXISTS staging"))
+              # Create all tables defined in ORM metadata
+              await conn.run_sync(Base.metadata.create_all)
+
+            await engine.dispose()
+
+          asyncio.run(main())
+          PY
 
       - name: Format (black --check)
         run: black --check --diff .
