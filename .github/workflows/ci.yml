@@ -81,9 +81,9 @@ jobs:
           python -m pip install --upgrade pip
           if [ -f requirements.txt ]; then pip install -r requirements.txt; fi
           if [ -f requirements-dev.txt ]; then pip install -r requirements-dev.txt; fi
-          # Ensure the project itself is importable
+          # Ensure the project itself is importable with dev + otel extras
           if [ -f pyproject.toml ] || [ -f setup.cfg ] || [ -f setup.py ]; then
-            pip install -e ".[dev]" || pip install -e .
+            pip install -e ".[dev,otel]" || pip install -e .
           fi
 
       - name: Wait for Postgres (belt & suspenders)
@@ -92,6 +92,10 @@ jobs:
             pg_isready -h 127.0.0.1 -p 5432 -d stacklion_test -U stacklion && break
             sleep 1
           done
+
+      - name: Run database migrations (alembic upgrade head)
+        run: |
+          alembic upgrade head
 
       - name: Format (black --check)
         run: black --check --diff .
