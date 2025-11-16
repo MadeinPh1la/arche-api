@@ -23,11 +23,13 @@ Usage:
 
 from __future__ import annotations
 
+import importlib
 import logging
 import os
 import time
 from collections.abc import Awaitable, Callable
-from typing import TYPE_CHECKING, Any
+from types import ModuleType
+from typing import TYPE_CHECKING, Any, cast
 
 from starlette.middleware.base import BaseHTTPMiddleware
 from starlette.requests import Request
@@ -35,7 +37,7 @@ from starlette.responses import Response
 
 from stacklion_api.infrastructure.observability.metrics import _get_or_create_hist
 
-if TYPE_CHECKING:  # typing-only import
+if TYPE_CHECKING:  # typing-only imports
     from prometheus_client import Histogram
 
 __all__ = ["RequestLatencyMiddleware", "get_http_server_request_duration_seconds"]
@@ -47,13 +49,13 @@ logger = logging.getLogger(__name__)
 # -----------------------------------------------------------------------------
 _OTEL_ENABLED = os.getenv("OTEL_ENABLED", "false").lower() in {"1", "true", "yes"}
 
+_otel_metrics: ModuleType | None
 try:
-    from opentelemetry import metrics as _otel_metrics
-
+    _otel_metrics = importlib.import_module("opentelemetry.metrics")
     _OTEL_AVAILABLE = True
-except Exception:  # pragma: no cover - only when OTEL is missing
-    _OTEL_AVAILABLE = False
+except Exception:  # pragma: no cover - OTEL is optional; missing is fine
     _otel_metrics = None
+    _OTEL_AVAILABLE = False
 
 _OTEL_LATENCY_HIST: Any | None = None  # concrete type depends on SDK/exporter
 
@@ -66,7 +68,7 @@ class _NoopHistogram:
         return
 
 
-def _otel_hist() -> Any:
+def _otel_hist() -> Any:  # pragma: no cover - OTEL path not exercised in tests
     """Return the process-wide OTEL HTTP server latency histogram (or no-op).
 
     Returns:
@@ -82,13 +84,16 @@ def _otel_hist() -> Any:
 
     if _OTEL_LATENCY_HIST is None:
         try:
-            meter = _otel_metrics.get_meter("stacklion.request")
+            if _otel_metrics is None:
+                raise RuntimeError("OTEL metrics module unavailable")
+            metrics_mod = cast(Any, _otel_metrics)
+            meter = metrics_mod.get_meter("stacklion.request")
             _OTEL_LATENCY_HIST = meter.create_histogram(
                 name="http_server_request_duration_seconds",
                 description="Inbound request latency.",
                 unit="s",
             )
-        except Exception:  # pragma: no cover (defensive)
+        except Exception:  # pragma: no cover (defensive logging only)
             logger.debug("otel.create_histogram_failed", exc_info=True)
             _OTEL_LATENCY_HIST = _NoopHistogram()
     return _OTEL_LATENCY_HIST
@@ -158,9 +163,11 @@ class RequestLatencyMiddleware(BaseHTTPMiddleware):
             )
 
             try:
-                self._prom_hist.labels(request.method.upper(), handler, str(status_code)).observe(
-                    duration
-                )
+                self._prom_hist.labels(
+                    request.method.upper(),
+                    handler,
+                    str(status_code),
+                ).observe(duration)
             except Exception:
                 logger.debug("prom.histogram_observe_failed", exc_info=True)
 

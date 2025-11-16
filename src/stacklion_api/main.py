@@ -185,12 +185,16 @@ def _patch_exception_handlers(app: FastAPI) -> None:
         app: FastAPI application.
     """
 
-    async def _http_error_handler(request: Request, exc: HTTPException) -> StarletteResponse:
+    async def _http_error_handler(request: Request, exc: Exception) -> StarletteResponse:
+        if not isinstance(exc, HTTPException):
+            # Let FastAPI/Starlette bubble unexpected exception types to their
+            # own handlers (including the generic Exception handler below).
+            raise exc
         return await handle_http_exception(request, exc)
 
-    async def _validation_error_handler(
-        request: Request, exc: RequestValidationError
-    ) -> StarletteResponse:
+    async def _validation_error_handler(request: Request, exc: Exception) -> StarletteResponse:
+        if not isinstance(exc, RequestValidationError):
+            raise exc
         return await handle_validation_error(request, exc)
 
     async def _unhandled_error_handler(request: Request, exc: Exception) -> StarletteResponse:
