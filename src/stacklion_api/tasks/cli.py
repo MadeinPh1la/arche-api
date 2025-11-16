@@ -17,6 +17,7 @@ Environment:
 
 from __future__ import annotations
 
+# mypy: disable-error-code=misc
 import asyncio
 import os
 from datetime import UTC, datetime, timedelta
@@ -106,7 +107,7 @@ def _ms_settings_from_env() -> MarketstackSettings:
     )
 
 
-@ingest_app.command("intraday")  # type: ignore[misc]
+@ingest_app.command("intraday")
 def ingest_intraday(
     database_url: str = typer.Option(
         ..., envvar="DATABASE_URL", help="Async SQLAlchemy URL."
@@ -206,7 +207,7 @@ def ingest_intraday(
     asyncio.run(_run())
 
 
-@partitions_app.command("create")  # type: ignore[misc]
+@partitions_app.command("create")
 def partitions_create(
     database_url: str = typer.Option(..., envvar="DATABASE_URL"),  # noqa: B008
     months: int = typer.Option(3, min=1, help="How many months ahead to create."),  # noqa: B008
@@ -230,7 +231,7 @@ def partitions_create(
     asyncio.run(_run())
 
 
-@replay_app.command("staging-to-md")  # type: ignore[misc]
+@replay_app.command("staging-to-md")
 def replay_staging_to_md(
     database_url: str = typer.Option(..., envvar="DATABASE_URL"),  # noqa: B008
     source: str = typer.Option("marketstack"),  # noqa: B008
@@ -283,7 +284,7 @@ def replay_staging_to_md(
 
 
 # Colon alias for convenience.
-@app.command("ingest:intraday")  # type: ignore[misc]
+@app.command("ingest:intraday")
 def ingest_intraday_alias(
     database_url: str = typer.Option(..., envvar="DATABASE_URL"),  # noqa: B008
     symbol_id: UUID = typer.Option(...),  # noqa: B008
