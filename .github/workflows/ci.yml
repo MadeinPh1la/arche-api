@@ -93,7 +93,7 @@ jobs:
             sleep 1
           done
 
-      - name: Bootstrap test database schema (SQLAlchemy metadata)
+      - name: Bootstrap test database schema (minimal tables for tests)
         run: |
           python - << 'PY'
           import asyncio
@@ -102,19 +102,52 @@ jobs:
           from sqlalchemy import text
           from sqlalchemy.ext.asyncio import create_async_engine
 
-          from stacklion_api.infrastructure.database.models.base import Base
-
           async def main() -> None:
-            database_url = os.environ["DATABASE_URL"]
-            engine = create_async_engine(database_url)
+              database_url = os.environ["DATABASE_URL"]
+              engine = create_async_engine(database_url)
 
-            async with engine.begin() as conn:
-              # Ensure staging schema exists for staging tables (e.g., staging.ingest_runs)
-              await conn.execute(text("CREATE SCHEMA IF NOT EXISTS staging"))
-              # Create all tables defined in ORM metadata
-              await conn.run_sync(Base.metadata.create_all)
+              async with engine.begin() as conn:
+                  # Ensure staging schema exists
+                  await conn.execute(text("CREATE SCHEMA IF NOT EXISTS staging"))
 
-            await engine.dispose()
+                  # Minimal md_intraday_bars_parent table for intraday bar tests
+                  await conn.execute(
+                      text(
+                          """
+                          CREATE TABLE IF NOT EXISTS md_intraday_bars_parent (
+                              symbol_id UUID NOT NULL,
+                              ts TIMESTAMPTZ NOT NULL,
+                              open NUMERIC(20, 8) NOT NULL,
+                              high NUMERIC(20, 8) NOT NULL,
+                              low NUMERIC(20, 8) NOT NULL,
+                              close NUMERIC(20, 8) NOT NULL,
+                              volume NUMERIC(38, 0) NOT NULL,
+                              provider VARCHAR NOT NULL,
+                              PRIMARY KEY (symbol_id, ts)
+                          )
+                          """
+                      )
+                  )
+
+                  # Minimal staging.ingest_runs table for ingest use case tests
+                  await conn.execute(
+                      text(
+                          """
+                          CREATE TABLE IF NOT EXISTS staging.ingest_runs (
+                              run_id UUID PRIMARY KEY,
+                              source VARCHAR NOT NULL,
+                              endpoint VARCHAR NOT NULL,
+                              key VARCHAR NOT NULL,
+                              started_at TIMESTAMPTZ NOT NULL,
+                              finished_at TIMESTAMPTZ,
+                              result VARCHAR,
+                              error_reason VARCHAR
+                          )
+                          """
+                      )
+                  )
+
+              await engine.dispose()
 
           asyncio.run(main())
           PY
