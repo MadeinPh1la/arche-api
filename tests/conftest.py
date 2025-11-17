@@ -15,10 +15,7 @@ import jwt
 import pytest
 from fastapi.testclient import TestClient
 from sqlalchemy import text
-from sqlalchemy.ext.asyncio import (
-    AsyncEngine,
-    create_async_engine,
-)
+from sqlalchemy.ext.asyncio import AsyncEngine, create_async_engine
 
 from stacklion_api.application.schemas.dto.quotes import HistoricalBarDTO
 from stacklion_api.config.settings import get_settings
@@ -44,6 +41,7 @@ def _bootstrap_test_db_schema(event_loop: asyncio.AbstractEventLoop) -> None:
     Creates:
         - public.md_intraday_bars_parent
         - staging.ingest_runs
+        - staging.raw_payloads
     """
     database_url = os.getenv(
         "DATABASE_URL",
@@ -88,6 +86,26 @@ def _bootstrap_test_db_schema(event_loop: asyncio.AbstractEventLoop) -> None:
                         finished_at TIMESTAMPTZ,
                         result VARCHAR,
                         error_reason VARCHAR
+                    )
+                    """
+                )
+            )
+
+            # Minimal staging.raw_payloads table for ingest staging payloads
+            await conn.execute(
+                text(
+                    """
+                    CREATE TABLE IF NOT EXISTS staging.raw_payloads (
+                        payload_id UUID PRIMARY KEY,
+                        source VARCHAR NOT NULL,
+                        endpoint VARCHAR NOT NULL,
+                        symbol_or_cik VARCHAR NOT NULL,
+                        as_of TIMESTAMPTZ,
+                        window_from TIMESTAMPTZ,
+                        window_to TIMESTAMPTZ,
+                        etag VARCHAR,
+                        received_at TIMESTAMPTZ NOT NULL,
+                        payload JSON NOT NULL
                     )
                     """
                 )
@@ -242,5 +260,6 @@ async def app_client(app) -> AsyncGenerator[httpx.AsyncClient, None]:
 
 @pytest.fixture
 def valid_clerk_jwt() -> str:
+    """Issue a short-lived HS256 test JWT for Clerk-protected routes."""
     payload = {"sub": "user_123", "iat": int(time.time()), "exp": int(time.time()) + 3600}
     return jwt.encode(payload, "testsecret", algorithm="HS256")
