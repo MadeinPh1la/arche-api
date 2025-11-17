@@ -148,6 +148,8 @@ def init_otel(service_name: str, service_version: str) -> None:
         )
         return
 
+    # Defensive guard: if imports partially failed or were modified in a
+    # way that leaves required symbols undefined, avoid crashing here.
     if any(
         obj is None
         for obj in (
@@ -162,8 +164,6 @@ def init_otel(service_name: str, service_version: str) -> None:
             BatchSpanProcessor,
         )
     ):
-        # Defensive guard: if imports partially failed or were modified in a
-        # way that leaves required symbols undefined, avoid crashing here.
         logger.warning(
             "otel.incomplete_imports",
             extra={
