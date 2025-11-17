@@ -16,6 +16,7 @@ dependency:
 
 from __future__ import annotations
 
+import importlib
 import logging
 from typing import Any
 
@@ -41,43 +42,54 @@ __all__ = [
 _OTEL_AVAILABLE: bool = False
 _OTEL_INITIALIZED: bool = False
 
+# Public names used by production code and monkeypatched by tests.
+# They are intentionally typed as Any so mypy does not complain about
+# runtime reassignment or monkeypatching in tests.
+metrics: Any = None
+trace: Any = None
+OTLPMetricExporter: Any = None
+OTLPSpanExporter: Any = None
+MeterProvider: Any = None
+PeriodicExportingMetricReader: Any = None
+Resource: Any = None
+TracerProvider: Any = None
+BatchSpanProcessor: Any = None
+
 # ---------------------------------------------------------------------------
-# Soft imports with indirection to keep mypy happy and tests patchable.
-# We import into underscored names, then re-export them as `Any` so that
-# tests can monkeypatch the public symbols without type conflicts.
+# Runtime import wiring (soft dependency)
 # ---------------------------------------------------------------------------
 
 try:  # pragma: no cover - import wiring is exercised indirectly via init_otel
-    from opentelemetry import metrics as _metrics
-    from opentelemetry import trace as _trace
+    metrics = importlib.import_module("opentelemetry.metrics")
+    trace = importlib.import_module("opentelemetry.trace")
+
     from opentelemetry.exporter.otlp.proto.grpc.metric_exporter import (
-        OTLPMetricExporter as _OTLPMetricExporter,
+        OTLPMetricExporter as _RealOTLPMetricExporter,
     )
     from opentelemetry.exporter.otlp.proto.grpc.trace_exporter import (
-        OTLPSpanExporter as _OTLPSpanExporter,
+        OTLPSpanExporter as _RealOTLPSpanExporter,
     )
-    from opentelemetry.sdk.metrics import MeterProvider as _MeterProvider
+    from opentelemetry.sdk.metrics import MeterProvider as _RealMeterProvider
     from opentelemetry.sdk.metrics.export import (
-        PeriodicExportingMetricReader as _PeriodicExportingMetricReader,
+        PeriodicExportingMetricReader as _RealPeriodicExportingMetricReader,
     )
-    from opentelemetry.sdk.resources import Resource as _Resource
-    from opentelemetry.sdk.trace import TracerProvider as _TracerProvider
+    from opentelemetry.sdk.resources import Resource as _RealResource
+    from opentelemetry.sdk.trace import TracerProvider as _RealTracerProvider
     from opentelemetry.sdk.trace.export import (
-        BatchSpanProcessor as _BatchSpanProcessor,
+        BatchSpanProcessor as _RealBatchSpanProcessor,
     )
+
+    OTLPMetricExporter = _RealOTLPMetricExporter
+    OTLPSpanExporter = _RealOTLPSpanExporter
+    MeterProvider = _RealMeterProvider
+    PeriodicExportingMetricReader = _RealPeriodicExportingMetricReader
+    Resource = _RealResource
+    TracerProvider = _RealTracerProvider
+    BatchSpanProcessor = _RealBatchSpanProcessor
 
     _OTEL_AVAILABLE = True
 except ModuleNotFoundError:  # pragma: no cover - only hit when OTEL is absent
-    _metrics = None
-    _trace = None
-    _OTLPMetricExporter = None
-    _OTLPSpanExporter = None
-    _MeterProvider = None
-    _PeriodicExportingMetricReader = None
-    _Resource = None
-    _TracerProvider = None
-    _BatchSpanProcessor = None
-
+    _OTEL_AVAILABLE = False
     logger.warning(
         "otel.import_failed",
         extra={
@@ -90,17 +102,6 @@ except ModuleNotFoundError:  # pragma: no cover - only hit when OTEL is absent
             }
         },
     )
-
-# Public names used by production code and monkeypatched by tests.
-metrics: Any = _metrics
-trace: Any = _trace
-OTLPMetricExporter: Any = _OTLPMetricExporter
-OTLPSpanExporter: Any = _OTLPSpanExporter
-MeterProvider: Any = _MeterProvider
-PeriodicExportingMetricReader: Any = _PeriodicExportingMetricReader
-Resource: Any = _Resource
-TracerProvider: Any = _TracerProvider
-BatchSpanProcessor: Any = _BatchSpanProcessor
 
 
 def init_otel(service_name: str, service_version: str) -> None:
