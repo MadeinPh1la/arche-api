@@ -48,15 +48,64 @@ jobs:
           --health-retries=10
 
     env:
-      # Runtime env for the app under test
+      # ====================================================================
+      # Test environment identity (mirrors .env.test)
+      # ====================================================================
       ENVIRONMENT: test
-      LOG_LEVEL: INFO
+      SERVICE_NAME: stacklion-api
+      SERVICE_VERSION: "0.0.0"
+      LOG_LEVEL: WARNING
+
+      # HTTP / CORS
+      ALLOWED_ORIGINS: "*"
+
+      # ====================================================================
+      # Database / cache (local + CI friendly)
+      # ====================================================================
       DATABASE_URL: postgresql+asyncpg://stacklion:stacklion@127.0.0.1:5432/stacklion_test
       TEST_DATABASE_URL: postgresql+asyncpg://stacklion:stacklion@127.0.0.1:5432/stacklion_test
       REDIS_URL: redis://127.0.0.1:6379/2
-      AUTH_ENABLED: "false"
+
+      # Celery (if used in tests)
+      CELERY_BROKER_URL: redis://127.0.0.1:6379/2
+      CELERY_RESULT_BACKEND: redis://127.0.0.1:6379/3
+
+      # ====================================================================
+      # External providers (test/stub keys)
+      # ====================================================================
+      MARKETSTACK_API_KEY: __test__
+      EDGAR_BASE_URL: https://data.sec.gov
+
+      # ====================================================================
+      # Rate limiting (typically disabled in tests)
+      # ====================================================================
       RATE_LIMIT_ENABLED: "false"
-      ALLOWED_ORIGINS: "*"
+      RATE_LIMIT_BACKEND: memory
+      RATE_LIMIT_BURST: "5"
+      RATE_LIMIT_WINDOW_SECONDS: "1"
+
+      # ====================================================================
+      # Auth (HS256 test mode)
+      # ====================================================================
+      AUTH_ENABLED: "false"
+      AUTH_ALGORITHM: HS256
+      AUTH_HS256_SECRET: test-secret
+
+      # ====================================================================
+      # OpenTelemetry (off in unit/integration tests)
+      # ====================================================================
+      OTEL_ENABLED: "false"
+      OTEL_EXPORTER_OTLP_ENDPOINT: http://127.0.0.1:4317
+
+      # ====================================================================
+      # Clerk (dummy test configuration)
+      # ====================================================================
+      NEXT_PUBLIC_CLERK_PUBLISHABLE_KEY: pk_test_stacklion_test
+      CLERK_SECRET_KEY: sk_test_stacklion_test
+      CLERK_ISSUER: https://stacklion-test.clerk.accounts.dev
+      CLERK_AUDIENCE: stacklion-api
+      CLERK_JWKS_URL: https://stacklion-test.clerk.accounts.dev/.well-known/jwks.json
+      CLERK_WEBHOOK_SECRET: whsec_test
 
     steps:
       - name: Checkout (PR head or push ref)
@@ -193,7 +242,7 @@ jobs:
           name: pytest-failures
           path: |
             .pytest_cache
-            tests/**/__snapshots__/*.json
+            tests/openapi/snapshots/openapi.json
             **/pytest-*.log
           if-no-files-found: ignore
 
