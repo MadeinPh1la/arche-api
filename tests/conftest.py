@@ -1,6 +1,8 @@
+# tests/conftest.py
 from __future__ import annotations
 
 import asyncio
+import os
 import time
 from collections.abc import AsyncGenerator, AsyncIterator, Callable, Generator
 from contextlib import AbstractAsyncContextManager, asynccontextmanager
@@ -12,6 +14,11 @@ import httpx
 import jwt
 import pytest
 from fastapi.testclient import TestClient
+from sqlalchemy import text
+from sqlalchemy.ext.asyncio import (
+    AsyncEngine,
+    create_async_engine,
+)
 
 from stacklion_api.application.schemas.dto.quotes import HistoricalBarDTO
 from stacklion_api.config.settings import get_settings
@@ -28,6 +35,68 @@ def event_loop() -> Generator[asyncio.AbstractEventLoop, None, None]:
         yield loop
     finally:
         loop.close()
+
+
+@pytest.fixture(scope="session", autouse=True)
+def _bootstrap_test_db_schema(event_loop: asyncio.AbstractEventLoop) -> None:
+    """Ensure the minimal DB schema exists for tests (both local and CI).
+
+    Creates:
+        - public.md_intraday_bars_parent
+        - staging.ingest_runs
+    """
+    database_url = os.getenv(
+        "DATABASE_URL",
+        "postgresql+asyncpg://stacklion:stacklion@127.0.0.1:5432/stacklion_test",
+    )
+
+    async def _init() -> None:
+        engine: AsyncEngine = create_async_engine(database_url)
+        async with engine.begin() as conn:
+            # Ensure staging schema exists
+            await conn.execute(text("CREATE SCHEMA IF NOT EXISTS staging"))
+
+            # Minimal md_intraday_bars_parent table for intraday bar tests
+            await conn.execute(
+                text(
+                    """
+                    CREATE TABLE IF NOT EXISTS md_intraday_bars_parent (
+                        symbol_id UUID NOT NULL,
+                        ts TIMESTAMPTZ NOT NULL,
+                        open NUMERIC(20, 8) NOT NULL,
+                        high NUMERIC(20, 8) NOT NULL,
+                        low NUMERIC(20, 8) NOT NULL,
+                        close NUMERIC(20, 8) NOT NULL,
+                        volume NUMERIC(38, 0) NOT NULL,
+                        provider VARCHAR NOT NULL,
+                        PRIMARY KEY (symbol_id, ts)
+                    )
+                    """
+                )
+            )
+
+            # Minimal staging.ingest_runs table for ingest use case tests
+            await conn.execute(
+                text(
+                    """
+                    CREATE TABLE IF NOT EXISTS staging.ingest_runs (
+                        run_id UUID PRIMARY KEY,
+                        source VARCHAR NOT NULL,
+                        endpoint VARCHAR NOT NULL,
+                        key VARCHAR NOT NULL,
+                        started_at TIMESTAMPTZ NOT NULL,
+                        finished_at TIMESTAMPTZ,
+                        result VARCHAR,
+                        error_reason VARCHAR
+                    )
+                    """
+                )
+            )
+
+        await engine.dispose()
+
+    # Run the async bootstrap on the session-scoped event loop
+    event_loop.run_until_complete(_init())
 
 
 @asynccontextmanager
