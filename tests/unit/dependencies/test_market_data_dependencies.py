@@ -91,7 +91,7 @@ async def test_deterministic_gateway_raises_on_bad_window() -> None:
 
 def _ms_settings_with_key(key: str) -> MarketstackSettings:
     return MarketstackSettings(
-        base_url="https://api.marketstack.com/v1",
+        base_url="https://api.marketstack.com/v2",
         access_key=SecretStr(key),
         timeout_s=2.0,
         max_retries=0,

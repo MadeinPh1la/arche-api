@@ -6,7 +6,7 @@
 Overview:
     Provides FastAPI dependency providers for Market Data, notably the
     :class:`GetHistoricalQuotesUseCase` consumed by the historical quotes router
-    and the A5 latest-quotes use case used by `/v1/quotes`.
+    and the A5 latest-quotes use case used by `/v2/quotes`.
 
 Layer:
     dependencies
@@ -84,7 +84,7 @@ def _load_marketstack_settings() -> MarketstackSettings:
     import stacklion_api.dependencies.market_data as md
 
     settings = md.get_settings()
-    base_url = getattr(settings, "marketstack_base_url", "https://api.marketstack.com/v1")
+    base_url = getattr(settings, "marketstack_base_url", None) or "https://api.marketstack.com/v2"
     access_key_raw = getattr(settings, "marketstack_api_key", None) or ""
     timeout_s = float(getattr(settings, "marketstack_timeout_s", 2.0))
     max_retries = int(getattr(settings, "marketstack_max_retries", 0))
