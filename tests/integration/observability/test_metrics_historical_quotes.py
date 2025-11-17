@@ -82,7 +82,13 @@ def test_metrics_exposed_and_increment_after_success(client: TestClient) -> None
 
 @respx.mock
 def test_metrics_error_paths_increment_counters(client: TestClient) -> None:
-    """Error path (upstream 429) should increment error metrics."""
+    """Error path (upstream 429) should increment error metrics.
+
+    We intentionally avoid asserting on specific label values or reason strings.
+    The contract here is:
+        - the stacklion_market_data_errors_total metric exists, and
+        - at least one instance of that metric has a value >= 1 after the 429 path.
+    """
     # Make upstream return 429 to trigger rate-limited path
     respx.get("https://api.marketstack.com/v2/intraday").mock(
         return_value=httpx.Response(429, json={"error": {"code": "rate_limit"}})
@@ -96,21 +102,43 @@ def test_metrics_error_paths_increment_counters(client: TestClient) -> None:
         "page": 1,
         "page_size": 1,
     }
+    # We only care that the request exercises the error path; status code is
+    # implementation-defined (may be 4xx or 5xx depending on mapping).
     client.get("/v2/quotes/historical", params=params)
 
     prom = client.get("/metrics")
     assert prom.status_code == 200
     body = prom.text
 
-    # Error counters should reflect at least one error.
+    # Error counter metric should be present.
     assert "stacklion_market_data_errors_total" in body
-    # Implementation-specific labels may vary; avoid overfitting to the exact reason label.
-    # We just want some indication of rate limiting present in the metrics text.
-    assert (
-        "rate_limited" in body
-        or 'reason="rate_limited"' in body
-        or "rate_limit" in body
-        or 'reason="rate_limit"' in body
+
+    # Extract all non-comment lines for the error counter, e.g.:
+    # stacklion_market_data_errors_total{...labels...} 1.0
+    lines = [
+        line
+        for line in body.splitlines()
+        if line.startswith("stacklion_market_data_errors_total")
+        and not line.startswith("#")
+    ]
+    assert lines, "Expected at least one stacklion_market_data_errors_total metric line"
+
+    # Parse the numeric values from the metric lines and ensure at least one
+    # reflects an increment (value >= 1.0).
+    values = []
+    for line in lines:
+        parts = line.split()
+        if len(parts) < 2:
+            continue
+        try:
+            values.append(float(parts[-1]))
+        except ValueError:
+            continue
+
+    assert values, "Could not parse any numeric values for stacklion_market_data_errors_total"
+    assert any(v >= 1.0 for v in values), (
+        "Expected stacklion_market_data_errors_total to be incremented "
+        "after exercising the upstream 429 error path"
     )
 
 
