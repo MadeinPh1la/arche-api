@@ -118,8 +118,7 @@ def test_metrics_error_paths_increment_counters(client: TestClient) -> None:
     lines = [
         line
         for line in body.splitlines()
-        if line.startswith("stacklion_market_data_errors_total")
-        and not line.startswith("#")
+        if line.startswith("stacklion_market_data_errors_total") and not line.startswith("#")
     ]
     assert lines, "Expected at least one stacklion_market_data_errors_total metric line"
 
