@@ -5,6 +5,8 @@ from typing import Any
 
 import pytest
 
+pytest.importorskip("opentelemetry")
+
 from stacklion_api.infrastructure.observability import otel
 
 

@@ -61,7 +61,11 @@
         ],
         "properties": {
           "error": {
-            "$ref": "#/components/schemas/ErrorObject"
+            "allOf": [
+              {
+                "$ref": "#/components/schemas/ErrorObject"
+              }
+            ]
           }
         },
         "required": [
@@ -92,7 +96,6 @@
           "details": {
             "anyOf": [
               {
-                "additionalProperties": true,
                 "type": "object"
               },
               {
@@ -143,6 +146,9 @@
           "status": {
             "const": "ok",
             "default": "ok",
+            "enum": [
+              "ok"
+            ],
             "title": "Status",
             "type": "string"
           }

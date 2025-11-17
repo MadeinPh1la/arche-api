@@ -4,8 +4,6 @@
 # - Scrapes /metrics
 # - Asserts histogram/counter lines exist post-request
 
-from __future__ import annotations
-
 from datetime import date
 
 import httpx
@@ -16,40 +14,46 @@ from fastapi.testclient import TestClient
 
 from stacklion_api.main import create_app
 
-EOD_URL_REGEX = r"https://api\.marketstack\.com/v2/eod.*"
-INTRADAY_URL_REGEX = r"https://api\.marketstack\.com/v2/intraday.*"
 
+@pytest.fixture()
+def app() -> FastAPI:
+    """Create a fresh FastAPI application instance for each test.
 
-@pytest.fixture(scope="module")
-def app(monkeypatch: pytest.MonkeyPatch) -> FastAPI:
-    """Create the FastAPI application once per test module with metrics wiring enabled.
-
-    Env is configured here so DI builds the real Marketstack client + metrics
-    middleware rather than any test stubs.
+    Using function scope here avoids fixture scope mismatches when combined
+    with function-scoped fixtures such as ``monkeypatch``.
     """
-    # Non-"test" environment so the app selects the real gateway wiring.
-    monkeypatch.setenv("ENVIRONMENT", "dev")
-    # Dummy non-empty key so the Marketstack client is enabled.
-    monkeypatch.setenv("MARKETSTACK_API_KEY", "x")
-    # Enable rate limiting so the 429 path is actually exercised.
-    monkeypatch.setenv("RATE_LIMIT_ENABLED", "true")
-    # Ensure no internal test-mode shortcuts are active.
-    monkeypatch.delenv("STACKLION_TEST_MODE", raising=False)
-
     return create_app()
 
 
-@pytest.fixture(scope="module")
+@pytest.fixture()
 def client(app: FastAPI) -> TestClient:
     """HTTP client bound to the app under test."""
     return TestClient(app)
 
 
+@pytest.fixture(autouse=True, scope="function")
+def _configure_env_for_metrics(monkeypatch: pytest.MonkeyPatch) -> None:
+    """Ensure DI chooses the real gateway + rate limiting for these metrics tests.
+
+    Notes:
+        This fixture is function-scoped and autouse so it runs before each test,
+        configuring the environment prior to app creation.
+    """
+    # Non-test environment so the app doesn't select stubs.
+    monkeypatch.setenv("ENVIRONMENT", "dev")
+    # Dummy non-empty key so the Marketstack client wiring is enabled.
+    monkeypatch.setenv("MARKETSTACK_ACCESS_KEY", "x")
+    # Ensure rate limiting is enabled so the 429 path actually gets exercised.
+    monkeypatch.setenv("RATE_LIMIT_ENABLED", "true")
+    # Make sure we are not in any "test mode" shortcut paths.
+    monkeypatch.delenv("STACKLION_TEST_MODE", raising=False)
+
+
 @respx.mock
 def test_metrics_exposed_and_increment_after_success(client: TestClient) -> None:
     """Successful historical quotes request should emit core metrics."""
-    # Mock upstream EOD call (V2, ignore query params).
-    respx.get(url__regex=EOD_URL_REGEX).mock(
+    # Mock upstream EOD call
+    respx.get("https://api.marketstack.com/v2/eod").mock(
         return_value=httpx.Response(
             200,
             json={
@@ -66,10 +70,10 @@ def test_metrics_exposed_and_increment_after_success(client: TestClient) -> None
                     }
                 ],
             },
-        ),
+        )
     )
 
-    # Hit the historical endpoint once to produce metrics.
+    # Hit the historical endpoint once to produce metrics
     params = {
         "tickers": ["AAPL"],
         "from_": str(date(2025, 1, 1)),
@@ -81,13 +85,13 @@ def test_metrics_exposed_and_increment_after_success(client: TestClient) -> None
     r1 = client.get("/v2/quotes/historical", params=params)
     assert r1.status_code == 200
 
-    # Scrape metrics.
+    # Scrape metrics
     prom = client.get("/metrics")
     assert prom.status_code == 200
     body = prom.text
 
-    # Assert key metrics exist.
-    # Histograms usually have _bucket/_count/_sum lines after first observation.
+    # Assert key metrics exist (rename if your project uses different names)
+    # Histograms usually have _count/_sum/_bucket lines after first observation.
     assert "stacklion_market_data_gateway_latency_seconds_bucket" in body
     assert "stacklion_market_data_gateway_latency_seconds_count" in body
     assert "stacklion_usecase_historical_quotes_latency_seconds_count" in body
@@ -100,15 +104,16 @@ def test_metrics_exposed_and_increment_after_success(client: TestClient) -> None
 
 @respx.mock
 def test_metrics_error_paths_increment_counters(client: TestClient) -> None:
-    """Error path (upstream 429) should surface error metrics.
+    """Error path (upstream 429) should increment error metrics.
 
-    The exact label set and increment semantics are implementation details.
-    This smoke test asserts that exercising a 429 path still results in the
-    error metric being present in the Prometheus text exposition.
+    We intentionally avoid asserting on specific label values or reason strings.
+    The contract here is:
+        - the stacklion_market_data_errors_total metric exists, and
+        - at least one instance of that metric has a value >= 1 after the 429 path.
     """
-    # Mock upstream intraday call (V2, ignore query params).
-    respx.get(url__regex=INTRADAY_URL_REGEX).mock(
-        return_value=httpx.Response(429, json={"error": {"code": "rate_limit"}}),
+    # Make upstream return 429 to trigger rate-limited path
+    respx.get("https://api.marketstack.com/v2/intraday").mock(
+        return_value=httpx.Response(429, json={"error": {"code": "rate_limit"}})
     )
 
     params = {
@@ -119,13 +124,40 @@ def test_metrics_error_paths_increment_counters(client: TestClient) -> None:
         "page": 1,
         "page_size": 1,
     }
-
+    # We only care that the request exercises the error path; status code is
+    # implementation-defined (may be 4xx or 5xx depending on mapping).
     client.get("/v2/quotes/historical", params=params)
 
     prom = client.get("/metrics")
     assert prom.status_code == 200
     body = prom.text
 
-    # Error counter metric should be registered and exposed somewhere
-    # (either as HELP/TYPE or as an actual series line).
+    # Error counter metric should be present.
     assert "stacklion_market_data_errors_total" in body
+
+    # Extract all non-comment lines for the error counter, e.g.:
+    # stacklion_market_data_errors_total{...labels...} 1.0
+    lines = [
+        line
+        for line in body.splitlines()
+        if line.startswith("stacklion_market_data_errors_total") and not line.startswith("#")
+    ]
+    assert lines, "Expected at least one stacklion_market_data_errors_total metric line"
+
+    # Parse the numeric values from the metric lines and ensure at least one
+    # reflects an increment (value >= 1.0).
+    values: list[float] = []
+    for line in lines:
+        parts = line.split()
+        if len(parts) < 2:
+            continue
+        try:
+            values.append(float(parts[-1]))
+        except ValueError:
+            continue
+
+    assert values, "Could not parse any numeric values for stacklion_market_data_errors_total"
+    assert any(v >= 1.0 for v in values), (
+        "Expected stacklion_market_data_errors_total to be incremented "
+        "after exercising the upstream 429 error path"
+    )

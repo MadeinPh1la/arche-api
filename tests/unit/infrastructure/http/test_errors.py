@@ -2,7 +2,7 @@ from __future__ import annotations
 
 from typing import Any
 
-from fastapi import FastAPI, HTTPException
+from fastapi import FastAPI, HTTPException, Request
 from fastapi.exceptions import RequestValidationError
 from fastapi.testclient import TestClient
 from pydantic import BaseModel
@@ -10,7 +10,14 @@ from pydantic import BaseModel
 from stacklion_api.infrastructure.http import errors
 
 
+class Payload(BaseModel):
+    """Simple request body model used to exercise validation handlers."""
+
+    value: int
+
+
 def test_error_envelope_includes_optional_fields() -> None:
+    """error_envelope should include all optional fields when provided."""
     payload = errors.error_envelope(
         code="SOME_CODE",
         http_status=418,
@@ -28,6 +35,7 @@ def test_error_envelope_includes_optional_fields() -> None:
 
 
 def _make_app_with_handlers() -> FastAPI:
+    """Build a FastAPI app wired with the custom error handlers under test."""
     app = FastAPI()
 
     # Attach handlers from our module
@@ -36,29 +44,31 @@ def _make_app_with_handlers() -> FastAPI:
     app.add_exception_handler(Exception, errors.handle_unhandled_exception)
 
     @app.middleware("http")
-    async def add_trace_id(request, call_next):  # type: ignore[no-untyped-def]
+    async def add_trace_id(request: Request, call_next):  # type: ignore[no-untyped-def]
+        """Inject a deterministic trace_id so tests can assert on it."""
         request.state.trace_id = "trace-xyz"
         return await call_next(request)
 
-    class Payload(BaseModel):
-        value: int
-
     @app.post("/validation")
     async def validation_route(body: Payload) -> dict[str, Any]:  # type: ignore[no-untyped-def]
+        """Route that triggers FastAPI/Pydantic validation."""
         return {"value": body.value}
 
     @app.get("/http-exc")
     async def http_exc_route() -> None:  # type: ignore[no-untyped-def]
+        """Route that raises a FastAPI HTTPException."""
         raise HTTPException(status_code=404, detail="not found")
 
     @app.get("/unhandled")
     async def unhandled_route() -> None:  # type: ignore[no-untyped-def]
+        """Route that raises an unhandled exception (mapped to 500)."""
         raise RuntimeError("boom")
 
     return app
 
 
 def test_handle_validation_error_envelope_and_trace_id() -> None:
+    """422 validation errors should be wrapped in the standard error envelope."""
     app = _make_app_with_handlers()
     client = TestClient(app)
 
@@ -75,6 +85,7 @@ def test_handle_validation_error_envelope_and_trace_id() -> None:
 
 
 def test_handle_http_exception_envelope() -> None:
+    """HTTPException should be mapped into the standardized error envelope."""
     app = _make_app_with_handlers()
     client = TestClient(app)
 
@@ -90,6 +101,7 @@ def test_handle_http_exception_envelope() -> None:
 
 
 def test_handle_unhandled_exception_envelope() -> None:
+    """Unhandled exceptions should be surfaced as INTERNAL_ERROR envelopes."""
     app = _make_app_with_handlers()
     # Important: don't re-raise server exceptions, we want the 500 response
     client = TestClient(app, raise_server_exceptions=False)
