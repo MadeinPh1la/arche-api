@@ -23,36 +23,60 @@ from stacklion_api.config.settings import get_settings
 
 logger = logging.getLogger(__name__)
 
-# ---------------------------------------------------------------------------
-# OpenTelemetry imports (soft)
-# ---------------------------------------------------------------------------
+__all__ = [
+    "init_otel",
+    "is_otel_initialized",
+    # Exposed for tests to monkeypatch.
+    "metrics",
+    "trace",
+    "OTLPMetricExporter",
+    "OTLPSpanExporter",
+    "MeterProvider",
+    "PeriodicExportingMetricReader",
+    "Resource",
+    "TracerProvider",
+    "BatchSpanProcessor",
+]
 
-_OTEL_AVAILABLE = False
+_OTEL_AVAILABLE: bool = False
+_OTEL_INITIALIZED: bool = False
+
+# ---------------------------------------------------------------------------
+# Soft imports with indirection to keep mypy happy and tests patchable.
+# We import into underscored names, then re-export them as `Any` so that
+# tests can monkeypatch the public symbols without type conflicts.
+# ---------------------------------------------------------------------------
 
 try:  # pragma: no cover - import wiring is exercised indirectly via init_otel
-    from opentelemetry import metrics, trace
-    from opentelemetry.exporter.otlp.proto.grpc.metric_exporter import OTLPMetricExporter
-    from opentelemetry.exporter.otlp.proto.grpc.trace_exporter import OTLPSpanExporter
-    from opentelemetry.sdk.metrics import MeterProvider
-    from opentelemetry.sdk.metrics.export import PeriodicExportingMetricReader
-    from opentelemetry.sdk.resources import Resource
-    from opentelemetry.sdk.trace import TracerProvider
-    from opentelemetry.sdk.trace.export import BatchSpanProcessor
+    from opentelemetry import metrics as _metrics
+    from opentelemetry import trace as _trace
+    from opentelemetry.exporter.otlp.proto.grpc.metric_exporter import (
+        OTLPMetricExporter as _OTLPMetricExporter,
+    )
+    from opentelemetry.exporter.otlp.proto.grpc.trace_exporter import (
+        OTLPSpanExporter as _OTLPSpanExporter,
+    )
+    from opentelemetry.sdk.metrics import MeterProvider as _MeterProvider
+    from opentelemetry.sdk.metrics.export import (
+        PeriodicExportingMetricReader as _PeriodicExportingMetricReader,
+    )
+    from opentelemetry.sdk.resources import Resource as _Resource
+    from opentelemetry.sdk.trace import TracerProvider as _TracerProvider
+    from opentelemetry.sdk.trace.export import (
+        BatchSpanProcessor as _BatchSpanProcessor,
+    )
 
     _OTEL_AVAILABLE = True
 except ModuleNotFoundError:  # pragma: no cover - only hit when OTEL is absent
-    # Keep names defined so type-checkers and callers can still import this
-    # module without blowing up. All OTEL operations will be short-circuited
-    # in `init_otel` when `_OTEL_AVAILABLE` is false.
-    metrics = None
-    trace = None
-    OTLPMetricExporter = object
-    OTLPSpanExporter = object
-    MeterProvider = object
-    PeriodicExportingMetricReader = object
-    Resource = object
-    TracerProvider = object
-    BatchSpanProcessor = object
+    _metrics = None
+    _trace = None
+    _OTLPMetricExporter = None
+    _OTLPSpanExporter = None
+    _MeterProvider = None
+    _PeriodicExportingMetricReader = None
+    _Resource = None
+    _TracerProvider = None
+    _BatchSpanProcessor = None
 
     logger.warning(
         "otel.import_failed",
@@ -66,6 +90,17 @@ except ModuleNotFoundError:  # pragma: no cover - only hit when OTEL is absent
             }
         },
     )
+
+# Public names used by production code and monkeypatched by tests.
+metrics: Any = _metrics
+trace: Any = _trace
+OTLPMetricExporter: Any = _OTLPMetricExporter
+OTLPSpanExporter: Any = _OTLPSpanExporter
+MeterProvider: Any = _MeterProvider
+PeriodicExportingMetricReader: Any = _PeriodicExportingMetricReader
+Resource: Any = _Resource
+TracerProvider: Any = _TracerProvider
+BatchSpanProcessor: Any = _BatchSpanProcessor
 
 
 def init_otel(service_name: str, service_version: str) -> None:
@@ -81,9 +116,11 @@ def init_otel(service_name: str, service_version: str) -> None:
       be configured to use that endpoint; otherwise library defaults apply.
 
     Args:
-        service_name: Logical service name (e.g., ``"stacklion-api"``).
+        service_name: Logical service name (for example, ``"stacklion-api"``).
         service_version: Deployed service version string.
     """
+    global _OTEL_INITIALIZED
+
     settings = get_settings()
 
     if not settings.otel_enabled:
@@ -99,7 +136,6 @@ def init_otel(service_name: str, service_version: str) -> None:
         return
 
     if not _OTEL_AVAILABLE:
-        # We already logged at import time; log again here with context.
         logger.warning(
             "otel.unavailable",
             extra={
@@ -112,7 +148,34 @@ def init_otel(service_name: str, service_version: str) -> None:
         )
         return
 
-    # At this point OTEL is available and enabled in settings.
+    if any(
+        obj is None
+        for obj in (
+            metrics,
+            trace,
+            OTLPMetricExporter,
+            OTLPSpanExporter,
+            MeterProvider,
+            PeriodicExportingMetricReader,
+            Resource,
+            TracerProvider,
+            BatchSpanProcessor,
+        )
+    ):
+        # Defensive guard: if imports partially failed or were modified in a
+        # way that leaves required symbols undefined, avoid crashing here.
+        logger.warning(
+            "otel.incomplete_imports",
+            extra={
+                "extra": {
+                    "service": service_name,
+                    "version": service_version,
+                }
+            },
+        )
+        return
+
+    # At this point OTEL is importable and enabled in settings.
     resource = Resource.create(
         {
             "service.name": service_name,
@@ -123,7 +186,6 @@ def init_otel(service_name: str, service_version: str) -> None:
     # -----------------------------------------------------------------------
     # Tracing
     # -----------------------------------------------------------------------
-    span_exporter: Any
     if settings.otel_exporter_otlp_endpoint:
         span_exporter = OTLPSpanExporter(endpoint=str(settings.otel_exporter_otlp_endpoint))
     else:
@@ -136,7 +198,6 @@ def init_otel(service_name: str, service_version: str) -> None:
     # -----------------------------------------------------------------------
     # Metrics
     # -----------------------------------------------------------------------
-    metric_exporter: Any
     if settings.otel_exporter_otlp_endpoint:
         metric_exporter = OTLPMetricExporter(endpoint=str(settings.otel_exporter_otlp_endpoint))
     else:
@@ -145,6 +206,8 @@ def init_otel(service_name: str, service_version: str) -> None:
     reader = PeriodicExportingMetricReader(metric_exporter)
     meter_provider = MeterProvider(resource=resource, metric_readers=[reader])
     metrics.set_meter_provider(meter_provider)
+
+    _OTEL_INITIALIZED = True
 
     logger.info(
         "otel.initialized",
@@ -160,3 +223,12 @@ def init_otel(service_name: str, service_version: str) -> None:
             }
         },
     )
+
+
+def is_otel_initialized() -> bool:
+    """Return whether OpenTelemetry has been successfully initialized.
+
+    This is a cheap, side-effect-free check that other components can use to
+    decide whether to register additional instrumentation.
+    """
+    return _OTEL_INITIALIZED
