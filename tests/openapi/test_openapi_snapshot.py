@@ -1,3 +1,4 @@
+# tests/openapi/test_openapi_snapshot.py
 # Copyright (c) Stacklion.
 # SPDX-License-Identifier: MIT
 """OpenAPI Snapshot Tests (E2E-lite)
@@ -6,10 +7,11 @@ Purpose:
     Verify the public HTTP contract is stable and includes the canonical
     envelopes per API Standards §17 (SuccessEnvelope, PaginatedEnvelope, ErrorEnvelope).
 
-Layer: tests/openapi
+Layer:
+    tests/openapi
 
 How it works:
-    - Imports the FastAPI app and fetches `/openapi.json`.
+    - Builds a FastAPI app and fetches `/openapi.json`.
     - Normalizes away volatile/non-contract fields.
     - Compares with a committed snapshot under tests/openapi/snapshots/openapi.json.
     - If `UPDATE_OPENAPI_SNAPSHOT=1`, rewrites the snapshot (intentional change).
@@ -31,13 +33,93 @@ from typing import Any, cast
 import pytest
 from fastapi.testclient import TestClient
 
-from stacklion_api.main import app
+from stacklion_api.main import create_app
 
 SNAPSHOT_PATH = Path(__file__).parent / "snapshots" / "openapi.json"
 
 
+# --------------------------------------------------------------------------- #
+# Deterministic environment for OpenAPI tests
+# --------------------------------------------------------------------------- #
+
+
+@pytest.fixture(autouse=True)
+def _stable_openapi_env(monkeypatch: pytest.MonkeyPatch) -> None:
+    """Force a deterministic environment for OpenAPI generation.
+
+    This ensures that the app built inside these tests sees the same config
+    locally and in CI, so the normalized OpenAPI spec is stable and matches
+    the committed snapshot.
+    """
+    # Environment identity
+    monkeypatch.setenv("ENVIRONMENT", "test")
+    monkeypatch.setenv("SERVICE_NAME", "stacklion-api")
+    monkeypatch.setenv("SERVICE_VERSION", "0.0.0")
+    monkeypatch.setenv("LOG_LEVEL", "WARNING")
+
+    # HTTP / CORS
+    monkeypatch.setenv("ALLOWED_ORIGINS", "*")
+
+    # Database / cache
+    monkeypatch.setenv(
+        "DATABASE_URL",
+        "postgresql+asyncpg://stacklion:stacklion@127.0.0.1:5432/stacklion_test",
+    )
+    monkeypatch.setenv("REDIS_URL", "redis://127.0.0.1:6379/2")
+
+    # Celery (if used)
+    monkeypatch.setenv("CELERY_BROKER_URL", "redis://127.0.0.1:6379/2")
+    monkeypatch.setenv("CELERY_RESULT_BACKEND", "redis://127.0.0.1:6379/3")
+
+    # External providers
+    monkeypatch.setenv("MARKETSTACK_API_KEY", "__test__")
+    monkeypatch.setenv("EDGAR_BASE_URL", "https://data.sec.gov")
+
+    # Rate limiting
+    monkeypatch.setenv("RATE_LIMIT_ENABLED", "false")
+    monkeypatch.setenv("RATE_LIMIT_BACKEND", "memory")
+    monkeypatch.setenv("RATE_LIMIT_BURST", "5")
+    monkeypatch.setenv("RATE_LIMIT_WINDOW_SECONDS", "1")
+
+    # Auth (HS256 test mode)
+    monkeypatch.setenv("AUTH_ENABLED", "false")
+    monkeypatch.setenv("AUTH_ALGORITHM", "HS256")
+    monkeypatch.setenv("AUTH_HS256_SECRET", "test-secret")
+
+    # OpenTelemetry
+    monkeypatch.setenv("OTEL_ENABLED", "false")
+    monkeypatch.setenv("OTEL_EXPORTER_OTLP_ENDPOINT", "http://127.0.0.1:4317")
+
+    # Clerk (dummy test configuration)
+    monkeypatch.setenv("NEXT_PUBLIC_CLERK_PUBLISHABLE_KEY", "pk_test_stacklion_test")
+    monkeypatch.setenv("CLERK_SECRET_KEY", "sk_test_stacklion_test")
+    monkeypatch.setenv(
+        "CLERK_ISSUER",
+        "https://stacklion-test.clerk.accounts.dev",
+    )
+    monkeypatch.setenv("CLERK_AUDIENCE", "stacklion-api")
+    monkeypatch.setenv(
+        "CLERK_JWKS_URL",
+        "https://stacklion-test.clerk.accounts.dev/.well-known/jwks.json",
+    )
+    monkeypatch.setenv("CLERK_WEBHOOK_SECRET", "whsec_test")
+
+    # Kill any internal "test mode" shortcuts that might alter routers.
+    monkeypatch.delenv("STACKLION_TEST_MODE", raising=False)
+
+
+# --------------------------------------------------------------------------- #
+# Helpers
+# --------------------------------------------------------------------------- #
+
+
 def _fetch_openapi() -> dict[str, Any]:
-    """Return the OpenAPI spec from the running FastAPI app."""
+    """Return the OpenAPI spec from a freshly built FastAPI app.
+
+    We build the app inside this function (instead of importing a module-global
+    app) so the environment overrides applied in fixtures take effect.
+    """
+    app = create_app()
     with TestClient(app) as client:
         resp = client.get("/openapi.json")
         assert resp.status_code == 200, f"Cannot fetch openapi.json: {resp.text}"
@@ -114,6 +196,11 @@ def _write_snapshot(data: dict[str, Any]) -> None:
     if not txt.endswith("\n"):
         txt += "\n"  # enforce trailing newline for clean diffs
     SNAPSHOT_PATH.write_text(txt, encoding="utf-8")
+
+
+# --------------------------------------------------------------------------- #
+# Tests
+# --------------------------------------------------------------------------- #
 
 
 @pytest.mark.anyio

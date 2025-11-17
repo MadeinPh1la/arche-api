@@ -4,6 +4,8 @@
 # - Scrapes /metrics
 # - Asserts histogram/counter lines exist post-request
 
+from __future__ import annotations
+
 from datetime import date
 
 import httpx
@@ -14,10 +16,26 @@ from fastapi.testclient import TestClient
 
 from stacklion_api.main import create_app
 
+EOD_URL_REGEX = r"https://api\.marketstack\.com/v2/eod.*"
+INTRADAY_URL_REGEX = r"https://api\.marketstack\.com/v2/intraday.*"
+
 
 @pytest.fixture(scope="module")
-def app() -> FastAPI:
-    """Create the FastAPI application once per test module."""
+def app(monkeypatch: pytest.MonkeyPatch) -> FastAPI:
+    """Create the FastAPI application once per test module with metrics wiring enabled.
+
+    Env is configured here so DI builds the real Marketstack client + metrics
+    middleware rather than any test stubs.
+    """
+    # Non-"test" environment so the app selects the real gateway wiring.
+    monkeypatch.setenv("ENVIRONMENT", "dev")
+    # Dummy non-empty key so the Marketstack client is enabled.
+    monkeypatch.setenv("MARKETSTACK_API_KEY", "x")
+    # Enable rate limiting so the 429 path is actually exercised.
+    monkeypatch.setenv("RATE_LIMIT_ENABLED", "true")
+    # Ensure no internal test-mode shortcuts are active.
+    monkeypatch.delenv("STACKLION_TEST_MODE", raising=False)
+
     return create_app()
 
 
@@ -30,8 +48,8 @@ def client(app: FastAPI) -> TestClient:
 @respx.mock
 def test_metrics_exposed_and_increment_after_success(client: TestClient) -> None:
     """Successful historical quotes request should emit core metrics."""
-    # Mock upstream EOD call
-    respx.get("https://api.marketstack.com/v2/eod").mock(
+    # Mock upstream EOD call (V2, ignore query params).
+    respx.get(url__regex=EOD_URL_REGEX).mock(
         return_value=httpx.Response(
             200,
             json={
@@ -48,10 +66,10 @@ def test_metrics_exposed_and_increment_after_success(client: TestClient) -> None
                     }
                 ],
             },
-        )
+        ),
     )
 
-    # Hit the historical endpoint once to produce metrics
+    # Hit the historical endpoint once to produce metrics.
     params = {
         "tickers": ["AAPL"],
         "from_": str(date(2025, 1, 1)),
@@ -63,13 +81,13 @@ def test_metrics_exposed_and_increment_after_success(client: TestClient) -> None
     r1 = client.get("/v2/quotes/historical", params=params)
     assert r1.status_code == 200
 
-    # Scrape metrics
+    # Scrape metrics.
     prom = client.get("/metrics")
     assert prom.status_code == 200
     body = prom.text
 
-    # Assert key metrics exist (rename if your project uses different names)
-    # Histograms usually have _count/_sum/_bucket lines after first observation.
+    # Assert key metrics exist.
+    # Histograms usually have _bucket/_count/_sum lines after first observation.
     assert "stacklion_market_data_gateway_latency_seconds_bucket" in body
     assert "stacklion_market_data_gateway_latency_seconds_count" in body
     assert "stacklion_usecase_historical_quotes_latency_seconds_count" in body
@@ -84,14 +102,13 @@ def test_metrics_exposed_and_increment_after_success(client: TestClient) -> None
 def test_metrics_error_paths_increment_counters(client: TestClient) -> None:
     """Error path (upstream 429) should surface error metrics.
 
-    In practice, the exact label set and increment semantics are environment-
-    dependent (dev vs test wiring, provider configuration, etc.). For this
-    integration smoke test we assert the presence of the error metric, not the
-    exact counter value or labels.
+    The exact label set and increment semantics are implementation details.
+    This smoke test asserts that exercising a 429 path still results in the
+    error metric being present in the Prometheus text exposition.
     """
-    # Make upstream return 429 to trigger rate-limited path
-    respx.get("https://api.marketstack.com/v2/intraday").mock(
-        return_value=httpx.Response(429, json={"error": {"code": "rate_limit"}})
+    # Mock upstream intraday call (V2, ignore query params).
+    respx.get(url__regex=INTRADAY_URL_REGEX).mock(
+        return_value=httpx.Response(429, json={"error": {"code": "rate_limit"}}),
     )
 
     params = {
@@ -102,25 +119,13 @@ def test_metrics_error_paths_increment_counters(client: TestClient) -> None:
         "page": 1,
         "page_size": 1,
     }
+
     client.get("/v2/quotes/historical", params=params)
 
     prom = client.get("/metrics")
     assert prom.status_code == 200
     body = prom.text
 
-    # Error counter metric should be registered and exposed in the metrics text.
+    # Error counter metric should be registered and exposed somewhere
+    # (either as HELP/TYPE or as an actual series line).
     assert "stacklion_market_data_errors_total" in body
-
-
-@pytest.fixture(autouse=True)
-def _configure_env_for_metrics(monkeypatch: pytest.MonkeyPatch) -> None:
-    """Ensure DI chooses the real gateway + rate limiting for these metrics tests."""
-    # Non-test environment so the app doesn't select stubs.
-    monkeypatch.setenv("ENVIRONMENT", "dev")
-    # Dummy non-empty key so the Marketstack client wiring is enabled.
-    # NOTE: keep in sync with your settings/env var name.
-    monkeypatch.setenv("MARKETSTACK_API_KEY", "x")
-    # Ensure rate limiting is enabled so the 429 path actually gets exercised.
-    monkeypatch.setenv("RATE_LIMIT_ENABLED", "true")
-    # Make sure we are not in any "test mode" shortcut paths.
-    monkeypatch.delenv("STACKLION_TEST_MODE", raising=False)
