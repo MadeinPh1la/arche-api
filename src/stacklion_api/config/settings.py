@@ -383,7 +383,7 @@ class Settings(BaseSettings):
     # MarketStack (optional)
     # ---------------------------
     marketstack_base_url: str = Field(
-        default="https://api.marketstack.com/v1",
+        default="https://api.marketstack.com/v2",
         description="MarketStack base URL used by HTTP clients and ingest.",
         validation_alias="MARKETSTACK_BASE_URL",
     )
@@ -453,7 +453,7 @@ class Settings(BaseSettings):
                     Environment.TEST,
                 ):
                     raise ValueError(
-                        "'*' CORS origin is only allowed in development/test environments."
+                        "'*' CORS origin is only allowed in development/test environments.",
                     )
                 self.cors_allow_origins = entries
             else:
@@ -466,7 +466,7 @@ class Settings(BaseSettings):
             if not (has_hs256 or has_clerk):
                 raise ValueError(
                     "AUTH_ENABLED is true but neither HS256 nor Clerk configuration is present. "
-                    "Set AUTH_HS256_SECRET or configure Clerk (CLERK_FRONTEND_API + CLERK_PUBLISHER)."
+                    "Set AUTH_HS256_SECRET or configure Clerk (CLERK_FRONTEND_API + CLERK_PUBLISHER).",
                 )
 
         return self

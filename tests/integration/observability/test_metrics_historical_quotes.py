@@ -43,6 +43,8 @@ def _configure_env_for_metrics(monkeypatch: pytest.MonkeyPatch) -> None:
     monkeypatch.setenv("ENVIRONMENT", "dev")
     # Dummy non-empty key so the Marketstack client wiring is enabled.
     monkeypatch.setenv("MARKETSTACK_ACCESS_KEY", "x")
+    # Force v2 base URL regardless of CI or shell environment.
+    monkeypatch.setenv("MARKETSTACK_BASE_URL", "https://api.marketstack.com/v2")
     # Ensure rate limiting is enabled so the 429 path actually gets exercised.
     monkeypatch.setenv("RATE_LIMIT_ENABLED", "true")
     # Make sure we are not in any "test mode" shortcut paths.
@@ -70,7 +72,7 @@ def test_metrics_exposed_and_increment_after_success(client: TestClient) -> None
                     }
                 ],
             },
-        )
+        ),
     )
 
     # Hit the historical endpoint once to produce metrics
@@ -113,7 +115,7 @@ def test_metrics_error_paths_increment_counters(client: TestClient) -> None:
     """
     # Make upstream return 429 to trigger rate-limited path
     respx.get("https://api.marketstack.com/v2/intraday").mock(
-        return_value=httpx.Response(429, json={"error": {"code": "rate_limit"}})
+        return_value=httpx.Response(429, json={"error": {"code": "rate_limit"}}),
     )
 
     params = {

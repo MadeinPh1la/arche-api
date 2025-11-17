@@ -70,7 +70,7 @@ def _bootstrap_test_db_schema(event_loop: asyncio.AbstractEventLoop) -> None:
                         PRIMARY KEY (symbol_id, ts)
                     )
                     """
-                )
+                ),
             )
 
             # Minimal staging.ingest_runs table for ingest use case tests
@@ -88,7 +88,7 @@ def _bootstrap_test_db_schema(event_loop: asyncio.AbstractEventLoop) -> None:
                         error_reason VARCHAR
                     )
                     """
-                )
+                ),
             )
 
             # Minimal staging.raw_payloads table for ingest staging payloads
@@ -108,7 +108,7 @@ def _bootstrap_test_db_schema(event_loop: asyncio.AbstractEventLoop) -> None:
                         payload JSON NOT NULL
                     )
                     """
-                )
+                ),
             )
 
         await engine.dispose()
@@ -227,7 +227,8 @@ class _TestFakeUC:
 
 def pytest_configure(config: pytest.Config) -> None:
     config.addinivalue_line(
-        "markers", "use_fake_uc: override the historical quotes UC with a fake."
+        "markers",
+        "use_fake_uc: override the historical quotes UC with a fake.",
     )
 
 

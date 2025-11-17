@@ -68,7 +68,8 @@ class MarketstackGateway(MarketDataGateway):
         """
         if self._settings is None:
             raise MarketDataValidationError(
-                "gateway_not_configured", details={"missing": "MarketstackSettings"}
+                "gateway_not_configured",
+                details={"missing": "MarketstackSettings"},
             )
         return self._settings
 
@@ -127,7 +128,7 @@ class MarketstackGateway(MarketDataGateway):
                         f"Interval '{normalized}' not available on current plan. "
                         f"Use one of: {sorted(allowed)}"
                     ),
-                }
+                },
             )
         return normalized
 
@@ -172,12 +173,17 @@ class MarketstackGateway(MarketDataGateway):
             code = err.get("code")
             msg = err.get("message")
             raise MarketDataValidationError(
-                "provider_error", details={"code": code, "message": msg}
+                "provider_error",
+                details={"code": code, "message": msg},
             )
 
         data = raw.get("data")
         if not isinstance(data, list):
-            raise MarketDataValidationError("bad_shape", details={"expected": "data:list"})
+            raise MarketDataValidationError(
+                "bad_shape",
+                details={"expected": "data:list"},
+            )
+
         total = 0
         pg = raw.get("pagination")
         if isinstance(pg, Mapping) and isinstance(pg.get("total"), int):
@@ -187,7 +193,8 @@ class MarketstackGateway(MarketDataGateway):
         for item in data:
             if not isinstance(item, dict):
                 raise MarketDataValidationError(
-                    "bad_shape", details={"expected": "data:list[object]"}
+                    "bad_shape",
+                    details={"expected": "data:list[object]"},
                 )
             rows.append(item)
         return rows, total
@@ -215,7 +222,11 @@ class MarketstackGateway(MarketDataGateway):
             close = Decimal(str(x["close"]))
             volume = int(x["volume"])
         except Exception as exc:  # noqa: BLE001
-            raise MarketDataValidationError("bad_values", details={"error": str(exc)}) from exc
+            raise MarketDataValidationError(
+                "bad_values",
+                details={"error": str(exc)},
+            ) from exc
+
         return HistoricalBarDTO(
             ticker=ticker,
             timestamp=ts,
@@ -260,10 +271,14 @@ class MarketstackGateway(MarketDataGateway):
                 volume=str(x["volume"]),
             )
         except Exception as exc:  # noqa: BLE001
-            raise MarketDataValidationError("bad_values", details={"error": str(exc)}) from exc
+            raise MarketDataValidationError(
+                "bad_values",
+                details={"error": str(exc)},
+            ) from exc
 
     async def _handle_httpx_response(
-        self, response: httpx.Response
+        self,
+        response: httpx.Response,
     ) -> tuple[Mapping[str, Any], str | None]:
         """Map HTTP errors to domain exceptions and parse JSON for raw HTTP mode.
 
@@ -297,10 +312,15 @@ class MarketstackGateway(MarketDataGateway):
             raise MarketDataBadRequest(details=details)
         if status >= 500:
             raise MarketDataUnavailable()
+
         try:
             payload: Mapping[str, Any] = response.json()
         except Exception as exc:  # noqa: BLE001
-            raise MarketDataValidationError("non_json", details={"error": str(exc)}) from exc
+            raise MarketDataValidationError(
+                "non_json",
+                details={"error": str(exc)},
+            ) from exc
+
         etag = response.headers.get("ETag")
         return payload, etag
 
@@ -427,7 +447,8 @@ class MarketstackGateway(MarketDataGateway):
     # Read-side helper for existing UCs/routers
     # --------------------------------------------------------------------- #
     async def get_historical_bars(
-        self, q: HistoricalQueryDTO
+        self,
+        q: HistoricalQueryDTO,
     ) -> tuple[list[HistoricalBarDTO], int]:
         """Fetch and map historical bars for read use-cases.
 
