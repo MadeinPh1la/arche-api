@@ -8,7 +8,7 @@ This repository provides persistence primitives for intraday bars backed by the
 
 Responsibilities
 ----------------
-* Upsert (insert or update) intraday bars at the `(symbol_id, ts)` granularity.
+* Upsert (insert or update) intraday bars at the ``(symbol_id, ts)`` granularity.
 * Fetch the latest intraday bar for a given symbol.
 * Normalize numeric fields on read so downstream code sees canonical
   :class:`decimal.Decimal` values (no scale-padding artifacts).
@@ -32,8 +32,6 @@ from sqlalchemy.dialects.postgresql import insert as pg_insert
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from stacklion_api.infrastructure.database.models.md import IntradayBar
-
-from .base_repository import BaseRepository
 
 
 @dataclass(frozen=True)
@@ -64,7 +62,7 @@ class IntradayBarRow:
     provider: str = "marketstack"
 
 
-class MarketDataRepository(BaseRepository[IntradayBar]):
+class MarketDataRepository:
     """Repository for intraday market data."""
 
     def __init__(self, session: AsyncSession) -> None:
@@ -73,7 +71,7 @@ class MarketDataRepository(BaseRepository[IntradayBar]):
         Args:
             session: Async SQLAlchemy session bound to the target database.
         """
-        super().__init__(session)
+        self._session = session
 
     async def upsert_intraday_bars(self, rows: Sequence[IntradayBarRow]) -> int:
         """Insert or update a batch of intraday bars.
@@ -119,7 +117,6 @@ class MarketDataRepository(BaseRepository[IntradayBar]):
 
         # Use PostgreSQL-specific upsert for efficiency and atomicity.
         stmt = pg_insert(IntradayBar).values(payload)
-
         stmt = stmt.on_conflict_do_update(
             index_elements=[IntradayBar.symbol_id, IntradayBar.ts],
             set_={
@@ -140,11 +137,10 @@ class MarketDataRepository(BaseRepository[IntradayBar]):
         """Return the latest intraday bar for a symbol.
 
         The "latest" bar is the one with the greatest ``ts`` for the given
-        ``symbol_id``. Ordering is deterministic: ``ts`` descending and then
-        ``symbol_id`` ascending with NULLS LAST on ``ts``. Numeric fields are
-        normalized to canonical :class:`decimal.Decimal` instances so their
-        string representation does not include provider-specific scale padding
-        (e.g. ``"1.60000000"`` → ``"1.6"``).
+        ``symbol_id``. Numeric fields are normalized to canonical
+        :class:`decimal.Decimal` instances so their string representation does
+        not include provider-specific scale padding (for example,
+        ``"1.60000000"`` → ``"1.6"``).
 
         Args:
             symbol_id: Internal UUID of the symbol.
@@ -153,10 +149,14 @@ class MarketDataRepository(BaseRepository[IntradayBar]):
             The latest :class:`IntradayBar` instance, or ``None`` if no bars
             exist for the symbol.
         """
-        stmt = select(IntradayBar).where(IntradayBar.symbol_id == symbol_id)
-        stmt = self.order_by_latest(stmt, IntradayBar.ts, IntradayBar.symbol_id).limit(1)
+        stmt = (
+            select(IntradayBar)
+            .where(IntradayBar.symbol_id == symbol_id)
+            .order_by(IntradayBar.ts.desc())
+            .limit(1)
+        )
 
-        latest = await self.fetch_optional(stmt)
+        latest = await self._session.scalar(stmt)
         if latest is None:
             return None
 
@@ -178,7 +178,7 @@ class MarketDataRepository(BaseRepository[IntradayBar]):
         def _norm(value: Any) -> Any:
             if isinstance(value, Decimal):
                 # normalize() removes trailing zeros and adjusts exponent
-                # e.g. Decimal('1.60000000') → Decimal('1.6')
+                # e.g. Decimal("1.60000000") → Decimal("1.6")
                 return value.normalize()
             return value
 
