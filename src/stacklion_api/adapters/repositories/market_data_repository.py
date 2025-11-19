@@ -33,6 +33,8 @@ from sqlalchemy.ext.asyncio import AsyncSession
 
 from stacklion_api.infrastructure.database.models.md import IntradayBar
 
+from .base_repository import BaseRepository
+
 
 @dataclass(frozen=True)
 class IntradayBarRow:
@@ -62,7 +64,7 @@ class IntradayBarRow:
     provider: str = "marketstack"
 
 
-class MarketDataRepository:
+class MarketDataRepository(BaseRepository[IntradayBar]):
     """Repository for intraday market data."""
 
     def __init__(self, session: AsyncSession) -> None:
@@ -71,7 +73,7 @@ class MarketDataRepository:
         Args:
             session: Async SQLAlchemy session bound to the target database.
         """
-        self._session = session
+        super().__init__(session)
 
     async def upsert_intraday_bars(self, rows: Sequence[IntradayBarRow]) -> int:
         """Insert or update a batch of intraday bars.
@@ -116,7 +118,6 @@ class MarketDataRepository:
         ]
 
         # Use PostgreSQL-specific upsert for efficiency and atomicity.
-        # Pass the mapped class rather than __table__ to keep type-checkers happy.
         stmt = pg_insert(IntradayBar).values(payload)
 
         stmt = stmt.on_conflict_do_update(
@@ -139,9 +140,11 @@ class MarketDataRepository:
         """Return the latest intraday bar for a symbol.
 
         The "latest" bar is the one with the greatest ``ts`` for the given
-        ``symbol_id``. Numeric fields are normalized to canonical
-        :class:`decimal.Decimal` instances so their string representation does
-        not include provider-specific scale padding (e.g. ``"1.60000000"`` → ``"1.6"``).
+        ``symbol_id``. Ordering is deterministic: ``ts`` descending and then
+        ``symbol_id`` ascending with NULLS LAST on ``ts``. Numeric fields are
+        normalized to canonical :class:`decimal.Decimal` instances so their
+        string representation does not include provider-specific scale padding
+        (e.g. ``"1.60000000"`` → ``"1.6"``).
 
         Args:
             symbol_id: Internal UUID of the symbol.
@@ -150,14 +153,10 @@ class MarketDataRepository:
             The latest :class:`IntradayBar` instance, or ``None`` if no bars
             exist for the symbol.
         """
-        stmt = (
-            select(IntradayBar)
-            .where(IntradayBar.symbol_id == symbol_id)
-            .order_by(IntradayBar.ts.desc())
-            .limit(1)
-        )
+        stmt = select(IntradayBar).where(IntradayBar.symbol_id == symbol_id)
+        stmt = self.order_by_latest(stmt, IntradayBar.ts, IntradayBar.symbol_id).limit(1)
 
-        latest = await self._session.scalar(stmt)
+        latest = await self.fetch_optional(stmt)
         if latest is None:
             return None
 
