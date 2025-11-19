@@ -1,14 +1,18 @@
-# Copyright (c)
+# Copyright (c) Stacklion.
 # SPDX-License-Identifier: MIT
-"""Prometheus scrape endpoint (/metrics).
+"""Prometheus scrape endpoint (`/metrics`).
 
 This router exposes a text-format Prometheus endpoint and *warms* lazily
 created histograms so that classic `_bucket`/`_count`/`_sum` series appear
 on the very first scrape (cold start). In particular:
-  • Ensures readiness histograms exist and are observed at 0.0s.
-  • Ensures the canonical server request-duration histogram
-    (`http_server_request_duration_seconds`) exists and is observed with
-    labeled values for the `/metrics` route (GET, "/metrics", "200").
+
+    • Ensures readiness histograms exist and are observed at 0.0s.
+    • Ensures the canonical server request-duration histogram
+      (`http_server_request_duration_seconds`) exists and is observed with
+      labeled values for the `/metrics` route (GET, "/metrics", "200").
+
+Layer:
+    adapters/routers
 """
 
 from __future__ import annotations
@@ -34,11 +38,7 @@ router = APIRouter()
 
 
 def _get_server_histogram() -> Histogram | None:
-    """Return the canonical server-side request histogram if available.
-
-    Returns:
-        Histogram | None: The histogram collector or ``None`` if unavailable.
-    """
+    """Return the canonical server-side request histogram if available."""
     # Canonical location (RequestLatencyMiddleware)
     with suppress(Exception):
         from stacklion_api.infrastructure.middleware.request_metrics import (
@@ -47,7 +47,7 @@ def _get_server_histogram() -> Histogram | None:
 
         return get_http_server_request_duration_seconds()
 
-    # Optional fallback: import for side effects (in case of eager registration).
+    # Optional fallback: import for side effects (eager registration).
     with suppress(Exception):
         import stacklion_api.infrastructure.middleware.request_metrics as _req_metrics  # noqa: F401
 
@@ -57,14 +57,7 @@ def _get_server_histogram() -> Histogram | None:
 
 
 def _ensure_observed_once(getter: Callable[[], Histogram], name: str) -> None:
-    """Create (via getter) and ensure at least one observation (0.0 s).
-
-    Some prometheus_client backends only emit classic *_bucket on first observe.
-
-    Args:
-        getter: Callable returning a histogram.
-        name: Logical metric name for diagnostics.
-    """
+    """Create (via getter) and ensure at least one observation (0.0 s)."""
     try:
         hist = getter()
         hist.observe(0.0)
@@ -78,15 +71,12 @@ def _ensure_observed_once(getter: Callable[[], Histogram], name: str) -> None:
 @router.get("/metrics", include_in_schema=False)
 async def metrics_probe() -> Response:
     """Expose Prometheus metrics; warm histograms so buckets exist on cold scrape."""
-    # Warm readiness histograms (idempotent) and force an initial 0.0s observation.
     _ensure_observed_once(get_readyz_db_latency_seconds, "readyz_db_latency_seconds")
     _ensure_observed_once(get_readyz_redis_latency_seconds, "readyz_redis_latency_seconds")
 
-    # Warm server-side request histogram: ensure labeled bucket lines exist now.
     server_hist = _get_server_histogram()
     if server_hist is not None:
         with suppress(Exception):
-            # Use the actual route path and an expected status for this scrape.
             server_hist.labels("GET", "/metrics", "200").observe(0.0)
             logger.debug("metrics_router: warmed http_server_request_duration_seconds with 0.0s")
 

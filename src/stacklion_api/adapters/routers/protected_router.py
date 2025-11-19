@@ -49,15 +49,11 @@ def ping() -> dict[str, str]:
     """Return a simple OK payload.
 
     Returns:
-        dict[str, str]: ``{"status": "ok"}`` on success (401/403 are produced by the dependency).
+        dict[str, str]: {"status": "ok"} on success (401/403 are produced by the dependency).
     """
     return {"status": "ok"}
 
 
 def get_router() -> APIRouter:
-    """Expose the inner APIRouter for inclusion in the FastAPI app.
-
-    Returns:
-        APIRouter: Configured router for ``/v1/protected``.
-    """
+    """Expose the inner APIRouter for inclusion in the FastAPI app."""
     return _api

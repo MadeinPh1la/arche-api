@@ -2,6 +2,7 @@
   "components": {
     "schemas": {
       "CheckResult": {
+        "additionalProperties": false,
         "properties": {
           "detail": {
             "anyOf": [
@@ -61,7 +62,11 @@
         ],
         "properties": {
           "error": {
-            "$ref": "#/components/schemas/ErrorObject"
+            "allOf": [
+              {
+                "$ref": "#/components/schemas/ErrorObject"
+              }
+            ]
           }
         },
         "required": [
@@ -92,7 +97,6 @@
           "details": {
             "anyOf": [
               {
-                "additionalProperties": true,
                 "type": "object"
               },
               {
@@ -139,10 +143,14 @@
         "type": "string"
       },
       "LivenessResponse": {
+        "additionalProperties": false,
         "properties": {
           "status": {
             "const": "ok",
             "default": "ok",
+            "enum": [
+              "ok"
+            ],
             "title": "Status",
             "type": "string"
           }
@@ -200,7 +208,81 @@
         "title": "PaginatedEnvelope",
         "type": "object"
       },
+      "QuoteItem": {
+        "additionalProperties": false,
+        "properties": {
+          "as_of": {
+            "examples": [
+              "2025-10-28T12:34:56Z"
+            ],
+            "format": "date-time",
+            "title": "As Of",
+            "type": "string"
+          },
+          "currency": {
+            "examples": [
+              "USD"
+            ],
+            "title": "Currency",
+            "type": "string"
+          },
+          "price": {
+            "examples": [
+              "428.17"
+            ],
+            "title": "Price",
+            "type": "string"
+          },
+          "ticker": {
+            "examples": [
+              "MSFT"
+            ],
+            "title": "Ticker",
+            "type": "string"
+          },
+          "volume": {
+            "anyOf": [
+              {
+                "type": "integer"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "examples": [
+              14230000
+            ],
+            "title": "Volume"
+          }
+        },
+        "required": [
+          "ticker",
+          "price",
+          "currency",
+          "as_of"
+        ],
+        "title": "QuoteItem",
+        "type": "object"
+      },
+      "QuotesBatch": {
+        "additionalProperties": false,
+        "properties": {
+          "items": {
+            "items": {
+              "$ref": "#/components/schemas/QuoteItem"
+            },
+            "title": "Items",
+            "type": "array"
+          }
+        },
+        "required": [
+          "items"
+        ],
+        "title": "QuotesBatch",
+        "type": "object"
+      },
       "ReadinessResponse": {
+        "additionalProperties": false,
         "properties": {
           "checks": {
             "items": {
@@ -232,6 +314,31 @@
         "properties": {
           "data": {
             "title": "Data"
+          }
+        },
+        "required": [
+          "data"
+        ],
+        "title": "SuccessEnvelope",
+        "type": "object"
+      },
+      "SuccessEnvelope_QuotesBatch_": {
+        "additionalProperties": false,
+        "examples": [
+          {
+            "data": {
+              "id": "a3d8b3c8-9d9e-4a64-9b38-7e2b8cfd8c34",
+              "ticker": "MSFT"
+            }
+          }
+        ],
+        "properties": {
+          "data": {
+            "allOf": [
+              {
+                "$ref": "#/components/schemas/QuotesBatch"
+              }
+            ]
           }
         },
         "required": [
@@ -345,6 +452,117 @@
         "tags": [
           "Auth",
           "Auth"
+        ]
+      }
+    },
+    "/v2/quotes": {
+      "get": {
+        "parameters": [
+          {
+            "in": "query",
+            "name": "tickers",
+            "required": true,
+            "schema": {
+              "title": "Tickers",
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/SuccessEnvelope_QuotesBatch_"
+                }
+              }
+            }
+          },
+          "400": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorEnvelope"
+                }
+              }
+            }
+          },
+          "401": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorEnvelope"
+                }
+              }
+            }
+          },
+          "403": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorEnvelope"
+                }
+              }
+            }
+          },
+          "404": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorEnvelope"
+                }
+              }
+            }
+          },
+          "409": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorEnvelope"
+                }
+              }
+            }
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorEnvelope"
+                }
+              }
+            }
+          },
+          "429": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorEnvelope"
+                }
+              }
+            }
+          },
+          "500": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorEnvelope"
+                }
+              }
+            }
+          },
+          "503": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorEnvelope"
+                }
+              }
+            }
+          }
+        },
+        "tags": [
+          "Market Data",
+          "Market Data"
         ]
       }
     },
