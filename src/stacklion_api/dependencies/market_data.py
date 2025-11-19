@@ -1,5 +1,4 @@
-# src/stacklion_api/dependencies/market_data.py
-# Copyright (c)
+# Copyright (c) Stacklion.
 # SPDX-License-Identifier: MIT
 """Dependency wiring for Market Data (gateways, use cases).
 
@@ -218,7 +217,8 @@ class DeterministicMarketDataGateway:
                 limit = int(kwargs.get("limit", 50))
                 offset = int(kwargs.get("offset", 0))
             except KeyError as exc:  # pragma: no cover
-                raise TypeError(f"Missing argument for deterministic gateway: {exc}") from exc
+                msg = f"Missing argument for deterministic gateway: {exc}"
+                raise TypeError(msg) from exc
         elif len(args) == 1:
             # DTO-style call: get_historical_bars(dto)
             q = cast(Any, args[0])
@@ -231,7 +231,8 @@ class DeterministicMarketDataGateway:
                 page = int(q.page)
                 offset = max(0, (page - 1) * limit)
             except AttributeError as exc:  # pragma: no cover
-                raise TypeError(f"Unsupported DTO passed to deterministic gateway: {exc}") from exc
+                msg = f"Unsupported DTO passed to deterministic gateway: {exc}"
+                raise TypeError(msg) from exc
         elif len(args) >= 5:
             # Positional signature: tickers, date_from, date_to, interval, limit, [offset]
             tickers = cast(Sequence[str], args[0])
@@ -357,7 +358,7 @@ async def get_historical_quotes_use_case() -> AsyncGenerator[GetHistoricalQuotes
     """
     cache: CachePort = InMemoryAsyncCache()
     ms_settings = _load_marketstack_settings()
-    gateway = (
+    gateway: Any = (
         DeterministicMarketDataGateway()
         if _is_deterministic_mode(ms_settings)
         else _build_real_gateway(ms_settings)
@@ -390,7 +391,8 @@ def _resolve_get_quotes_use_case_cls() -> type[Any]:
         cls = getattr(module, name, None)
         if cls is not None:
             return cast(type[Any], cls)
-    raise RuntimeError("Could not resolve GetQuotes use case class from get_quotes.py")
+    msg = "Could not resolve GetQuotes use case class from get_quotes.py"
+    raise RuntimeError(msg)
 
 
 def get_latest_quotes_use_case() -> Any:
@@ -401,7 +403,7 @@ def get_latest_quotes_use_case() -> Any:
     """
     cache: CachePort = InMemoryAsyncCache()
     ms_settings = _load_marketstack_settings()
-    gateway = (
+    gateway: Any = (
         DeterministicMarketDataGateway()
         if _is_deterministic_mode(ms_settings)
         else _build_real_gateway(ms_settings)

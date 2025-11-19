@@ -5,7 +5,6 @@
 
 from __future__ import annotations
 
-from dataclasses import dataclass
 from datetime import datetime
 from typing import Any
 from uuid import UUID, uuid4
@@ -13,18 +12,12 @@ from uuid import UUID, uuid4
 from sqlalchemy import select
 from sqlalchemy.ext.asyncio import AsyncSession
 
+from stacklion_api.domain.interfaces.repositories.staging_repository import IngestKey
 from stacklion_api.infrastructure.database.models.staging import IngestRun, RawPayload
 
 from .base_repository import BaseRepository
 
-
-@dataclass(frozen=True)
-class IngestKey:
-    """Canonical dedupe key for an ingest run."""
-
-    source: str
-    endpoint: str
-    key: str  # e.g. "MSFT:2025-11-11T10:00Z-2025-11-11T11:00Z"
+__all__ = ["IngestKey", "StagingRepository"]
 
 
 class StagingRepository(BaseRepository[Any]):
