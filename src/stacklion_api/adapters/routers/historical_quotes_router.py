@@ -9,9 +9,10 @@ Synopsis:
 
 Design:
     * Presentation-only: builds DTOs, delegates to UC, shapes response.
-    * Returns **PaginatedEnvelope** directly on 200 (governance rule for list endpoints).
-    * Emits standard error envelopes on 4xx/5xx without violating FastAPI response_model validation.
-    * Weak ETags (`W/"…"`) are returned on 200 and mirrored on 304.
+    * Returns PaginatedEnvelope directly on 200 (governance rule for list endpoints).
+    * Emits standard error envelopes on 4xx/5xx without tripping FastAPI's
+      response_model validation (errors are returned as JSONResponse).
+    * ETags are supplied by the use case; 304 is emitted when they match.
     * Observability: metrics owned by UC / gateway; router stays thin.
 
 Layer:
@@ -134,6 +135,8 @@ def _dump_item(obj: object) -> dict[str, Any]:
 # --------------------------------------------------------------------------- #
 @router.get(
     "/historical",
+    # IMPORTANT: keep the generic PaginatedEnvelope here so OpenAPI uses the
+    # canonical schema name, not a specialized PaginatedEnvelope_... variant.
     response_model=PaginatedEnvelope,
     status_code=status.HTTP_200_OK,
     responses=cast("dict[int | str, dict[str, Any]]", BaseRouter.std_error_responses()),
@@ -162,11 +165,11 @@ async def get_historical_quotes(
     Behavior:
         * Builds a `HistoricalQueryDTO` from query params.
         * Delegates to the use case (`uc.execute`).
-        * If `If-None-Match` equals the computed/provider ETag, returns 304 with no body.
-        * Otherwise returns a canonical paginated envelope on 200.
+        * If `If-None-Match` equals the UC-supplied ETag, returns 304 with no body.
+        * Otherwise returns a canonical paginated body (PaginatedEnvelope shape) on 200.
 
     Returns:
-        A canonical paginated body on 200, or a bare 304 JSONResponse when ETag matches.
+        A PaginatedEnvelope-compatible dict on 200, or a bare 304/JSON error response.
     """
     # Basic param validation & normalization
     if not (1 <= len(tickers) <= 50) or any(len(t.strip()) == 0 for t in tickers):
@@ -199,7 +202,7 @@ async def get_historical_quotes(
     if_none_match = request.headers.get("If-None-Match")
 
     try:
-        # Call UC (lets the UC/gateway leverage cache/metrics and compute an ETag)
+        # Use case returns (items, total, etag)
         items, total, etag = await uc.execute(q, if_none_match=if_none_match)
 
         # Conditional GET check against UC-supplied (or upstream) ETag
@@ -212,8 +215,10 @@ async def get_historical_quotes(
             )
 
         # Success (200) path: return PaginatedEnvelope-compatible body
-        response.headers["ETag"] = etag
+        if etag:
+            response.headers["ETag"] = etag
         response.headers.setdefault("Cache-Control", "public, max-age=60")
+
         return {
             "items": [_dump_item(i) for i in items],
             "total": total,

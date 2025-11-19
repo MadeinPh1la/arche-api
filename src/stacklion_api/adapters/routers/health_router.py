@@ -1,5 +1,4 @@
-# src/stacklion_api/adapters/routers/health_router.py
-# Copyright (c)
+# Copyright (c) Stacklion.
 # SPDX-License-Identifier: MIT
 """Health endpoints (Adapters Layer).
 
@@ -11,10 +10,10 @@ Design:
     * Adapters boundary respected: no direct DB/Redis imports. Probes are injected.
     * Deterministic OpenAPI: stable operation_id/summary; typed response models.
     * Non-blocking: probes run concurrently; latencies recorded to Prometheus.
-    * Testability: a provider **instance** (`probe_provider`) is the DI token so
-      overrides match by identity reliably; `use_cache=False` honors late overrides.
-    * Back-compat: `/health/readiness` is canonical (in schema); `/health/ready`
-      is an alias (`include_in_schema=False`) for existing tooling.
+    * Testability: a provider instance (`probe_provider`) is the DI token so overrides
+      match by identity reliably; `use_cache=False` honors late overrides.
+    * Back-compat: `/health/readiness` is canonical; `/health/ready` is an alias
+      (`include_in_schema=False`) for existing tooling.
 """
 
 from __future__ import annotations
@@ -26,8 +25,9 @@ from enum import Enum
 from typing import Annotated, Protocol
 
 from fastapi import APIRouter, Depends, Response, status
-from pydantic import BaseModel, Field
+from pydantic import Field
 
+from stacklion_api.adapters.schemas.http.base import BaseHTTPSchema
 from stacklion_api.infrastructure.logging.logger import get_json_logger
 from stacklion_api.infrastructure.observability.metrics import (
     get_readyz_db_latency_seconds,
@@ -56,7 +56,7 @@ class HealthState(str, Enum):
     """Reserved for hard failures; not emitted by this router today."""
 
 
-class CheckResult(BaseModel):
+class CheckResult(BaseHTTPSchema):
     """Result of a single dependency check.
 
     Attributes:
@@ -72,7 +72,7 @@ class CheckResult(BaseModel):
     duration_ms: float
 
 
-class ReadinessResponse(BaseModel):
+class ReadinessResponse(BaseHTTPSchema):
     """Aggregated readiness response.
 
     Attributes:
@@ -84,7 +84,7 @@ class ReadinessResponse(BaseModel):
     checks: list[CheckResult] = Field(default_factory=list)
 
 
-class LivenessResponse(BaseModel):
+class LivenessResponse(BaseHTTPSchema):
     """Liveness response indicating the process is running."""
 
     status: t.Literal["ok"] = "ok"
@@ -122,11 +122,7 @@ class NoopProbe:
 
 
 def get_health_probe() -> HealthProbe:
-    """Return the default health probe.
-
-    Returns:
-        HealthProbe: Default implementation (NoopProbe) until overridden.
-    """
+    """Return the default health probe."""
     return NoopProbe()
 
 
@@ -134,16 +130,12 @@ class ProbeProvider:
     """Dependency token object for readiness routes.
 
     The instance of this class is used as the DI key for readiness endpoints.
-    Overriding this **instance** in tests/app composition is robust because
-    FastAPI matches overrides by identity, and `use_cache=False` honors late overrides.
+    Overriding this instance in tests/app composition is robust because FastAPI
+    matches overrides by identity, and `use_cache=False` honors late overrides.
     """
 
     def __call__(self) -> HealthProbe:
-        """Return the current health probe.
-
-        Returns:
-            HealthProbe: A probe implementation from `get_health_probe()`.
-        """
+        """Return the current health probe."""
         return get_health_probe()
 
 
@@ -164,11 +156,7 @@ probe_provider = ProbeProvider()
     status_code=status.HTTP_200_OK,
 )
 async def liveness() -> LivenessResponse:
-    """Return a fast liveness signal.
-
-    Returns:
-        LivenessResponse: Always `{"status": "ok"}` with no external I/O.
-    """
+    """Return a fast liveness signal (no external I/O)."""
     return LivenessResponse()
 
 
@@ -177,15 +165,8 @@ async def _readiness_impl(response: Response, probe: HealthProbe) -> ReadinessRe
 
     Behavior:
         * Times each probe and records latencies to Prometheus histograms (seconds).
-        * Returns HTTP 200 if **all** checks are "ok"; otherwise HTTP 503.
+        * Returns HTTP 200 if all checks are "ok"; otherwise HTTP 503.
         * Emits structured JSON logs for observability.
-
-    Args:
-        response: FastAPI response object; set to 503 if any check fails.
-        probe: Injected dependency implementing `HealthProbe`.
-
-    Returns:
-        ReadinessResponse: Aggregated state and individual check results.
     """
     loop = asyncio.get_running_loop()
 
@@ -199,7 +180,10 @@ async def _readiness_impl(response: Response, probe: HealthProbe) -> ReadinessRe
         duration_ms = (loop.time() - start) * 1000.0
         observe_seconds(duration_ms / 1000.0)  # Prometheus expects seconds
         return CheckResult(
-            name=name, status="ok" if ok else "down", detail=detail, duration_ms=duration_ms
+            name=name,
+            status="ok" if ok else "down",
+            detail=detail,
+            duration_ms=duration_ms,
         )
 
     db_hist = get_readyz_db_latency_seconds()
@@ -224,7 +208,7 @@ async def _readiness_impl(response: Response, probe: HealthProbe) -> ReadinessRe
         extra={
             "extra": {
                 "overall": payload.status,
-                "checks": [r.model_dump() for r in payload.checks],
+                "checks": [r.model_dump_http() for r in payload.checks],
             }
         },
     )
@@ -232,7 +216,8 @@ async def _readiness_impl(response: Response, probe: HealthProbe) -> ReadinessRe
     slow = [r for r in results if r.duration_ms > 200.0]
     if slow:
         logger.warning(
-            "readiness_probe_slow", extra={"extra": {"slow": [r.model_dump() for r in slow]}}
+            "readiness_probe_slow",
+            extra={"extra": {"slow": [r.model_dump_http() for r in slow]}},
         )
 
     return payload

@@ -11,8 +11,9 @@ Layer: adapters/schemas/http
 
 Notes:
     - Transport-facing only. Application DTOs must not import from this module.
-    - Contract Registry envelopes import and subclass this base.
+    - All HTTP envelopes and resource schemas must subclass BaseHTTPSchema.
 """
+
 from __future__ import annotations
 
 from datetime import date, datetime
@@ -26,31 +27,31 @@ from pydantic import BaseModel, ConfigDict
 class BaseHTTPSchema(BaseModel):
     """Base class for all HTTP-facing schemas.
 
-    This standardizes Pydantic configuration and serialization rules for
-    Stacklion's FastAPI contracts, ensuring deterministic encoding and
-    schema compliance across all resources.
+    Provides:
+        • Strict `extra='forbid'` validation.
+        • Canonical JSON encoding for UUID, Decimal, datetime, date.
+        • Deterministic ISO formatting with zeroed microseconds (contract requirement).
+        • Consistent `model_dump_http()` for presenters and routers.
 
-    Attributes:
-        model_config: Pydantic v2 `ConfigDict` with strict validation and
-            canonical JSON encoders for core types.
+    This forms the root surface for all public HTTP shapes.
     """
 
     model_config = ConfigDict(
         extra="forbid",
         populate_by_name=True,
         str_strip_whitespace=True,
-        json_schema_extra={"example": {"trace_id": "c1e2d3f4-5678-90ab-cdef-1234567890ab"}},
         ser_json_timedelta="iso8601",
         ser_json_inf_nan="null",
         use_enum_values=True,
         arbitrary_types_allowed=True,
+        json_schema_extra=None,  # Prevents clutter & enforces envelope-level documentation.
         json_encoders={
             UUID: str,
             Decimal: lambda v: format(v, "f"),
             datetime: lambda v: (
                 v.astimezone().replace(microsecond=0).isoformat().replace("+00:00", "Z")
                 if v.tzinfo
-                else v.isoformat()
+                else v.replace(microsecond=0).isoformat()
             ),
             date: lambda v: v.isoformat(),
         },
@@ -59,10 +60,7 @@ class BaseHTTPSchema(BaseModel):
     def model_dump_http(self, **kwargs: Any) -> dict[str, Any]:
         """Return a JSON-serializable dict suitable for HTTP responses.
 
-        Args:
-            **kwargs: Optional Pydantic dump settings (e.g., ``exclude_none=True``).
-
-        Returns:
-            dict[str, Any]: Fully JSON-serializable representation.
+        Presenters must use this instead of raw model_dump() to ensure
+        canonical serialization across all HTTP surfaces.
         """
         return self.model_dump(mode="json", **kwargs)

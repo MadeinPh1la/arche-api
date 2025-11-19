@@ -4,17 +4,11 @@
 
 Synopsis:
     Renders application-layer Quote DTOs into the canonical SuccessEnvelope,
-    attaching optional caching headers (ETag, Cache-Control) in a controlled,
-    deterministic way.
+    attaching optional strong ETags and optional Cache-Control headers.
+    All serialization flows through BaseHTTPSchema → canonical JSON contracts.
 
 Layer:
     adapters/presenters
-
-Design:
-    * Separates presentation concerns from use-cases and routers.
-    * Supports deterministic ETag generation (explicit seed) or content-hash.
-    * Avoids business logic and external I/O.
-
 """
 
 from __future__ import annotations
@@ -22,6 +16,7 @@ from __future__ import annotations
 import hashlib
 import json
 from collections.abc import Mapping
+from typing import Any
 
 from stacklion_api.adapters.presenters.base_presenter import PresentResult
 from stacklion_api.adapters.schemas.http.envelopes import SuccessEnvelope
@@ -30,7 +25,16 @@ from stacklion_api.application.schemas.dto.quotes import QuotesBatchDTO
 
 
 class QuotesPresenter:
-    """Presenter for `/v1/quotes` success responses (latest quotes)."""
+    """Presenter for `/v1/quotes` (latest quotes)."""
+
+    def _compute_etag(self, body: Mapping[str, Any]) -> str:
+        """Strong ETag from canonical JSON (sorted, compact, safe)."""
+        material = json.dumps(
+            body,
+            sort_keys=True,
+            separators=(",", ":"),
+        ).encode("utf-8")
+        return f'"{hashlib.sha256(material).hexdigest()}"'
 
     def present_success(
         self,
@@ -42,53 +46,50 @@ class QuotesPresenter:
         etag_seed: str | None = None,
         extra_headers: Mapping[str, str] | None = None,
     ) -> PresentResult[SuccessEnvelope[QuotesBatch]]:
-        """Build a SuccessEnvelope[QuotesBatch] and optional caching headers.
+        """Build a SuccessEnvelope[QuotesBatch] with optional caching headers.
 
         Args:
-            dto: Application DTO containing latest quotes.
-            trace_id: Optional trace identifier to propagate in envelopes/headers.
-            enable_caching: Whether to attach ETag (and Cache-Control if ttl provided).
-            cache_ttl_s: Max-age in seconds to advertise when caching is enabled.
-            etag_seed: Deterministic seed for ETag (preferred); if None, hash body.
-            extra_headers: Extra headers to merge into the response.
+            dto: Application DTO.
+            trace_id: Correlation id for envelope + X-Request-ID header.
+            enable_caching: Whether to emit ETag (and max-age).
+            cache_ttl_s: Cache-Control TTL in seconds.
+            etag_seed: Stable seed for deterministic ETags; fallback is body hash.
+            extra_headers: Additional headers to attach.
 
         Returns:
-            PresentResult[SuccessEnvelope[QuotesBatch]]: Body + headers pair.
-
-        Notes:
-            * If `etag_seed` is provided, it is used directly to derive the ETag,
-              ensuring deterministic tags across equivalent payloads.
-            * If not provided, a compact JSON representation of the body is hashed.
+            PresentResult containing envelope + headers.
         """
+
         payload = QuotesBatch(
             items=[
                 QuoteItem(
                     ticker=i.ticker,
                     price=str(i.price),
                     currency=i.currency,
-                    as_of=i.as_of,  # Let the schema handle datetime serialization.
+                    as_of=i.as_of,
                     volume=i.volume,
                 )
                 for i in dto.items
             ]
         )
+
         envelope = SuccessEnvelope[QuotesBatch](data=payload)
 
         headers: dict[str, str] = {}
-        if enable_caching:
-            # Deterministic ETag when seed is provided, else compute over body.
-            if etag_seed is not None:
-                body_bytes = etag_seed.encode("utf-8")
-            else:
-                body_dict = envelope.model_dump_http()
-                body_bytes = json.dumps(
-                    body_dict,
-                    separators=(",", ":"),
-                    sort_keys=True,
-                ).encode("utf-8")
+        if trace_id:
+            headers["X-Request-ID"] = trace_id
 
-            etag = f'"{hashlib.sha256(body_bytes).hexdigest()}"'
-            headers["ETag"] = etag
+        if enable_caching:
+            if etag_seed is not None:
+                material = etag_seed.encode()
+            else:
+                material = json.dumps(
+                    envelope.model_dump_http(),
+                    sort_keys=True,
+                    separators=(",", ":"),
+                ).encode()
+
+            headers["ETag"] = f'"{hashlib.sha256(material).hexdigest()}"'
 
             if cache_ttl_s is not None:
                 headers["Cache-Control"] = f"public, max-age={int(cache_ttl_s)}"
@@ -96,7 +97,4 @@ class QuotesPresenter:
         if extra_headers:
             headers.update(dict(extra_headers))
 
-        # To propagate trace IDs via headers or envelope meta, this is where
-        # to add them (e.g., headers["X-Trace-Id"] = trace_id) depending
-        # on BasePresenter conventions.
         return PresentResult(body=envelope, headers=headers)

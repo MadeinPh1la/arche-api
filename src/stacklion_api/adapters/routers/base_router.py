@@ -9,7 +9,7 @@ Purpose:
       - Standard error response mapping using ErrorEnvelope.
       - Pagination query dependency with hard caps and helpers.
       - Helpers to emit presenter results with headers (ETag, X-Request-ID).
-      - Default tags, dependencies, and OpenAPI meta aligned to API Standards.
+      - Default tags, dependencies, and OpenAPI metadata aligned to API Standards.
 
 Layer:
     adapters/routers
@@ -30,9 +30,6 @@ from stacklion_api.adapters.schemas.http.envelopes import ErrorEnvelope
 from stacklion_api.infrastructure.logging.logger import get_json_logger
 from stacklion_api.types import JsonValue
 
-# -------------------------------------------------------------------------------------
-# Module logger
-# -------------------------------------------------------------------------------------
 _LOGGER = get_json_logger(__name__)
 
 # Tag type accepted by FastAPI for APIRouter.tags
@@ -74,23 +71,23 @@ class _ResponseLike(Protocol):
 class BaseRouter(APIRouter):
     """Canonical router wrapper for Stacklion HTTP endpoints.
 
-    This class centralizes versioned prefixes, default error responses, shared
-    dependencies (e.g., pagination), and a helper to emit presenter results
-    with headers applied.
+    This class centralizes:
+
+        • Versioned prefixes (e.g., `/v2/quotes`).
+        • Default error responses using ErrorEnvelope.
+        • Pagination dependency with policy caps.
+        • A helper to apply presenter headers and return envelope bodies.
 
     Args:
-        version: API version segment (e.g., "v1").
-        resource: Plural resource segment (e.g., "companies").
-        prefix: Optional explicit prefix. If omitted, computed as f"/{version}/{resource}".
+        version: API version segment (e.g., "v2").
+        resource: Plural resource segment (e.g., "quotes").
+        prefix: Optional explicit prefix (overrides version/resource).
         tags: Default tags applied to all routes mounted on this router.
-        dependencies: Optional sequence of global dependencies for all routes.
-        **kwargs: Additional APIRouter kwargs forwarded to super().__init__.
-
-    Example:
-        router = BaseRouter(version="v1", resource="companies", tags=["Companies"])
+        dependencies: Optional global dependencies for all routes.
+        **kwargs: Additional APIRouter kwargs.
     """
 
-    # ---- Canonical caps per API Standards (tune as needed) ----
+    # Canonical caps per API Standards (tune as needed)
     MIN_PAGE: int = 1
     MIN_PAGE_SIZE: int = 1
     MAX_PAGE_SIZE: int = 200
@@ -107,7 +104,6 @@ class BaseRouter(APIRouter):
         **kwargs: Any,
     ) -> None:
         computed_prefix = prefix or f"/{version}/{resource}"
-        # Convert Sequence -> list for FastAPI while keeping typesafe signature.
         super().__init__(
             prefix=computed_prefix,
             tags=list(tags) if tags is not None else None,
@@ -116,26 +112,34 @@ class BaseRouter(APIRouter):
         )
         _LOGGER.info(
             "router_initialized",
-            extra={"service": "stacklion-api", "prefix": computed_prefix, "tags": list(tags or [])},
+            extra={
+                "service": "stacklion-api",
+                "prefix": computed_prefix,
+                "tags": list(tags or []),
+            },
         )
 
     # -------------------------------------------------------------------------
     # Response helpers
     # -------------------------------------------------------------------------
+
     @staticmethod
     def send_success(
         response: _ResponseLike | None,
         result: PresentResult[Any],
     ) -> BaseHTTPSchema | dict[str, JsonValue]:
-        """Apply presenter headers on the Response (if provided) and return the body.
+        """Apply presenter headers to the Response (if provided) and return the body.
+
+        This is primarily for legacy call sites; newer routers should prefer
+        returning the envelope instance directly from the presenter.
 
         Args:
-            response: Framework Response object (e.g., FastAPI Response) or None.
-            result: Presenter output containing `body` (Pydantic model or mapping)
-                and `headers`.
+            response: Framework Response object or None.
+            result: Presenter output (envelope + headers).
 
         Returns:
-            The envelope body (`SuccessEnvelope` or `PaginatedEnvelope`) to return.
+            The envelope body (SuccessEnvelope / PaginatedEnvelope) or an empty
+            object when body is None (defensive).
         """
         if response is not None:
             try:
@@ -148,16 +152,20 @@ class BaseRouter(APIRouter):
 
         body = result.body
         if body is None:
-            # Guarantee an object body for JSON rendering (contract registry rule).
+            # Defensive: avoid returning null as top-level JSON when contract
+            # expects an object. Routers should avoid using send_success for
+            # 304 paths and similar.
             return {}
+
         if isinstance(body, Mapping):
-            # Normalize to a concrete dict for JSON rendering.
             return dict(body)
+
         return body
 
     # -------------------------------------------------------------------------
-    # Dependencies
+    # Pagination dependency
     # -------------------------------------------------------------------------
+
     @classmethod
     def page_params(
         cls,
@@ -184,28 +192,26 @@ class BaseRouter(APIRouter):
         """Return validated pagination parameters with computed offset/limit.
 
         Behavior:
-            - Defaults are applied when params are omitted (page=1, page_size=DEFAULT_PAGE_SIZE).
-            - `per_page` is accepted for backward compatibility; if supplied and the caller did
-              not set `page_size`, its value is used for `page_size`.
-            - Values are clamped to [MIN_PAGE, ...] and [MIN_PAGE_SIZE..MAX_PAGE_SIZE].
+            • Defaults: page=1, page_size=DEFAULT_PAGE_SIZE when omitted.
+            • `per_page` is accepted for backward compatibility; used only if
+              page_size is not explicitly set.
+            • Values are clamped to [MIN_PAGE, ...] and [MIN_PAGE_SIZE..MAX_PAGE_SIZE].
 
         Args:
             page: 1-indexed page number (>= 1).
             page_size: Items per page (1..MAX_PAGE_SIZE).
-            per_page: Deprecated input-only synonym for page_size.
+            per_page: Deprecated synonym for page_size (input-only).
 
         Returns:
-            PageParams: Immutable struct with `offset` and `limit` helpers.
+            PageParams with computed offset and limit.
         """
-        # Fill defaults
         p = page if page is not None else cls.MIN_PAGE
         ps = page_size if page_size is not None else cls.DEFAULT_PAGE_SIZE
 
-        # Honor deprecated per_page only if page_size wasn't explicitly provided
         if per_page is not None and page_size is None:
             ps = per_page
 
-        # Clamp to policy bounds
+        # Clamp to bounds
         if p < cls.MIN_PAGE:
             p = cls.MIN_PAGE
         if ps < cls.MIN_PAGE_SIZE:
@@ -218,26 +224,27 @@ class BaseRouter(APIRouter):
     # -------------------------------------------------------------------------
     # OpenAPI Error Responses
     # -------------------------------------------------------------------------
+
     @staticmethod
     def std_error_responses() -> dict[int, dict[str, Any]]:
         """Return the canonical error response mapping for endpoints.
 
-        This mapping instructs FastAPI/OpenAPI to document the standard
-        ErrorEnvelope for common failure codes. Use it in each route via:
+        Use in routes via:
 
             responses=BaseRouter.std_error_responses()
 
         Returns:
-            Mapping of HTTP status codes to OpenAPI response objects.
+            Mapping from HTTP status code → OpenAPI response object with
+            ErrorEnvelope as the model.
         """
         return {
-            400: {"model": ErrorEnvelope, "description": "Bad request (validation or parameter)"},
-            401: {"model": ErrorEnvelope, "description": "Unauthorized (missing/invalid auth)"},
-            403: {"model": ErrorEnvelope, "description": "Forbidden (insufficient permissions)"},
-            404: {"model": ErrorEnvelope, "description": "Not found"},
-            409: {"model": ErrorEnvelope, "description": "Conflict"},
-            422: {"model": ErrorEnvelope, "description": "Unprocessable content"},
-            429: {"model": ErrorEnvelope, "description": "Rate limit exceeded"},
-            500: {"model": ErrorEnvelope, "description": "Internal server error"},
-            503: {"model": ErrorEnvelope, "description": "Service unavailable"},
+            400: {"model": ErrorEnvelope, "description": "Bad request (validation or parameter)."},
+            401: {"model": ErrorEnvelope, "description": "Unauthorized (missing/invalid auth)."},
+            403: {"model": ErrorEnvelope, "description": "Forbidden (insufficient permissions)."},
+            404: {"model": ErrorEnvelope, "description": "Not found."},
+            409: {"model": ErrorEnvelope, "description": "Conflict."},
+            422: {"model": ErrorEnvelope, "description": "Unprocessable content."},
+            429: {"model": ErrorEnvelope, "description": "Rate limit exceeded."},
+            500: {"model": ErrorEnvelope, "description": "Internal server error."},
+            503: {"model": ErrorEnvelope, "description": "Service unavailable."},
         }

@@ -14,6 +14,7 @@ from __future__ import annotations
 
 from collections.abc import Sequence
 from datetime import date
+from decimal import Decimal
 
 from pydantic import AwareDatetime, ConfigDict, Field
 
@@ -56,18 +57,26 @@ class HistoricalQuotesRequest(BaseHTTPSchema):
 
 
 class HistoricalBarHTTP(BaseHTTPSchema):
-    """HTTP payload for a single bar."""
+    """HTTP payload for a single bar.
+
+    Numeric fields use Decimal in the schema so that:
+      * Application/DTO layers can pass Decimal instances directly.
+      * BaseHTTPSchema's encoders serialize them deterministically as strings
+        on the wire, preserving precision for clients.
+    """
 
     model_config = ConfigDict(extra="forbid")
 
-    ticker: str
-    timestamp: str
-    open: str
-    high: str
-    low: str
-    close: str
-    volume: str | None = None
-    interval: str
+    ticker: str = Field(...)
+    timestamp: AwareDatetime = Field(..., description="Bar timestamp (UTC, ISO-8601).")
+    open: Decimal = Field(..., description="Open price as decimal.")
+    high: Decimal = Field(..., description="High price as decimal.")
+    low: Decimal = Field(..., description="Low price as decimal.")
+    close: Decimal = Field(..., description="Close price as decimal.")
+    volume: Decimal | None = Field(
+        default=None, description="Volume as decimal; may be null if unavailable."
+    )
+    interval: str = Field(..., description="Bar interval identifier (e.g., 1d, 1m).")
 
 
 class HistoricalQuotesPaginatedResponse(BaseHTTPSchema):
