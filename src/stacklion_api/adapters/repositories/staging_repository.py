@@ -1,20 +1,21 @@
 # src/stacklion_api/adapters/repositories/staging_repository.py
-# Copyright (c) Stacklion.
+# Copyright (c)
 # SPDX-License-Identifier: MIT
 """Staging repository for idempotent ingests and replayable payloads."""
 
 from __future__ import annotations
 
 from dataclasses import dataclass
-from datetime import UTC, datetime
+from datetime import datetime
 from typing import Any
 from uuid import UUID, uuid4
 
 from sqlalchemy import select
-from sqlalchemy.exc import IntegrityError
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from stacklion_api.infrastructure.database.models.staging import IngestRun, RawPayload
+
+from .base_repository import BaseRepository
 
 
 @dataclass(frozen=True)
@@ -26,7 +27,7 @@ class IngestKey:
     key: str  # e.g. "MSFT:2025-11-11T10:00Z-2025-11-11T11:00Z"
 
 
-class StagingRepository:
+class StagingRepository(BaseRepository[Any]):
     """Repository for ingest bookkeeping and raw payload storage."""
 
     def __init__(self, session: AsyncSession) -> None:
@@ -35,54 +36,53 @@ class StagingRepository:
         Args:
             session: Async SQLAlchemy session.
         """
-        self._session = session
+        super().__init__(session)
 
     async def start_run(self, k: IngestKey) -> UUID:
-        """Create a new ingest run.
+        """Create a new ingest run or return an existing one.
 
-        This method is idempotent with respect to the database-level
-        deduplication constraint on ``(source, endpoint, key)``. If a run for
-        the same tuple already exists, its ``run_id`` is returned instead of
-        raising an integrity error.
+        This is **logically idempotent** for a given ``(source, endpoint, key)``:
 
-        Args:
-            k: Ingest key.
+            • If a run already exists for the tuple, return its ``run_id``.
+            • Otherwise, insert a new row and return the new ``run_id``.
 
-        Returns:
-            Run UUID (new or existing).
+        Determinism:
+            When resolving an existing run, we order by
+            ``started_at DESC NULLS LAST, run_id ASC`` so that in the presence
+            of duplicate rows (e.g. legacy or manual inserts) we always pick
+            the same winner.
+
+        Note:
+            There is currently no database-level unique constraint on
+            ``(source, endpoint, key)``, so this method does not use
+            ``ON CONFLICT``. Concurrency races are out of scope for this phase.
         """
+        # First try to find an existing run deterministically.
+        stmt_existing = select(IngestRun).where(
+            IngestRun.source == k.source,
+            IngestRun.endpoint == k.endpoint,
+            IngestRun.key == k.key,
+        )
+        stmt_existing = self.order_by_created(
+            stmt_existing,
+            IngestRun.started_at,
+            IngestRun.run_id,
+        ).limit(1)
+
+        existing = await self.fetch_optional(stmt_existing)
+        if existing is not None:
+            return existing.run_id
+
+        # No existing run; create a new one.
         run_id = uuid4()
         rec = IngestRun(
             run_id=run_id,
             source=k.source,
             endpoint=k.endpoint,
             key=k.key,
-            started_at=datetime.now(UTC),
+            started_at=self.utc_now(),
         )
         self._session.add(rec)
-
-        try:
-            # Flush eagerly so uniqueness violations surface here rather than
-            # later in unrelated operations (e.g. payload insert).
-            await self._session.flush()
-        except IntegrityError:
-            # Another run already claimed this (source, endpoint, key). Roll
-            # back the failed transaction and reuse the existing run_id.
-            await self._session.rollback()
-
-            res = await self._session.execute(
-                select(IngestRun.run_id)
-                .where(
-                    IngestRun.source == k.source,
-                    IngestRun.endpoint == k.endpoint,
-                    IngestRun.key == k.key,
-                )
-                .order_by(IngestRun.started_at.desc())
-                .limit(1)
-            )
-            existing_run_id = res.scalar_one()
-            return existing_run_id
-
         return run_id
 
     async def finish_run(self, run_id: UUID, result: str, error_reason: str | None = None) -> None:
@@ -93,10 +93,10 @@ class StagingRepository:
             result: Result code (SUCCESS|NOOP|ERROR).
             error_reason: Optional error reason.
         """
-        res = await self._session.execute(select(IngestRun).where(IngestRun.run_id == run_id))
-        rec = res.scalars().first()
+        stmt = select(IngestRun).where(IngestRun.run_id == run_id)
+        rec = await self.fetch_optional(stmt)
         if rec is not None:
-            rec.finished_at = datetime.now(UTC)
+            rec.finished_at = self.utc_now()
             rec.result = result
             rec.error_reason = error_reason
 
@@ -133,7 +133,7 @@ class StagingRepository:
             endpoint=endpoint,
             symbol_or_cik=symbol_or_cik,
             etag=etag,
-            received_at=datetime.now(UTC),
+            received_at=self.utc_now(),
             payload=payload,
             as_of=as_of,
             window_from=window_from,
