@@ -1,3 +1,4 @@
+# src/stacklion_api/infrastructure/middleware/access_log.py
 # Copyright (c) Stacklion.
 # SPDX-License-Identifier: MIT
 """
@@ -12,6 +13,8 @@ Design:
     * Pulls a request ID from `request.state.request_id` if a request-ID
       middleware executed earlier in the chain.
     * Keeps the payload small — deep payload logging belongs at the edge.
+    * Logs are emitted via the shared JSON logger and enriched with
+      `request_id`/`trace_id` via contextvars.
 
 Fields:
     evt: Literal "access" marker.
@@ -38,18 +41,9 @@ from fastapi import Request
 from starlette.middleware.base import BaseHTTPMiddleware, RequestResponseEndpoint
 from starlette.responses import Response
 
-# Central logger: use project logger if available, otherwise stdlib logger.
-try:  # pragma: no cover - import safety
-    from stacklion_api.infrastructure.logging import (
-        logger as _logmod,
-    )
-except Exception:  # pragma: no cover - import safety
-    _logmod = None  # type: ignore[assignment]
+from stacklion_api.infrastructure.logging.logger import get_json_logger
 
-_get_json_logger = getattr(_logmod, "get_json_logger", None)
-_logger: logging.Logger = (
-    _get_json_logger(__name__) if callable(_get_json_logger) else logging.getLogger(__name__)
-)
+_logger: logging.Logger = get_json_logger(__name__)
 
 
 class AccessLogMiddleware(BaseHTTPMiddleware):
@@ -63,7 +57,7 @@ class AccessLogMiddleware(BaseHTTPMiddleware):
             call_next: Next handler in the ASGI chain.
 
         Returns:
-            Response: The downstream response.
+            The downstream response.
 
         Raises:
             Exception: Re-raised after logging if the downstream handler fails.

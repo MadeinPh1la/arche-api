@@ -12,6 +12,9 @@ from stacklion_api.adapters.repositories.market_data_repository import (
     IntradayBarRow,
     MarketDataRepository,
 )
+from stacklion_api.infrastructure.observability.metrics import (
+    get_db_operation_duration_seconds,
+)
 
 # Use the same database URL as CI by default, but allow overrides via env.
 TEST_DATABASE_URL = os.getenv(
@@ -57,6 +60,18 @@ async def test_upsert_and_get_latest() -> None:
         latest = await repo.get_latest_intraday_bar(sid)
         assert latest is not None
         assert str(latest.close) == "1.6"
+
+        # Verify DB metrics were recorded for both operations.
+        hist = get_db_operation_duration_seconds()
+        operations: set[str] = set()
+        for metric in hist.collect():
+            for sample in metric.samples:
+                op = sample.labels.get("operation")
+                if op:
+                    operations.add(op)
+
+        assert "upsert_intraday_bars" in operations
+        assert "get_latest_intraday_bar" in operations
 
 
 @pytest.mark.anyio

@@ -13,6 +13,7 @@ from stacklion_api.domain.exceptions.market_data import (
 )
 from stacklion_api.infrastructure.external_apis.marketstack.client import MarketstackClient
 from stacklion_api.infrastructure.external_apis.marketstack.settings import MarketstackSettings
+from stacklion_api.infrastructure.logging.logger import set_request_context
 
 
 @pytest.mark.asyncio
@@ -124,3 +125,39 @@ async def test_http_errors_mapped_and_json_shape_checked() -> None:
             await client.eod(
                 tickers=["AAPL"], date_from="2025-01-01", date_to="2025-01-02", page=1, limit=1
             )
+
+
+@pytest.mark.asyncio
+@respx.mock
+async def test_marketstack_client_propagates_request_and_trace_ids() -> None:
+    """Client should propagate X-Request-ID and x-trace-id on outbound calls."""
+    cfg = MarketstackSettings(access_key="x")  # type: ignore[arg-type]
+    async with httpx.AsyncClient() as http:
+        client = MarketstackClient(http=http, settings=cfg)
+
+        # Seed per-request context.
+        set_request_context(request_id="req-123", trace_id="trace-abc")
+
+        expected = {
+            "data": [],
+            "pagination": {"total": 0, "limit": 50, "offset": 0},
+        }
+        route = respx.get(f"{cfg.base_url}/eod").mock(
+            return_value=httpx.Response(200, json=expected)
+        )
+
+        await client.eod(
+            tickers=["AAPL"],
+            date_from="2025-01-01",
+            date_to="2025-01-02",
+            page=1,
+            limit=50,
+        )
+
+        assert route.called
+        request = route.calls.last.request
+        assert request.headers["X-Request-ID"] == "req-123"
+        assert request.headers["x-trace-id"] == "trace-abc"
+
+        # Reset context so other tests are not polluted.
+        set_request_context(request_id=None, trace_id=None)

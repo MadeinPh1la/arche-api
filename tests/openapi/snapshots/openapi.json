@@ -62,7 +62,11 @@
         ],
         "properties": {
           "error": {
-            "$ref": "#/components/schemas/ErrorObject"
+            "allOf": [
+              {
+                "$ref": "#/components/schemas/ErrorObject"
+              }
+            ]
           }
         },
         "required": [
@@ -93,7 +97,6 @@
           "details": {
             "anyOf": [
               {
-                "additionalProperties": true,
                 "type": "object"
               },
               {
@@ -145,6 +148,9 @@
           "status": {
             "const": "ok",
             "default": "ok",
+            "enum": [
+              "ok"
+            ],
             "title": "Status",
             "type": "string"
           }
@@ -328,7 +334,11 @@
         ],
         "properties": {
           "data": {
-            "$ref": "#/components/schemas/QuotesBatch"
+            "allOf": [
+              {
+                "$ref": "#/components/schemas/QuotesBatch"
+              }
+            ]
           }
         },
         "required": [
