@@ -1,3 +1,4 @@
+# src/stacklion_api/infrastructure/observability/metrics.py
 # Copyright (c)
 # SPDX-License-Identifier: MIT
 """Prometheus metrics utilities (registry-aware, hot-reload safe).
@@ -345,4 +346,74 @@ def get_data_lag_seconds() -> Histogram:
         name="stacklion_data_lag_seconds",
         help_text="Data freshness lag in seconds at the source",
         labelnames=("source", "endpoint"),
+    )
+
+
+# ---------------------------------------------------------------------------
+# DB metrics
+# ---------------------------------------------------------------------------
+
+
+def get_db_operation_duration_seconds() -> Histogram:
+    """Return histogram for DB operation latency.
+
+    Labels:
+        operation: Logical operation name (e.g. ``upsert_intraday_bars``).
+        model: Logical model/table name (e.g. ``md_intraday_bars``).
+        outcome: ``success`` or ``error``.
+    """
+    return _get_or_create_hist(
+        name="db_operation_duration_seconds",
+        help_text="Latency (seconds) of database operations.",
+        labelnames=("operation", "model", "outcome"),
+    )
+
+
+def get_db_errors_total() -> Counter:
+    """Return counter for DB errors.
+
+    Labels:
+        operation: Logical operation name.
+        model: Logical model/table name.
+        reason: Error class or short reason.
+    """
+    return _get_or_create_counter(
+        name="db_errors_total",
+        help_text="Total database errors by operation/model.",
+        labelnames=("operation", "model", "reason"),
+    )
+
+
+# ---------------------------------------------------------------------------
+# Cache metrics
+# ---------------------------------------------------------------------------
+
+
+def get_cache_operation_duration_seconds() -> Histogram:
+    """Return histogram for cache operation latency.
+
+    Labels:
+        operation: Cache operation name (e.g. ``get_json`` / ``set_json``).
+        namespace: Cache namespace/prefix.
+        hit: ``true``/``false``/``n/a``.
+    """
+    return _get_or_create_hist(
+        name="cache_operation_duration_seconds",
+        help_text="Latency (seconds) of cache operations.",
+        labelnames=("operation", "namespace", "hit"),
+    )
+
+
+def get_cache_operations_total() -> Counter:
+    """Return counter for cache operations.
+
+    Labels:
+        operation: Cache operation name.
+        namespace: Cache namespace/prefix.
+        hit: ``true``/``false``/``n/a``.
+    """
+    return _get_or_create_counter(
+        name="cache_operations_total",
+        help_text="Total cache operations by type/namespace.",
+        labelnames=("operation", "namespace", "hit"),
     )

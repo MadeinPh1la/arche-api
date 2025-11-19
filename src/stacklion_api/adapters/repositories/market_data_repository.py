@@ -20,7 +20,9 @@ Adapters / repositories.
 
 from __future__ import annotations
 
+import time
 from collections.abc import Sequence
+from contextlib import suppress
 from dataclasses import dataclass
 from datetime import datetime
 from decimal import Decimal
@@ -32,25 +34,15 @@ from sqlalchemy.dialects.postgresql import insert as pg_insert
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from stacklion_api.infrastructure.database.models.md import IntradayBar
+from stacklion_api.infrastructure.observability.metrics import (
+    get_db_errors_total,
+    get_db_operation_duration_seconds,
+)
 
 
 @dataclass(frozen=True)
 class IntradayBarRow:
-    """Write-side representation of an intraday bar.
-
-    This row shape is used by ingest use cases to persist provider payloads
-    into the canonical intraday storage.
-
-    Attributes:
-        symbol_id: Internal UUID of the symbol.
-        ts: UTC timestamp of the bar (open time).
-        open: Open price as a string to preserve provider precision.
-        high: High price as a string.
-        low: Low price as a string.
-        close: Close price as a string.
-        volume: Volume as a string.
-        provider: Provider identifier (e.g. ``"marketstack"``).
-    """
+    """Write-side representation of an intraday bar."""
 
     symbol_id: UUID
     ts: datetime
@@ -65,125 +57,143 @@ class IntradayBarRow:
 class MarketDataRepository:
     """Repository for intraday market data."""
 
-    def __init__(self, session: AsyncSession) -> None:
-        """Initialize repository.
+    _MODEL_NAME = "md_intraday_bars"
 
-        Args:
-            session: Async SQLAlchemy session bound to the target database.
-        """
+    def __init__(self, session: AsyncSession) -> None:
         self._session = session
 
+    # --------------------------------------------------------------------------
+    # UPSERT
+    # --------------------------------------------------------------------------
+
     async def upsert_intraday_bars(self, rows: Sequence[IntradayBarRow]) -> int:
-        """Insert or update a batch of intraday bars.
-
-        For each row, performs an ``INSERT ... ON CONFLICT`` keyed by
-        ``(symbol_id, ts)`` and updates all numeric fields plus ``provider``
-        on conflict.
-
-        Notes:
-            The input batch is de-duplicated by ``(symbol_id, ts)`` to avoid
-            PostgreSQL's ``ON CONFLICT DO UPDATE command cannot affect row a
-            second time`` error when multiple rows share the same key in a
-            single statement. The last occurrence wins.
-
-        Args:
-            rows: Sequence of :class:`IntradayBarRow` instances to persist.
-
-        Returns:
-            Number of rows processed (inserted or updated). This counts the
-            input rows, not the number of distinct keys.
-        """
         if not rows:
             return 0
 
-        # Deduplicate by (symbol_id, ts): last write wins.
-        dedup: dict[tuple[UUID, datetime], IntradayBarRow] = {}
-        for r in rows:
-            dedup[(r.symbol_id, r.ts)] = r
+        hist = get_db_operation_duration_seconds()
+        err_counter = get_db_errors_total()
 
-        payload = [
-            {
-                "symbol_id": r.symbol_id,
-                "ts": r.ts,
-                "open": r.open,
-                "high": r.high,
-                "low": r.low,
-                "close": r.close,
-                "volume": r.volume,
-                "provider": r.provider,
-            }
-            for r in dedup.values()
-        ]
+        start = time.perf_counter()
+        outcome = "success"
 
-        # Use PostgreSQL-specific upsert for efficiency and atomicity.
-        stmt = pg_insert(IntradayBar).values(payload)
-        stmt = stmt.on_conflict_do_update(
-            index_elements=[IntradayBar.symbol_id, IntradayBar.ts],
-            set_={
-                "open": stmt.excluded.open,
-                "high": stmt.excluded.high,
-                "low": stmt.excluded.low,
-                "close": stmt.excluded.close,
-                "volume": stmt.excluded.volume,
-                "provider": stmt.excluded.provider,
-            },
-        )
+        try:
+            # Dedup last-write-wins
+            dedup: dict[tuple[UUID, datetime], IntradayBarRow] = {}
+            for r in rows:
+                dedup[(r.symbol_id, r.ts)] = r
 
-        await self._session.execute(stmt)
-        # Caller is responsible for committing; we only return the processed count.
-        return len(rows)
+            payload = [
+                {
+                    "symbol_id": r.symbol_id,
+                    "ts": r.ts,
+                    "open": r.open,
+                    "high": r.high,
+                    "low": r.low,
+                    "close": r.close,
+                    "volume": r.volume,
+                    "provider": r.provider,
+                }
+                for r in dedup.values()
+            ]
+
+            stmt = pg_insert(IntradayBar).values(payload)
+            stmt = stmt.on_conflict_do_update(
+                index_elements=[IntradayBar.symbol_id, IntradayBar.ts],
+                set_={
+                    "open": stmt.excluded.open,
+                    "high": stmt.excluded.high,
+                    "low": stmt.excluded.low,
+                    "close": stmt.excluded.close,
+                    "volume": stmt.excluded.volume,
+                    "provider": stmt.excluded.provider,
+                },
+            )
+
+            await self._session.execute(stmt)
+            return len(rows)
+
+        except Exception as exc:  # noqa: BLE001
+            outcome = "error"
+
+            # Metrics must not affect correctness
+            with suppress(Exception):
+                err_counter.labels(
+                    operation="upsert_intraday_bars",
+                    model=self._MODEL_NAME,
+                    reason=type(exc).__name__,
+                ).inc()
+
+            raise
+
+        finally:
+            with suppress(Exception):
+                duration = time.perf_counter() - start
+                hist.labels(
+                    operation="upsert_intraday_bars",
+                    model=self._MODEL_NAME,
+                    outcome=outcome,
+                ).observe(duration)
+
+    # --------------------------------------------------------------------------
+    # GET LATEST
+    # --------------------------------------------------------------------------
 
     async def get_latest_intraday_bar(self, symbol_id: UUID) -> IntradayBar | None:
-        """Return the latest intraday bar for a symbol.
+        hist = get_db_operation_duration_seconds()
+        err_counter = get_db_errors_total()
 
-        The "latest" bar is the one with the greatest ``ts`` for the given
-        ``symbol_id``. Numeric fields are normalized to canonical
-        :class:`decimal.Decimal` instances so their string representation does
-        not include provider-specific scale padding (for example,
-        ``"1.60000000"`` → ``"1.6"``).
+        start = time.perf_counter()
+        outcome = "success"
 
-        Args:
-            symbol_id: Internal UUID of the symbol.
+        try:
+            stmt = (
+                select(IntradayBar)
+                .where(IntradayBar.symbol_id == symbol_id)
+                .order_by(IntradayBar.ts.desc())
+                .limit(1)
+            )
 
-        Returns:
-            The latest :class:`IntradayBar` instance, or ``None`` if no bars
-            exist for the symbol.
-        """
-        stmt = (
-            select(IntradayBar)
-            .where(IntradayBar.symbol_id == symbol_id)
-            .order_by(IntradayBar.ts.desc())
-            .limit(1)
-        )
+            latest = await self._session.scalar(stmt)
+            if latest is None:
+                return None
 
-        latest = await self._session.scalar(stmt)
-        if latest is None:
-            return None
+            self._normalize_bar_decimals(latest)
+            return latest
 
-        self._normalize_bar_decimals(latest)
-        return latest
+        except Exception as exc:  # noqa: BLE001
+            outcome = "error"
+            with suppress(Exception):
+                err_counter.labels(
+                    operation="get_latest_intraday_bar",
+                    model=self._MODEL_NAME,
+                    reason=type(exc).__name__,
+                ).inc()
+            raise
+
+        finally:
+            with suppress(Exception):
+                duration = time.perf_counter() - start
+                hist.labels(
+                    operation="get_latest_intraday_bar",
+                    model=self._MODEL_NAME,
+                    outcome=outcome,
+                ).observe(duration)
+
+    # --------------------------------------------------------------------------
+    # Decimal normalization
+    # --------------------------------------------------------------------------
 
     @staticmethod
     def _normalize_bar_decimals(bar: IntradayBar) -> None:
-        """Normalize Decimal fields on an :class:`IntradayBar` instance.
+        """Normalize Decimal fields on the ORM instance."""
 
-        This mutates the ORM instance in-place, stripping trailing zeros from
-        numeric fields so that ``str(bar.close)`` matches canonical expectations
-        in tests and API contracts.
+        def _norm(v: Any) -> Any:
+            if isinstance(v, Decimal):
+                return v.normalize()
+            return v
 
-        Args:
-            bar: ORM instance to normalize.
-        """
-
-        def _norm(value: Any) -> Any:
-            if isinstance(value, Decimal):
-                # normalize() removes trailing zeros and adjusts exponent
-                # e.g. Decimal("1.60000000") → Decimal("1.6")
-                return value.normalize()
-            return value
-
-        for attr in ("open", "high", "low", "close", "volume"):
-            current = getattr(bar, attr, None)
-            normalized = _norm(current)
-            if normalized is not current:
-                setattr(bar, attr, normalized)
+        for field in ("open", "high", "low", "close", "volume"):
+            val = getattr(bar, field, None)
+            new = _norm(val)
+            if new is not val:
+                setattr(bar, field, new)

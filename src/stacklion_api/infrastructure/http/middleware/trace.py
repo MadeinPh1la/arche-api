@@ -1,10 +1,11 @@
+# src/stacklion_api/infrastructure/http/middleware/trace.py
 # Copyright (c) Stacklion.
 # SPDX-License-Identifier: MIT
 """
 Trace ID Middleware.
 
 Summary:
-    Starlette/ FastAPI middleware that guarantees every request has a stable
+    Starlette/FastAPI middleware that guarantees every request has a stable
     per-request correlation identifier and that the same value is echoed back
     to clients. The ID is exposed as the HTTP header ``x-trace-id`` and also
     attached to ``request.state.trace_id`` for downstream access (routers,
@@ -16,6 +17,8 @@ Design:
     * Side-effect free: no I/O; header parsing is purely synchronous.
     * Defensive: trims/validates the inbound value; falls back to a fresh UUID
       if the supplied value is unusable.
+    * Logging integration: stores the trace id in a contextvar so structured
+      logs automatically include ``trace_id``.
 
 Security & Audit:
     * The trace id is a client-visible correlation token (not a secret).
@@ -35,6 +38,8 @@ from starlette.middleware.base import BaseHTTPMiddleware
 from starlette.requests import Request
 from starlette.responses import Response
 
+from stacklion_api.infrastructure.logging.logger import set_request_context
+
 # Public, lowercase header name (HTTP headers are case-insensitive).
 TRACE_HEADER = "x-trace-id"
 
@@ -43,7 +48,7 @@ _MAX_TRACE_LEN = 128
 
 
 def _sanitize_inbound_trace(raw: str | None) -> str | None:
-    """Return a safe, non-empty trace id if provided; otherwise None.
+    """Return a safe, non-empty trace id if provided; otherwise ``None``.
 
     Rules:
         * Trim surrounding whitespace.
@@ -53,19 +58,19 @@ def _sanitize_inbound_trace(raw: str | None) -> str | None:
           do it upstream in an API gateway.
 
     Args:
-        raw: Inbound value from request headers (may be None).
+        raw: Inbound value from request headers (may be ``None``).
 
     Returns:
-        A sanitized string or None if invalid/unusable.
+        Sanitized string or ``None`` if invalid/unusable.
     """
     if raw is None:
         return None
-    v = raw.strip()
-    if not v:
+    value = raw.strip()
+    if not value:
         return None
-    if len(v) > _MAX_TRACE_LEN:
+    if len(value) > _MAX_TRACE_LEN:
         return None
-    return v
+    return value
 
 
 def _new_trace_id() -> str:
@@ -81,11 +86,12 @@ class TraceIdMiddleware(BaseHTTPMiddleware):
             - Inspect ``x-trace-id`` header; if present and sane, reuse it.
             - Otherwise, generate a fresh UUIDv4.
             - Persist on ``request.state.trace_id`` for downstream access.
+            - Store in a contextvar for log enrichment.
         * On response:
             - Echo the final trace id on the ``x-trace-id`` response header.
 
     This middleware is safe to stack with access-log, metrics, or error
-    handlers; ensure it is added **before** handlers that read trace_id.
+    handlers; ensure it is added *before* handlers that read ``trace_id``.
     """
 
     async def dispatch(
@@ -93,10 +99,13 @@ class TraceIdMiddleware(BaseHTTPMiddleware):
         request: Request,
         call_next: Callable[[Request], Awaitable[Response]],
     ) -> Response:
+        """Attach the trace id to the request/response cycle."""
         inbound = request.headers.get(TRACE_HEADER)
         trace_id = _sanitize_inbound_trace(inbound) or _new_trace_id()
-        # Expose to downstream code (routers/deps/handlers)
+
+        # Expose to downstream code (routers/deps/handlers) and logging.
         request.state.trace_id = trace_id
+        set_request_context(trace_id=trace_id)
 
         response = await call_next(request)
 

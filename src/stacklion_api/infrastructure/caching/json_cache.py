@@ -1,3 +1,4 @@
+# src/stacklion_api/infrastructure/caching/json_cache.py
 # Copyright (c) Stacklion.
 # SPDX-License-Identifier: MIT
 """JSON Cache (Redis-backed).
@@ -23,11 +24,17 @@ See also:
 from __future__ import annotations
 
 import json
+import time
 from collections.abc import Mapping
+from contextlib import suppress
 from typing import Any
 
 from stacklion_api.application.interfaces.cache_port import CachePort
 from stacklion_api.infrastructure.caching.redis_client import get_redis_client
+from stacklion_api.infrastructure.observability.metrics import (
+    get_cache_operation_duration_seconds,
+    get_cache_operations_total,
+)
 
 
 class RedisJsonCache(CachePort):
@@ -61,9 +68,31 @@ class RedisJsonCache(CachePort):
         Returns:
             Deserialized mapping if present, else None.
         """
-        redis = get_redis_client()
-        raw = await redis.get(self._k(key))
-        return json.loads(raw) if raw else None
+        hist = get_cache_operation_duration_seconds()
+        counter = get_cache_operations_total()
+        start = time.perf_counter()
+        hit_label = "false"
+
+        try:
+            redis = get_redis_client()
+            raw = await redis.get(self._k(key))
+            if raw:
+                hit_label = "true"
+                return json.loads(raw)
+            return None
+        finally:
+            duration = time.perf_counter() - start
+            with suppress(Exception):
+                hist.labels(
+                    operation="get_json",
+                    namespace=self._ns,
+                    hit=hit_label,
+                ).observe(duration)
+                counter.labels(
+                    operation="get_json",
+                    namespace=self._ns,
+                    hit=hit_label,
+                ).inc()
 
     async def set_json(self, key: str, value: Mapping[str, Any], ttl: int) -> None:
         """Set a JSON-serialized value with TTL.
@@ -73,5 +102,23 @@ class RedisJsonCache(CachePort):
             value: JSON-serializable mapping.
             ttl: Time-to-live in seconds.
         """
-        redis = get_redis_client()
-        await redis.set(self._k(key), json.dumps(value), ex=ttl)
+        hist = get_cache_operation_duration_seconds()
+        counter = get_cache_operations_total()
+        start = time.perf_counter()
+
+        try:
+            redis = get_redis_client()
+            await redis.set(self._k(key), json.dumps(value), ex=ttl)
+        finally:
+            duration = time.perf_counter() - start
+            with suppress(Exception):
+                hist.labels(
+                    operation="set_json",
+                    namespace=self._ns,
+                    hit="n/a",
+                ).observe(duration)
+                counter.labels(
+                    operation="set_json",
+                    namespace=self._ns,
+                    hit="n/a",
+                ).inc()

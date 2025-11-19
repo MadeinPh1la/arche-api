@@ -35,6 +35,7 @@ from stacklion_api.domain.exceptions.market_data import (
     MarketDataValidationError,
 )
 from stacklion_api.infrastructure.external_apis.marketstack.settings import MarketstackSettings
+from stacklion_api.infrastructure.logging.logger import get_request_id, get_trace_id
 from stacklion_api.infrastructure.observability.metrics_market_data import (
     get_market_data_errors_total,
     get_market_data_gateway_latency_seconds,
@@ -430,6 +431,15 @@ class MarketstackClient:
         url = f"{self._base_url}{path}"
 
         headers: dict[str, str] = {}
+
+        # Correlation propagation: carry request/trace ids on outbound calls.
+        request_id = get_request_id()
+        trace_id = get_trace_id()
+        if request_id:
+            headers.setdefault("X-Request-ID", request_id)
+        if trace_id:
+            headers.setdefault("x-trace-id", trace_id)
+
         if etag:
             headers["If-None-Match"] = etag
         if if_modified_since:

@@ -72,7 +72,7 @@ def _otel_hist() -> Any:  # pragma: no cover - OTEL path not exercised in tests
     """Return the process-wide OTEL HTTP server latency histogram (or no-op).
 
     Returns:
-        Any: OTEL histogram-like object supporting ``record(value, attributes=...)``.
+        Histogram-like object supporting ``record(value, attributes=...)``.
     """
     global _OTEL_LATENCY_HIST
 
@@ -115,7 +115,7 @@ def get_http_server_request_duration_seconds() -> Histogram:
         status: Response code as string.
 
     Returns:
-        Histogram: Registry-aware histogram bound to the active registry.
+        Registry-aware histogram bound to the active registry.
     """
     global _SERVER_HIST
     if _SERVER_HIST is None:

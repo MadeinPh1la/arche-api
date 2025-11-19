@@ -1,3 +1,4 @@
+# src/stacklion_api/adapters/routers/metrics_router.py
 # Copyright (c) Stacklion.
 # SPDX-License-Identifier: MIT
 """Prometheus scrape endpoint (`/metrics`).

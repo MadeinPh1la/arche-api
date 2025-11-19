@@ -14,6 +14,10 @@ Design:
     • OpenAPI Contract Registry is attached first to stabilize snapshots.
     • Lifespan initializes DB/Redis/HTTP and tears them down safely.
     • CORS and security headers are applied consistently across environments.
+    • Observability:
+        - Root JSON logging configured at import time.
+        - OpenTelemetry exporters initialized (soft dependency).
+        - Tracing/metrics middleware installed for every request.
 """
 
 from __future__ import annotations
@@ -48,6 +52,7 @@ from stacklion_api.infrastructure.logging.logger import (
     configure_root_logging,
     get_json_logger,
 )
+from stacklion_api.infrastructure.logging.tracing import configure_tracing
 from stacklion_api.infrastructure.middleware.access_log import AccessLogMiddleware
 from stacklion_api.infrastructure.middleware.metrics import (
     PromMetricsMiddleware,  # optional extra counters
@@ -64,6 +69,7 @@ from stacklion_api.infrastructure.observability.metrics import (
     get_readyz_db_latency_seconds,
     get_readyz_redis_latency_seconds,
 )
+from stacklion_api.infrastructure.observability.otel import init_otel
 
 # -----------------------------------------------------------------------------
 # Logging
@@ -86,7 +92,7 @@ def _stable_operation_id(route: APIRoute) -> str:
         route: FastAPI APIRoute.
 
     Returns:
-        str: Stable operationId for OpenAPI.
+        Stable operationId for OpenAPI.
     """
     methods = ",".join(sorted(route.methods or []))
     path = route.path_format.replace("/", "_").replace("{", "").replace("}", "")
@@ -127,7 +133,10 @@ def _attach_middlewares(app: FastAPI, settings: Settings) -> None:
         app: FastAPI application.
         settings: Runtime settings for environment-aware toggles.
     """
+    # Correlation ID chain: RequestIdMiddleware complements TraceIdMiddleware.
     app.add_middleware(RequestIdMiddleware)
+
+    # Access log should see request_id/trace_id on request.state and contextvars.
     app.add_middleware(AccessLogMiddleware)
 
     # Canonical server latency histogram (required by tests).
@@ -153,7 +162,7 @@ def _attach_middlewares(app: FastAPI, settings: Settings) -> None:
             extra={"window_s": window, "burst": burst, "rate_per_sec": rate_per_sec},
         )
 
-    # Response compression
+    # Response compression.
     app.add_middleware(GZipMiddleware, minimum_size=1024)
 
 
@@ -212,7 +221,7 @@ def create_app() -> FastAPI:
     """Create and configure the FastAPI application.
 
     Returns:
-        FastAPI: Fully configured application instance.
+        Fully configured application instance.
     """
     settings: Settings = get_settings()
 
@@ -227,6 +236,24 @@ def create_app() -> FastAPI:
         generate_unique_id_function=_stable_operation_id,
     )
 
+    # Initialize OpenTelemetry exporters/providers (soft dependency).
+    try:
+        init_otel(service_name=service_name, service_version=service_version)
+    except Exception as exc:  # pragma: no cover - observability must not break startup
+        logger.debug(
+            "otel.init_failed",
+            extra={"extra": {"error": str(exc)}},
+        )
+
+    # Attach OTEL ASGI/FastAPI/HTTPX/SQLAlchemy instrumentation (soft dependency).
+    try:
+        configure_tracing(app)
+    except Exception as exc:  # pragma: no cover - observability must not break startup
+        logger.debug(
+            "otel.configure_tracing_failed",
+            extra={"extra": {"error": str(exc)}},
+        )
+
     # Attach trace-id middleware early so logs can correlate requests.
     app.add_middleware(TraceIdMiddleware)
 
@@ -238,7 +265,8 @@ def create_app() -> FastAPI:
         get_readyz_redis_latency_seconds().observe(0.0)
     except Exception as exc:  # pragma: no cover
         logger.debug(
-            "startup: readiness histogram warm-up skipped", extra={"extra": {"error": str(exc)}}
+            "startup: readiness histogram warm-up skipped",
+            extra={"extra": {"error": str(exc)}},
         )
 
     # Contract Registry FIRST to stabilize OpenAPI snapshots.
@@ -259,7 +287,7 @@ def create_app() -> FastAPI:
         """Lightweight health endpoint behind rate limiting.
 
         Returns:
-            JSONResponse: Simple status payload, used to exercise RateLimitMiddleware.
+            Simple status payload, used to exercise RateLimitMiddleware.
         """
         return JSONResponse({"status": "ok"})
 
@@ -275,7 +303,7 @@ def create_app() -> FastAPI:
     return app
 
 
-# Eager app for tools and snapshot tests
+# Eager app for tools and snapshot tests.
 app: FastAPI = create_app()
 
 
