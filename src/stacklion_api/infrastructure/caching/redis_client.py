@@ -1,10 +1,23 @@
 # src/stacklion_api/infrastructure/caching/redis_client.py
-# Copyright (c) Stacklion.
+# Copyright (c)
 # SPDX-License-Identifier: MIT
-"""Async Redis client factory and DI dependency."""
+"""Async Redis client factory and DI dependency.
+
+Design notes:
+    * Provides a small Protocol (`RedisClient`) used by adapters.
+    * Uses redis.asyncio under the hood for the concrete implementation.
+    * Is **loop-aware**: if called from a different event loop than the one
+      that created the client, it will transparently create a new client
+      bound to the current loop. This avoids cross-loop reuse issues in tests
+      (e.g. Starlette TestClient) while remaining effectively singleton for
+      long-lived server loops.
+    * Test suites may inject a fakeredis client by assigning to the module-level
+      `_client`; when that happens we do not overwrite or close it.
+"""
 
 from __future__ import annotations
 
+import asyncio
 import logging
 import os
 from collections.abc import AsyncGenerator
@@ -60,8 +73,21 @@ class RedisClient(Protocol):
     async def close(self) -> Any: ...
 
 
-_client: RedisClient | None = None
+# Global client + loop identifier. We intentionally track the loop that created
+# the client so that we never reuse a redis connection across event loops.
+_client: RedisClient | Any | None = None
+_client_loop_id: int | None = None
+
 _DEFAULT_REDIS_URL = "redis://localhost:6379/0"
+
+
+def _current_loop_id() -> int | None:
+    """Return the id() of the current running event loop, or None if absent."""
+    try:
+        loop = asyncio.get_running_loop()
+    except RuntimeError:
+        return None
+    return id(loop)
 
 
 def _maybe_swap_hostname(url: str) -> str:
@@ -112,33 +138,66 @@ def _create_aioredis_client(url: str, settings: Settings) -> AioredisRedis:
     return cast(AioredisRedis, client)
 
 
-def init_redis(settings: Settings) -> None:
-    """Initialize the global async Redis client (idempotent).
+def _is_fake_client(client: Any | None) -> bool:
+    """Return True if the given client looks like a fakeredis instance."""
+    if client is None:
+        return False
+    # fakeredis classes live under modules like "fakeredis.aioredis"
+    return type(client).__module__.startswith("fakeredis")
 
-    Args:
-        settings: Canonical application settings.
+
+def init_redis(settings: Settings) -> None:
+    """Initialize the global async Redis client for the **current** event loop.
+
+    This is idempotent *per loop*: calling it again from the same loop is a
+    no-op, but calling it from a different loop will create a fresh client
+    bound to that loop.
+
+    If tests have injected a fakeredis client into `_client`, this function
+    is a no-op and leaves the fake in place.
     """
-    global _client
-    if _client is not None:
+    global _client, _client_loop_id
+
+    # Respect a test-injected fakeredis client.
+    if _is_fake_client(_client):
+        return
+
+    loop_id = _current_loop_id()
+    if _client is not None and _client_loop_id == loop_id:
+        # Same loop, already initialized.
         return
 
     url = str(settings.redis_url or _DEFAULT_REDIS_URL)
     url = _maybe_swap_hostname(url)
 
+    # Do not attempt to close an existing client from a different event loop;
+    # that is exactly what leads to "Event loop is closed" errors in tests.
     _client = cast(RedisClient, _create_aioredis_client(url, settings))
+    _client_loop_id = loop_id
 
 
 async def close_redis() -> None:
-    """Close the global Redis client at shutdown."""
-    global _client
-    if _client is not None:
-        with suppress(RuntimeError):
-            await _client.close()
-        _client = None
+    """Close the global Redis client at shutdown (best-effort)."""
+    global _client, _client_loop_id
+
+    # Never try to close a fakeredis client; just drop the reference.
+    if _client is not None and not _is_fake_client(_client):
+        # Only attempt to close if we're on the same loop that created it.
+        loop_id = _current_loop_id()
+        if _client_loop_id is None or loop_id == _client_loop_id:
+            with suppress(RuntimeError, ConnectionError):
+                await _client.close()
+
+    _client = None
+    _client_loop_id = None
 
 
 def get_redis_client() -> RedisClient:
-    """Return the initialized Redis client (lazy-inits in tests).
+    """Return the initialized Redis client (loop-aware, lazy-init in tests).
+
+    In unit tests, a fakeredis instance can be injected via the module-level
+    `_client` variable; when present, that instance is returned as-is, and no
+    real Redis connection is created.
 
     Returns:
         RedisClient: Shared Redis client instance.
@@ -146,12 +205,24 @@ def get_redis_client() -> RedisClient:
     Raises:
         RuntimeError: If client could not be initialized.
     """
-    global _client
-    if _client is None:
+    global _client, _client_loop_id
+
+    # If tests patched in fakeredis, always return it and never re-init.
+    if _is_fake_client(_client):
+        return cast(RedisClient, _client)
+
+    loop_id = _current_loop_id()
+
+    if _client is None or (
+        _client_loop_id is not None and loop_id is not None and loop_id != _client_loop_id
+    ):
+        # Either first-time init or we're in a new event loop; (re)initialize.
         init_redis(get_settings())
+
     if _client is None:
         raise RuntimeError("Redis client not initialized (init_redis failed)")
-    return _client
+
+    return cast(RedisClient, _client)
 
 
 @asynccontextmanager

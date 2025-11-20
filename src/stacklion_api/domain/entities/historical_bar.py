@@ -1,3 +1,4 @@
+# src/stacklion_api/domain/entities/historical_bar.py
 # Copyright (c) Stacklion.
 # SPDX-License-Identifier: MIT
 """Historical Bars (Domain Entities).
@@ -24,18 +25,25 @@ class BarInterval(str, Enum):
     """Supported bar intervals.
 
     Values:
-        I1M: 1-minute bars.
-        I5M: 5-minute bars.
+        I1M:  1-minute bars (canonical short name).
+        I1MIN: 1-minute bars (compat alias, same value as I1M).
+        I5M:  5-minute bars.
         I15M: 15-minute bars.
-        I1H: 1-hour bars.
-        I1D: 1-day (EOD) bars.
+        I1H:  1-hour bars.
+        I1D:  1-day (EOD) bars.
     """
 
+    # 1-minute – keep existing short name and add a compat alias for tests.
     I1M = "1m"
+    I1MIN = "1m"  # alias used by some tests / callers
+
     I5M = "5m"
     I15M = "15m"
     I1H = "1h"
     I1D = "1d"
+
+    def __str__(self) -> str:  # pragma: no cover - trivial
+        return self.value
 
 
 @dataclass(frozen=True)

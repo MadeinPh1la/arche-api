@@ -1,44 +1,25 @@
-# Copyright (c) Stacklion.
+# src/stacklion_api/application/use_cases/quotes/get_historical_quotes.py
+# Copyright (c)
 # SPDX-License-Identifier: MIT
-"""Use-case: Get Historical Quotes (A6).
+"""Use case: Get historical quotes.
 
 Synopsis:
-    Validates the time window, performs a read-through cache for paginated
-    historical bars (EOD / intraday), and returns DTOs plus a stable weak ETag.
+    Orchestrates fetching historical OHLCV data for one or more tickers,
+    with an application-level cache in front of the market data gateway.
 
-Metrics:
-    * UC latency (Histogram): stacklion_usecase_historical_quotes_latency_seconds
-    * Cache hits/misses (Counters):
-        - stacklion_market_data_cache_hits_total
-        - stacklion_market_data_cache_misses_total
-    * Upstream observation (Histogram + Error Counter via helper):
-        - stacklion_market_data_gateway_latency_seconds
-        - stacklion_market_data_errors_total{reason="...",route="/v1/quotes/historical:..."}
-    * Error counter helper (raised exceptions are still re-thrown):
-        - inc_market_data_error("rate_limited", "/v1/quotes/historical")
-
-Design:
-    * Orchestrates cache -> gateway fetch -> cache write.
-    * Prefers a provider ETag when available; otherwise computes a canonical,
-      deterministic **weak** ETag (W/"...") for list payloads.
-    * Tolerates legacy and modern gateway interfaces:
-        - Tries a named-args call first
-        - Falls back to positional args
-        - Lastly, falls back to passing the DTO
-      Accepts 3-tuple, 2-tuple, iterable, or dict returns and normalizes them.
-
-Layer:
-    application/use_cases
+Responsibilities:
+    * Validate and normalize query parameters.
+    * Build a canonical cache key and TTL band based on interval.
+    * Attempt cache read; on miss, call the gateway.
+    * Cache successful pages (items + total + (weak) ETag).
+    * Record UC-level and gateway-level latency metrics via Prometheus.
 """
 
 from __future__ import annotations
 
 import hashlib
 import json
-from collections.abc import Iterable, Mapping
-from dataclasses import asdict, is_dataclass
-from datetime import datetime
-from decimal import Decimal
+from collections.abc import Iterable
 from typing import Any, cast
 
 from stacklion_api.application.interfaces.cache_port import CachePort
@@ -46,163 +27,208 @@ from stacklion_api.application.schemas.dto.quotes import (
     HistoricalBarDTO,
     HistoricalQueryDTO,
 )
-from stacklion_api.domain.exceptions.market_data import (
-    MarketDataBadRequest,
-    MarketDataQuotaExceeded,
-    MarketDataRateLimited,
-    MarketDataUnavailable,
-    MarketDataValidationError,
+from stacklion_api.domain.entities.historical_bar import BarInterval
+from stacklion_api.domain.exceptions.market_data import MarketDataValidationError
+from stacklion_api.infrastructure.caching.json_cache import (
+    TTL_EOD_S,
+    TTL_INTRADAY_RECENT_S,
 )
 from stacklion_api.infrastructure.observability.metrics_market_data import (
-    get_market_data_cache_hits_total,
-    get_market_data_cache_misses_total,
-    get_usecase_historical_quotes_latency_seconds,
-    inc_market_data_error,
     observe_upstream_request,
+    usecase_historical_quotes_latency_seconds,
 )
 
-__all__ = ["GetHistoricalQuotesUseCase"]
 
-
-# =============================================================================
-# Helpers: canonical JSON + ETag
-# =============================================================================
-
-
-def _is_dataclass_instance(x: Any) -> bool:
-    """Return True only for dataclass **instances** (not classes)."""
-    return is_dataclass(x) and not isinstance(x, type)
-
-
-def _json_default(value: Any) -> Any:
-    """Deterministic serializer for hashing.
-
-    Handles Decimal, datetime, Pydantic v2 models, and dataclass **instances**.
-    """
-    if isinstance(value, Decimal):
-        return format(value, "f")
-    if isinstance(value, datetime):
-        return value.isoformat()
-    if hasattr(value, "model_dump"):  # Pydantic v2 first (avoids accidental asdict on DTOs)
-        return value.model_dump()
-    if _is_dataclass_instance(value):
-        return asdict(value)
-    raise TypeError(f"Unsupported type for JSON hashing: {type(value)!r}")
-
-
-def _dto_to_dict(item: HistoricalBarDTO | Mapping[str, Any]) -> dict[str, Any]:
-    """Convert a bar DTO or mapping to a plain dict suitable for hashing/caching."""
-    if hasattr(item, "model_dump"):  # Pydantic v2 first
-        return cast(dict[str, Any], item.model_dump())
-    if isinstance(item, Mapping):
-        return dict(item)
-    if _is_dataclass_instance(item):
-        return cast(dict[str, Any], asdict(item))
-    return dict(getattr(item, "__dict__", {}))
-
-
-def _weak_quoted_etag(obj: Any) -> str:
-    """Compute a weak, quoted SHA-256 ETag from canonical JSON."""
-    material = json.dumps(obj, sort_keys=True, separators=(",", ":"), default=_json_default).encode(
-        "utf-8"
-    )
-    digest = hashlib.sha256(material).hexdigest()
-    return f'W/"{digest}"'
-
-
-# =============================================================================
-# Use case
-# =============================================================================
 class GetHistoricalQuotesUseCase:
-    """Fetch historical OHLCV bars with read-through caching and stable ETags."""
+    """Fetch historical OHLCV bars backed by a cache and market data gateway."""
 
     def __init__(self, *, cache: CachePort, gateway: Any) -> None:
-        """Initialize the use case."""
+        # We keep the gateway structurally typed (must expose get_historical_bars)
+        # to support multiple historical signatures without over-constraining types.
         self._cache = cache
         self._gateway = gateway
 
     async def execute(
-        self, q: HistoricalQueryDTO, *, if_none_match: str | None = None
+        self,
+        q: HistoricalQueryDTO,
+        *,
+        if_none_match: str | None = None,
     ) -> tuple[list[HistoricalBarDTO], int, str]:
-        """Execute the use case."""
+        """Execute the use case.
+
+        Args:
+            q: Query DTO describing tickers, date range, interval, and paging.
+            if_none_match: Optional weak ETag supplied by the client.
+
+        Returns:
+            A tuple of (items, total_count, etag). ETag is always a string.
+        """
+        # Basic window validation – tests expect a MarketDataValidationError here.
         if q.from_ > q.to:
-            raise MarketDataValidationError("'from' must be <= 'to'")
+            raise MarketDataValidationError("from_ cannot be after to")
 
-        key = self._cache_key(q)
+        with usecase_historical_quotes_latency_seconds.time():
+            cache_key = self._cache_key(q)
 
-        with get_usecase_historical_quotes_latency_seconds().time():
-            cached = await self._try_cache_get(q, key)
+            # Try cache first. If we have a hit and the client's ETag matches,
+            # we can short-circuit at the controller layer with 304.
+            cached = await self._cache_get_page(cache_key)
             if cached is not None:
-                return cached
+                items, total, weak_etag = cached
+                if weak_etag == if_none_match:
+                    # Controller will turn this into a 304 Not Modified response.
+                    return items, total, weak_etag
+                return items, total, weak_etag
 
-            get_market_data_cache_misses_total().labels("historical_quotes").inc()
-
-            endpoint = "eod" if str(q.interval).lower() in {"1d", "barinterval.i1d"} else "intraday"
+            # Cache miss – hit the gateway, and record gateway metrics.
             with observe_upstream_request(
-                provider="marketstack", endpoint=endpoint, interval=str(q.interval)
-            ):
+                provider="marketstack",
+                endpoint="historical_quotes",
+                interval=str(q.interval),
+            ) as obs:
                 try:
                     items, total, provider_etag = await self._get_from_gateway(q)
-                except (
-                    MarketDataRateLimited,
-                    MarketDataQuotaExceeded,
-                    MarketDataBadRequest,
-                    MarketDataUnavailable,
-                ) as e:
-                    reason = {
-                        MarketDataRateLimited: "rate_limited",
-                        MarketDataQuotaExceeded: "quota_exceeded",
-                        MarketDataBadRequest: "bad_request",
-                        MarketDataUnavailable: "unavailable",
-                    }[type(e)]
-                    inc_market_data_error(reason, "/v1/quotes/historical")
+                except Exception:
+                    # Map any upstream failure into an error sample.
+                    obs.mark_error("exception")
                     raise
 
-            etag = provider_etag or _weak_quoted_etag(
-                {
-                    "page": q.page,
-                    "page_size": q.page_size,
-                    "total": total,
-                    "items": [_dto_to_dict(i) for i in items],
-                }
-            )
+            ttl = self._ttl_for_interval(q.interval)
+            if provider_etag:
+                weak_etag = _weak_etag(provider_etag)
+            else:
+                weak_etag = _compute_synthetic_weak_etag(items, total)
 
-            await self._cache_set_page(key, items, total, etag)
-            return items, total, etag
+            await self._cache_set_page(cache_key, items, total, weak_etag, ttl=ttl)
+            return items, total, weak_etag
 
-    # -------------------------- Internals (small helpers) -------------------------- #
+    # ------------------------------------------------------------------ #
+    # Cache key + TTL
+    # ------------------------------------------------------------------ #
     def _cache_key(self, q: HistoricalQueryDTO) -> str:
-        tickers_key = ",".join(sorted(map(str.upper, q.tickers)))
+        """Build a stable cache key tail for a historical query."""
+        tickers_part = ",".join(sorted(q.tickers))
+        from_part = q.from_.isoformat()
+        to_part = q.to.isoformat()
+        interval_part = str(q.interval)
+        page_part = f"p{q.page}"
+        size_part = f"s{q.page_size}"
         return (
-            f"hist:{tickers_key}:{str(q.interval)}:"
-            f"{q.from_.isoformat()}:{q.to.isoformat()}:p{q.page}:s{q.page_size}"
+            "historical:"
+            f"{tickers_part}:"
+            f"{interval_part}:"
+            f"{from_part}:"
+            f"{to_part}:"
+            f"{page_part}:"
+            f"{size_part}"
         )
 
-    async def _try_cache_get(
-        self, q: HistoricalQueryDTO, key: str
+    @staticmethod
+    def _ttl_for_interval(interval: BarInterval) -> int:
+        """Map interval → TTL band."""
+        if interval == BarInterval.I1D:
+            return TTL_EOD_S
+        return TTL_INTRADAY_RECENT_S
+
+    # ------------------------------------------------------------------ #
+    # Cache helpers
+    # ------------------------------------------------------------------ #
+    async def _cache_get_page(
+        self,
+        key: str,
     ) -> tuple[list[HistoricalBarDTO], int, str] | None:
+        """Fetch a cached page if present and decode DTOs.
+
+        Returns:
+            A tuple of (items, total, etag) if present, otherwise None.
+            ETag is always normalized to a weak ETag string.
+        """
         cached = await self._cache.get_json(key)
-        if not cached:
+        if cached is None:
             return None
-        get_market_data_cache_hits_total().labels("historical_quotes").inc()
-        cached_items = cached.get("items", [])
-        cached_total = int(cached.get("total", 0))
-        etag = cached.get("etag") or _weak_quoted_etag(
-            {"page": q.page, "page_size": q.page_size, "total": cached_total, "items": cached_items}
-        )
-        items = [(i if hasattr(i, "model_dump") else HistoricalBarDTO(**i)) for i in cached_items]
-        return items, cached_total, etag
+
+        try:
+            items_raw = cast(list[dict[str, Any]], cached["items"])
+            total = int(cached["total"])
+            etag_raw = cached.get("etag")
+        except (KeyError, TypeError, ValueError) as exc:
+            # Cache contents are invalid – treat as logical corruption.
+            raise MarketDataValidationError("Corrupt historical cache entry") from exc
+
+        items = [_dto_from_dict(payload) for payload in items_raw]
+
+        # If there is no stored ETag (legacy cache entries), compute one now.
+        if etag_raw is None:
+            etag = _compute_synthetic_weak_etag(items, total)
+        else:
+            etag = _weak_etag(str(etag_raw))
+
+        return items, total, etag
 
     async def _cache_set_page(
-        self, key: str, items: list[HistoricalBarDTO], total: int, etag: str
+        self,
+        key: str,
+        items: Iterable[HistoricalBarDTO],
+        total: int,
+        etag: str,
+        *,
+        ttl: int,
     ) -> None:
-        cache_obj = {"items": [_dto_to_dict(i) for i in items], "total": total, "etag": etag}
-        await _cache_set_json_compat(self._cache, key, cache_obj, ttl=300)
+        """Serialize and store a page in the cache."""
+        if ttl <= 0:
+            return
 
+        cache_obj: dict[str, Any] = {
+            "items": [_dto_to_dict(dto) for dto in items],
+            "total": int(total),
+            "etag": etag,
+        }
+
+        await _cache_set_json_compat(self._cache, key, cache_obj, ttl=ttl)
+
+    # ------------------------------------------------------------------ #
+    # Gateway dispatch
+    # ------------------------------------------------------------------ #
     async def _get_from_gateway(
-        self, q: HistoricalQueryDTO
+        self,
+        q: HistoricalQueryDTO,
     ) -> tuple[list[HistoricalBarDTO], int, str | None]:
-        """Invoke the gateway and normalize the return."""
+        """Call the gateway, supporting several historical signature shapes.
+
+        Supported patterns (in order of preference):
+
+            1) get_historical_bars(q=HistoricalQueryDTO)
+            2) get_historical_bars(
+                   tickers=list[str],
+                   date_from=datetime,
+                   date_to=datetime,
+                   interval=BarInterval,
+                   limit=int,
+                   offset=int,
+               )
+            3) get_historical_bars(
+                   tickers, date_from, date_to, interval, limit, offset
+               )
+            4) get_historical_bars(HistoricalQueryDTO)
+            5) get_historical_bars(...) returning:
+               - (items, total)
+               - (items, total, etag)
+               - {"items": [...], "total": N} (+ optional "etag")
+               - Iterable[HistoricalBarDTO | Mapping]
+
+        Only ``TypeError`` is treated as a signature mismatch; any other
+        exception propagates as a genuine failure.
+        """
+        offset = (q.page - 1) * q.page_size
+
+        # 1) q= keyword – used by SimpleGateway in tests.
+        try:
+            maybe = await self._gateway.get_historical_bars(q=q)
+            return _normalize_gateway_return(maybe)
+        except TypeError:
+            pass
+
+        # 2) Named-argument signature – preferred for real gateways.
         try:
             maybe = await self._gateway.get_historical_bars(
                 tickers=q.tickers,
@@ -210,12 +236,13 @@ class GetHistoricalQuotesUseCase:
                 date_to=q.to,
                 interval=q.interval,
                 limit=q.page_size,
-                offset=max(0, (q.page - 1) * q.page_size),
+                offset=offset,
             )
             return _normalize_gateway_return(maybe)
         except TypeError:
             pass
 
+        # 3) Positional 6-arg signature – used by _PositionalGateway test stub.
         try:
             maybe = await self._gateway.get_historical_bars(
                 q.tickers,
@@ -223,56 +250,154 @@ class GetHistoricalQuotesUseCase:
                 q.to,
                 q.interval,
                 q.page_size,
-                max(0, (q.page - 1) * q.page_size),
+                offset,
             )
             return _normalize_gateway_return(maybe)
         except TypeError:
             pass
 
+        # 4) DTO positional fallback – works for gateways that just want the DTO.
         maybe = await self._gateway.get_historical_bars(q)
         return _normalize_gateway_return(maybe)
 
 
-# =============================================================================
-# Cache compatibility (named vs positional TTL)
-# =============================================================================
+# ---------------------------------------------------------------------- #
+# Cache JSON compatibility helper
+# ---------------------------------------------------------------------- #
 
 
 async def _cache_set_json_compat(
-    cache: CachePort, key: str, value: dict[str, Any], *, ttl: int
+    cache: CachePort,
+    key: str,
+    value: dict[str, Any],
+    *,
+    ttl: int,
 ) -> None:
-    """Set JSON in cache, supporting both named and positional TTL signatures."""
+    """Set JSON in cache, supporting both named and positional TTL signatures.
+
+    Some test doubles expose ``set_json(key, value, ttl)`` (positional),
+    while the real Redis cache uses a keyword-only ``ttl`` parameter.
+    """
     try:
-        # Preferred: implementations that accept a named ttl
+        # Preferred: implementations that accept a named ttl kwarg.
         await cache.set_json(key, value, ttl=ttl)
     except TypeError:
-        # Some implementations only accept positional ttl — route through Any to appease mypy.
+        # Fallback: positional ttl – used only by specific test doubles.
         cache_any = cast(Any, cache)
         await cache_any.set_json(key, value, ttl)
 
 
-# =============================================================================
-# Return normalization
-# =============================================================================
+# ---------------------------------------------------------------------- #
+# DTO (de)serialization helpers
+# ---------------------------------------------------------------------- #
+
+
+def _dto_to_dict(dto: HistoricalBarDTO) -> dict[str, Any]:
+    """Convert HistoricalBarDTO to a JSON-ready dict (but not JSON string)."""
+    # Pydantic v2 models expose model_dump(); use JSON mode to avoid raw
+    # datetime/Decimal objects that json.dumps cannot serialize.
+    model_dump = getattr(dto, "model_dump", None)
+    raw = model_dump(mode="json") if callable(model_dump) else dict(dto)
+
+    # Ensure we use the enum value, not the enum instance.
+    interval = raw.get("interval")
+    if isinstance(interval, BarInterval):
+        raw["interval"] = interval.value
+
+    return cast(dict[str, Any], raw)
+
+
+def _dto_from_dict(data: dict[str, Any]) -> HistoricalBarDTO:
+    """Rebuild HistoricalBarDTO from a dict recovered from cache."""
+    return HistoricalBarDTO(**data)
+
+
 def _normalize_gateway_return(
-    maybe: Any,
+    value: Any,
 ) -> tuple[list[HistoricalBarDTO], int, str | None]:
-    """Normalize gateway return into ``(items, total, etag_or_none)``."""
-    if isinstance(maybe, dict):
-        items = list(maybe.get("items", []))
-        total = int(maybe.get("total", len(items)))
-        etag = maybe.get("etag")
-        return items, total, (etag or None)
+    """Normalize different gateway return shapes to a canonical tuple.
 
-    if isinstance(maybe, tuple) and len(maybe) == 3:
-        items, total, etag = maybe
-        return list(items), int(total), (etag or None)
-    if isinstance(maybe, tuple) and len(maybe) == 2:
-        items, total = maybe
-        return list(items), int(total), None
+    Allowed shapes:
+        - (items, total)
+        - (items, total, etag)
+        - {"items": [...], "total": N} (+ optional "etag")
+        - Iterable[HistoricalBarDTO | Mapping]  (total inferred as len)
+    """
+    # Dict form: {"items": [...], "total": N, "etag": "..."}.
+    if isinstance(value, dict):
+        try:
+            items_raw = value["items"]
+            total_raw = value["total"]
+        except KeyError as exc:
+            raise MarketDataValidationError(
+                "Gateway dict must contain 'items' and 'total'",
+            ) from exc
+        etag_raw = value.get("etag")
+        items = _normalize_items(items_raw)
+        return items, int(total_raw), cast(str | None, etag_raw)
 
-    if isinstance(maybe, Iterable):
-        items = list(maybe)
+    # Tuple form: (items, total[, etag]).
+    if isinstance(value, tuple):
+        if len(value) == 2:
+            items_raw, total_raw = value
+            etag_raw = None
+        elif len(value) == 3:
+            items_raw, total_raw, etag_raw = value
+        else:
+            raise MarketDataValidationError(
+                "Gateway must return (items, total) or (items, total, etag)",
+            )
+        items = _normalize_items(items_raw)
+        return items, int(total_raw), cast(str | None, etag_raw)
+
+    # Iterable form (list, generator, etc.) – treat as items only.
+    if isinstance(value, Iterable) and not isinstance(value, (str, bytes)):
+        items = _normalize_items(value)
         return items, len(items), None
 
-    raise TypeError("Unsupported gateway return type for historical bars")
+    raise MarketDataValidationError(
+        "Gateway returned unexpected type for historical bars",
+    )
+
+
+def _normalize_items(raw: Any) -> list[HistoricalBarDTO]:
+    """Normalize gateway items into a list of HistoricalBarDTO."""
+    if not isinstance(raw, Iterable) or isinstance(raw, (str, bytes)):
+        raise MarketDataValidationError("Gateway items must be an iterable of DTOs or dicts")
+
+    items: list[HistoricalBarDTO] = []
+    for item in raw:
+        if isinstance(item, HistoricalBarDTO):
+            items.append(item)
+        elif isinstance(item, dict):
+            items.append(_dto_from_dict(item))
+        else:
+            raise MarketDataValidationError("Gateway items must be DTOs or dicts")
+    return items
+
+
+def _compute_synthetic_weak_etag(
+    items: Iterable[HistoricalBarDTO],
+    total: int,
+) -> str:
+    """Compute a deterministic weak ETag from page contents.
+
+    Used when the upstream provider does not supply its own ETag
+    or when cache entries pre-date ETag support.
+    """
+    payload = {
+        "items": [_dto_to_dict(dto) for dto in items],
+        "total": int(total),
+    }
+    # Stable, compact JSON to feed into the hash.
+    data = json.dumps(payload, sort_keys=True, separators=(",", ":")).encode("utf-8")
+    digest = hashlib.sha256(data).hexdigest()
+    return f'W/"{digest}"'
+
+
+def _weak_etag(provider_etag: str) -> str:
+    """Normalize provider ETag to a weak ETag suitable for HTTP layer."""
+    # If provider already returns a weak ETag, keep it; otherwise prefix.
+    if provider_etag.startswith('W/"') or provider_etag.startswith("W/'"):
+        return provider_etag
+    return f'W/"{provider_etag}"'

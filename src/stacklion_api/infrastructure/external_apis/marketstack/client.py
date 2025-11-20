@@ -1,3 +1,4 @@
+# src/stacklion_api/infrastructure/external_apis/marketstack/client.py
 # Copyright (c)
 # SPDX-License-Identifier: MIT
 """Marketstack Transport Client (V2) — resilient, instrumented, async.
@@ -476,7 +477,8 @@ class MarketstackClient:
             except RuntimeError as cb_exc:
                 with suppress(Exception):
                     state = "open" if "open" in str(cb_exc).lower() else "half_open"
-                    self._breaker_events_total.labels(provider, state).inc()
+                    # provider, endpoint, state
+                    self._breaker_events_total.labels(provider, op, state).inc()
                 raise
             except httpx.RequestError as exc:
                 # Treat transport/network errors (including timeouts) as provider
@@ -565,10 +567,25 @@ class MarketstackClient:
             raise
         finally:
             elapsed = time.perf_counter() - start
+            # Best-effort metrics: histogram + error counter.
             with suppress(Exception):
-                self._latency.labels(provider, op, interval).observe(elapsed)
+                outcome = "error" if error_reason else "success"
+                # Histogram: provider, endpoint, interval, outcome
+                self._latency.labels(
+                    provider=provider,
+                    endpoint=op,
+                    interval=interval,
+                    outcome=outcome,
+                ).observe(elapsed)
+
                 if error_reason:
-                    self._errors.labels(error_reason, f"external:{provider}:{op}").inc()
+                    # Error counter: provider, endpoint, interval, reason
+                    self._errors.labels(
+                        provider=provider,
+                        endpoint=op,
+                        interval=interval,
+                        reason=error_reason,
+                    ).inc()
 
     @staticmethod
     def _map_errors(status: int) -> None:

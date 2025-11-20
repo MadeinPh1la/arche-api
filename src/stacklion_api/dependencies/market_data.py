@@ -1,3 +1,5 @@
+# src/stacklion_api/dependencies/market_data.py
+
 # Copyright (c) Stacklion.
 # SPDX-License-Identifier: MIT
 """Dependency wiring for Market Data (gateways, use cases).
@@ -15,6 +17,9 @@ Design:
     * Select the gateway implementation by environment:
         - Real Marketstack gateway for production-like runs.
         - Deterministic in-memory gateway for CI/tests and when no API key.
+    * Select cache implementation by environment:
+        - In-memory async cache in tests (hermetic, no Redis dependency).
+        - RedisJsonCache in non-test environments.
     * Keep configuration deterministic via Settings when appropriate, but avoid
       cross-test bleed by not caching Settings inside test-oriented helpers.
 """
@@ -43,6 +48,7 @@ from stacklion_api.application.use_cases.quotes.get_historical_quotes import (
 )
 from stacklion_api.domain.entities.historical_bar import BarInterval
 from stacklion_api.domain.exceptions.market_data import MarketDataValidationError
+from stacklion_api.infrastructure.caching.json_cache import RedisJsonCache
 from stacklion_api.infrastructure.external_apis.marketstack.settings import (
     MarketstackSettings,
 )
@@ -285,7 +291,7 @@ class DeterministicMarketDataGateway:
 
 
 # =============================================================================
-# Cache implementation
+# Cache implementations
 # =============================================================================
 
 
@@ -313,14 +319,10 @@ class InMemoryAsyncCache(CachePort):
         self,
         key: str,
         value: Mapping[str, Any],
-        ttl: int | None = None,
-        *args: Any,
-        **kwargs: Any,
+        *,
+        ttl: int,
     ) -> None:
         """Store a JSON-serializable mapping under the given key."""
-        if ttl is None:
-            ttl = int(kwargs.get("ttl", 0))
-
         now = asyncio.get_event_loop().time()
         expires_at = now if ttl <= 0 else now + float(ttl)
 
@@ -343,6 +345,23 @@ class InMemoryAsyncCache(CachePort):
         await self.set_json(key, decoded, ttl=ttl)
 
 
+def _build_cache() -> CachePort:
+    """Select cache backend based on environment.
+
+    - ENVIRONMENT=test or STACKLION_TEST_MODE=1 → InMemoryAsyncCache
+    - otherwise → RedisJsonCache
+    """
+    env = (os.getenv("ENVIRONMENT") or "").strip().lower()
+    if env == "test" or os.getenv("STACKLION_TEST_MODE") == "1":
+        return InMemoryAsyncCache()
+
+    try:
+        return RedisJsonCache(namespace="stacklion:market_data:v1")
+    except Exception:  # pragma: no cover - hard fallback if Redis misconfigured
+        logger.exception("Falling back to InMemoryAsyncCache due to Redis init failure")
+        return InMemoryAsyncCache()
+
+
 # =============================================================================
 # Historical quotes use case dependency
 # =============================================================================
@@ -356,7 +375,7 @@ async def get_historical_quotes_use_case() -> AsyncGenerator[GetHistoricalQuotes
     Yields:
         GetHistoricalQuotesUseCase: Configured use case instance.
     """
-    cache: CachePort = InMemoryAsyncCache()
+    cache: CachePort = _build_cache()
     ms_settings = _load_marketstack_settings()
     gateway: Any = (
         DeterministicMarketDataGateway()
@@ -401,7 +420,7 @@ def get_latest_quotes_use_case() -> Any:
     Returns:
         Any: Configured latest quotes use case instance.
     """
-    cache: CachePort = InMemoryAsyncCache()
+    cache: CachePort = _build_cache()
     ms_settings = _load_marketstack_settings()
     gateway: Any = (
         DeterministicMarketDataGateway()
@@ -409,7 +428,7 @@ def get_latest_quotes_use_case() -> Any:
         else _build_real_gateway(ms_settings)
     )
     use_case_cls = _resolve_get_quotes_use_case_cls()
-    return use_case_cls(cache=cache, gateway=gateway)
+    return use_case_cls(gateway=gateway, cache=cache)
 
 
 def get_quotes_uc() -> Any:
