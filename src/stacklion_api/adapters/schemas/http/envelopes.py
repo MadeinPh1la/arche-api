@@ -36,6 +36,7 @@ __all__ = [
 # Error Object
 # ---------------------------------------------------------------------------
 
+
 class ErrorObject(BaseModel):
     """Structured error object inside ErrorEnvelope.
 
@@ -82,14 +83,13 @@ class ErrorObject(BaseModel):
     details: dict[str, Any] | None = Field(
         default=None, description="Optional structured details safe for clients."
     )
-    trace_id: str | None = Field(
-        default=None, description="Request correlation identifier."
-    )
+    trace_id: str | None = Field(default=None, description="Request correlation identifier.")
 
 
 # ---------------------------------------------------------------------------
 # Error Envelope
 # ---------------------------------------------------------------------------
+
 
 class ErrorEnvelope(BaseHTTPSchema):
     """Canonical error envelope: {\"error\": ErrorObject}"""
@@ -119,6 +119,7 @@ class ErrorEnvelope(BaseHTTPSchema):
 # Success Envelope
 # ---------------------------------------------------------------------------
 
+
 class SuccessEnvelope[T](BaseHTTPSchema):
     """Success envelope for non-paginated responses: {\"data\": T}"""
 
@@ -133,6 +134,7 @@ class SuccessEnvelope[T](BaseHTTPSchema):
 # ---------------------------------------------------------------------------
 # Paginated Envelope
 # ---------------------------------------------------------------------------
+
 
 class PaginatedEnvelope[T](BaseHTTPSchema):
     """Paginated success envelope."""
