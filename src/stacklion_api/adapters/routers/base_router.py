@@ -120,6 +120,7 @@ IDEMPOTENCY_CONFLICT_RESPONSE: dict[int, dict[str, Any]] = {
 # BaseRouter Implementation
 # ---------------------------------------------------------------------------
 
+
 class BaseRouter(APIRouter):
     """Canonical router wrapper for Stacklion HTTP endpoints."""
 

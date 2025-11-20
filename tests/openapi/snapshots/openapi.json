@@ -49,14 +49,11 @@
         "examples": [
           {
             "error": {
-              "code": "VALIDATION_ERROR",
-              "details": {
-                "field": "price",
-                "min_value": 0
-              },
-              "http_status": 400,
-              "message": "price must be >= 0",
-              "trace_id": "c5a6a0c4-0c8d-4f0f-b6e6-8f1f0c2b7e7a"
+              "code": "IDEMPOTENCY_KEY_IN_PROGRESS",
+              "details": {},
+              "http_status": 409,
+              "message": "Another request with the same Idempotency-Key is in progress.",
+              "trace_id": "req-456"
             }
           }
         ],
@@ -75,14 +72,11 @@
         "additionalProperties": false,
         "examples": [
           {
-            "code": "VALIDATION_ERROR",
-            "details": {
-              "from": "2025-09-30",
-              "to": "2025-01-01"
-            },
-            "http_status": 400,
-            "message": "from must be <= to",
-            "trace_id": "7e8a5d2e-2f8e-4a7a-8d2b-0e1f9e5c1234"
+            "code": "IDEMPOTENCY_KEY_CONFLICT",
+            "details": {},
+            "http_status": 409,
+            "message": "Idempotency-Key reused with a different request payload.",
+            "trace_id": "req-123"
           }
         ],
         "properties": {
@@ -154,22 +148,6 @@
       },
       "PaginatedEnvelope": {
         "additionalProperties": false,
-        "examples": [
-          {
-            "items": [
-              {
-                "company_id": "a3d8b3c8-9d9e-4a64-9b38-7e2b8cfd8c34",
-                "currency": "USD",
-                "revenue": "61800000000",
-                "statement_date": "2024-12-31",
-                "ticker": "MSFT"
-              }
-            ],
-            "page": 1,
-            "page_size": 50,
-            "total": 1234
-          }
-        ],
         "properties": {
           "items": {
             "items": {},
@@ -297,14 +275,6 @@
       },
       "SuccessEnvelope": {
         "additionalProperties": false,
-        "examples": [
-          {
-            "data": {
-              "id": "a3d8b3c8-9d9e-4a64-9b38-7e2b8cfd8c34",
-              "ticker": "MSFT"
-            }
-          }
-        ],
         "properties": {
           "data": {
             "title": "Data"
@@ -318,14 +288,6 @@
       },
       "SuccessEnvelope_QuotesBatch_": {
         "additionalProperties": false,
-        "examples": [
-          {
-            "data": {
-              "id": "a3d8b3c8-9d9e-4a64-9b38-7e2b8cfd8c34",
-              "ticker": "MSFT"
-            }
-          }
-        ],
         "properties": {
           "data": {
             "$ref": "#/components/schemas/QuotesBatch"
