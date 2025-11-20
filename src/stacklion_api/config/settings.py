@@ -317,6 +317,22 @@ class Settings(BaseSettings):
     )
 
     # ---------------------------
+    # Idempotency
+    # ---------------------------
+    idempotency_enabled: bool = Field(
+        default=True,
+        description="Enable HTTP idempotency middleware for write operations.",
+        validation_alias="IDEMPOTENCY_ENABLED",
+    )
+    idempotency_ttl_seconds: int = Field(
+        default=86_400,
+        ge=1,
+        le=7 * 24 * 60 * 60,
+        description="Idempotency dedupe window in seconds (default 24 hours).",
+        validation_alias="IDEMPOTENCY_TTL_SECONDS",
+    )
+
+    # ---------------------------
     # Paddle / billing
     # ---------------------------
     paddle_env: PaddleEnvironment | None = Field(
@@ -440,7 +456,14 @@ class Settings(BaseSettings):
 
     @model_validator(mode="after")
     def _compute_cors_and_auth(self) -> Settings:
-        """Compute CORS list and validate auth configuration."""
+        """Compute CORS list and validate auth configuration.
+
+        Returns:
+            Settings: The validated and possibly mutated settings instance.
+
+        Raises:
+            ValueError: If CORS or auth-related invariants are violated.
+        """
         # --- CORS parsing from raw string ---
         raw = (self.cors_allow_origins_raw or "").strip()
         if not raw:
@@ -477,6 +500,9 @@ class Settings(BaseSettings):
 
         In particular, force STACKLION_TEST_MODE=1 when ENVIRONMENT=test to
         ensure consistent deterministic behavior across tests.
+
+        Returns:
+            Settings: The validated and possibly mutated settings instance.
         """
         if self.environment is Environment.TEST and os.getenv("STACKLION_TEST_MODE") != "1":
             os.environ["STACKLION_TEST_MODE"] = "1"
@@ -520,6 +546,10 @@ def get_settings() -> Settings:
                     "backend": settings.rate_limit_backend,
                     "window": settings.rate_limit_window_seconds,
                     "burst": settings.rate_limit_burst,
+                },
+                "idempotency": {
+                    "enabled": settings.idempotency_enabled,
+                    "ttl_seconds": settings.idempotency_ttl_seconds,
                 },
                 "paddle_env": settings.paddle_env if settings.paddle_env else None,
                 "otel_enabled": settings.otel_enabled,

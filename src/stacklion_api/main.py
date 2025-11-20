@@ -54,6 +54,7 @@ from stacklion_api.infrastructure.logging.logger import (
 )
 from stacklion_api.infrastructure.logging.tracing import configure_tracing
 from stacklion_api.infrastructure.middleware.access_log import AccessLogMiddleware
+from stacklion_api.infrastructure.middleware.idempotency import IdempotencyMiddleware
 from stacklion_api.infrastructure.middleware.metrics import (
     PromMetricsMiddleware,  # optional extra counters
 )
@@ -92,7 +93,7 @@ def _stable_operation_id(route: APIRoute) -> str:
         route: FastAPI APIRoute.
 
     Returns:
-        Stable operationId for OpenAPI.
+        str: Stable operationId for OpenAPI.
     """
     methods = ",".join(sorted(route.methods or []))
     path = route.path_format.replace("/", "_").replace("{", "").replace("}", "")
@@ -129,6 +130,17 @@ async def runtime_lifespan(app: FastAPI) -> AsyncGenerator[None, None]:
 def _attach_middlewares(app: FastAPI, settings: Settings) -> None:
     """Attach core middleware in the recommended order.
 
+    Middleware ordering is intentionally strict to preserve logging and
+    observability guarantees:
+
+        1. RequestIdMiddleware / TraceIdMiddleware (correlation IDs)
+        2. AccessLogMiddleware (structured access logs)
+        3. RequestLatencyMiddleware + PromMetricsMiddleware (metrics)
+        4. SecurityHeadersMiddleware (defensive headers)
+        5. IdempotencyMiddleware (dedupe write operations)
+        6. RateLimitMiddleware (optional HTTP rate limiting)
+        7. GZipMiddleware (response compression)
+
     Args:
         app: FastAPI application.
         settings: Runtime settings for environment-aware toggles.
@@ -146,6 +158,19 @@ def _attach_middlewares(app: FastAPI, settings: Settings) -> None:
     app.add_middleware(PromMetricsMiddleware)
 
     app.add_middleware(SecurityHeadersMiddleware)
+
+    # HTTP idempotency for write operations (POST/PUT/PATCH/DELETE).
+    if settings.idempotency_enabled:
+        app.add_middleware(
+            IdempotencyMiddleware,
+            ttl_seconds=settings.idempotency_ttl_seconds,
+        )
+        logger.info(
+            "idempotency_enabled",
+            extra={
+                "ttl_seconds": settings.idempotency_ttl_seconds,
+            },
+        )
 
     # Rate limit (settings + env legacy overrides).
     env_enabled = os.getenv("RATE_LIMIT_ENABLED", "").strip().lower() == "true"
@@ -221,7 +246,7 @@ def create_app() -> FastAPI:
     """Create and configure the FastAPI application.
 
     Returns:
-        Fully configured application instance.
+        FastAPI: Fully configured application instance.
     """
     settings: Settings = get_settings()
 
@@ -287,7 +312,7 @@ def create_app() -> FastAPI:
         """Lightweight health endpoint behind rate limiting.
 
         Returns:
-            Simple status payload, used to exercise RateLimitMiddleware.
+            JSONResponse: Simple status payload used to exercise RateLimitMiddleware.
         """
         return JSONResponse({"status": "ok"})
 
