@@ -1,4 +1,3 @@
-# src/stacklion_api/infrastructure/external_apis/marketstack/client.py
 # Copyright (c)
 # SPDX-License-Identifier: MIT
 """Marketstack Transport Client (V2) — resilient, instrumented, async.
@@ -147,7 +146,7 @@ class MarketstackClient:
         settings: MarketstackSettings,
         *,
         http: httpx.AsyncClient | None = None,
-        timeout_s: float = _DEFAULT_TIMEOUT,
+        timeout_s: float | None = None,
         retry_policy: RetryPolicy | None = None,
         breaker: CircuitBreaker | None = None,
     ) -> None:
@@ -157,33 +156,51 @@ class MarketstackClient:
             settings: Provider settings loaded from environment or DI.
             http: Optional shared ``httpx.AsyncClient``. If omitted, a client
                 is created and owned by this instance.
-            timeout_s: Per-request timeout when creating the internal client.
-            retry_policy: Retry configuration for retryable failures.
+            timeout_s: Optional per-request timeout override in seconds.
+                When omitted, ``settings.timeout_s`` is used. When both are
+                unset, a safe default of ``8.0`` seconds is applied.
+            retry_policy: Optional retry configuration for retryable failures.
+                When omitted, a jittered exponential policy is built from
+                ``settings.max_retries``.
             breaker: Circuit breaker instance to use; created if omitted.
         """
         self._settings = settings
         self._base_url = str(settings.base_url).rstrip("/")  # normalize AnyHttpUrl → str
-        self._timeout = float(timeout_s)
 
+        # Resolve effective timeout: explicit argument → settings.timeout_s → default.
+        if timeout_s is not None:
+            self._timeout = float(timeout_s)
+        else:
+            self._timeout = float(getattr(settings, "timeout_s", _DEFAULT_TIMEOUT))
+
+        # Underlying HTTP client (either injected or owned).
         self._client = http or httpx.AsyncClient(
-            timeout=self._timeout, headers=_DEFAULT_HEADERS.copy()
+            timeout=self._timeout,
+            headers=_DEFAULT_HEADERS.copy(),
         )
         if http is not None:
-            # Ensure baseline headers on an injected client too.
-            self._client.headers.update(_DEFAULT_HEADERS)
+            # Ensure baseline headers exist on an injected client too,
+            # without clobbering existing ones.
+            for key, value in _DEFAULT_HEADERS.items():
+                self._client.headers.setdefault(key, value)
 
+        # Resolve retry policy: use provided policy or build from settings.
+        total_retries = int(getattr(settings, "max_retries", _DEFAULT_TOTAL_RETRIES))
         self._retry = retry_policy or RetryPolicy(
-            total=_DEFAULT_TOTAL_RETRIES,
+            total=total_retries,
             base=_DEFAULT_BASE_BACKOFF,
             cap=_DEFAULT_MAX_BACKOFF,
             jitter=True,
         )
+
+        # Circuit breaker: keep thresholds centralized here for now.
         self._breaker = breaker or CircuitBreaker(
             failure_threshold=5,
             recovery_timeout_s=30.0,
             half_open_max_calls=1,
         )
 
+        # Metrics handles (real or no-op depending on import outcome).
         self._latency = get_market_data_gateway_latency_seconds()
         self._errors = get_market_data_errors_total()
         self._status_total = _METRICS_FACTORY_HTTP_STATUS()
@@ -462,7 +479,8 @@ class MarketstackClient:
                     self._breaker_events_total.labels(provider, state).inc()
                 raise
             except httpx.RequestError as exc:
-                # Treat transport/network errors as provider unavailability.
+                # Treat transport/network errors (including timeouts) as provider
+                # unavailability and let retry policy decide what to do.
                 raise MarketDataUnavailable() from exc
 
             # Per-status metrics (best effort).
@@ -522,8 +540,8 @@ class MarketstackClient:
                 exc_or_result,
                 (
                     MarketDataRateLimited,  # 429
-                    MarketDataUnavailable,  # 5xx
-                    httpx.TimeoutException,  # timeouts
+                    MarketDataUnavailable,  # transport/5xx
+                    httpx.TimeoutException,  # explicit timeout class (defensive)
                     httpx.TransportError,  # network/transport
                 ),
             )

@@ -1,4 +1,3 @@
-# src/stacklion_api/adapters/gateways/marketstack_gateway.py
 # Copyright (c)
 # SPDX-License-Identifier: MIT
 """Adapter Gateway: Marketstack → application ingest + read mapping (V2).
@@ -74,10 +73,21 @@ class MarketstackGateway(MarketDataGateway):
         return self._settings
 
     def _allowed_intervals(self) -> set[str]:
-        """Return the plan-allowed intraday intervals (lowercased)."""
+        """Return the plan-allowed intraday intervals (lowercased).
+
+        If no explicit allow-list is configured via environment, this returns an
+        empty set and no plan-level gating is applied at the gateway. This keeps
+        the default behavior backward-compatible and lets the provider enforce
+        any defaults unless you explicitly opt in via env.
+        """
         if self._settings is None:
-            # If not provided, we don't block locally; provider will gate.
             return set()
+
+        # Only enforce a plan allow-list when explicitly configured via env.
+        raw = self._settings.allowed_intraday_intervals_raw
+        if not raw:
+            return set()
+
         return {s.strip().lower() for s in self._settings.allowed_intraday_intervals}
 
     @staticmethod
@@ -338,6 +348,7 @@ class MarketstackGateway(MarketDataGateway):
         Adapts transport client shape ``(payload, etag)`` → ``(payload, etag)`` and
         raw ``httpx.AsyncClient`` responses into the same tuple.
         """
+        # Preferred path: fully-hardened transport client.
         if hasattr(self._client, "eod"):
             payload, etag = await self._client.eod(
                 tickers=tickers,
@@ -348,6 +359,7 @@ class MarketstackGateway(MarketDataGateway):
             )
             return payload, etag
 
+        # Raw HTTP path (used by unit tests).
         settings = self._require_settings()
         params = {
             "symbols": ",".join(tickers),
@@ -357,7 +369,11 @@ class MarketstackGateway(MarketDataGateway):
             "limit": limit,
             "offset": (page - 1) * limit,
         }
-        response = await self._client.get(f"{settings.base_url}/eod", params=params)
+        try:
+            response = await self._client.get(f"{settings.base_url}/eod", params=params)
+        except httpx.RequestError as exc:
+            # Map network/transport failures into domain space.
+            raise MarketDataUnavailable() from exc
         return await self._handle_httpx_response(response)
 
     async def _transport_intraday(
@@ -374,10 +390,12 @@ class MarketstackGateway(MarketDataGateway):
 
         Adapts transport client shape ``(payload, etag)`` → ``(payload, etag)`` and
         raw ``httpx.AsyncClient`` responses into the same tuple. Applies interval
-        normalization before making the provider request.
+        normalization (and optional plan gating) before making the provider request.
         """
         normalized = self._normalize_interval(interval)
+        normalized = self._enforce_plan_interval(normalized)
 
+        # Preferred path: fully-hardened transport client.
         if hasattr(self._client, "intraday"):
             payload, etag = await self._client.intraday(
                 tickers=tickers,
@@ -389,6 +407,7 @@ class MarketstackGateway(MarketDataGateway):
             )
             return payload, etag
 
+        # Raw HTTP path (used by unit tests).
         settings = self._require_settings()
         params = {
             "symbols": ",".join(tickers),
@@ -399,7 +418,10 @@ class MarketstackGateway(MarketDataGateway):
             "limit": limit,
             "offset": (page - 1) * limit,
         }
-        response = await self._client.get(f"{settings.base_url}/intraday", params=params)
+        try:
+            response = await self._client.get(f"{settings.base_url}/intraday", params=params)
+        except httpx.RequestError as exc:
+            raise MarketDataUnavailable() from exc
         return await self._handle_httpx_response(response)
 
     # --------------------------------------------------------------------- #
