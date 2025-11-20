@@ -13,13 +13,13 @@ from __future__ import annotations
 
 from collections.abc import AsyncGenerator, AsyncIterator
 from contextlib import asynccontextmanager
-from datetime import datetime
+from datetime import datetime, timedelta
 from uuid import uuid4
 
 import httpx
 import pytest
 from fastapi import FastAPI, Request
-from fastapi.responses import JSONResponse
+from fastapi.responses import JSONResponse, PlainTextResponse
 from sqlalchemy.ext.asyncio import (
     AsyncEngine,
     AsyncSession,
@@ -39,7 +39,7 @@ def _utcnow_naive() -> datetime:
 
 @pytest.fixture(scope="module")
 async def app() -> AsyncGenerator[FastAPI, None]:
-    """FastAPI app with idempotency middleware and a dummy write route.
+    """FastAPI app with idempotency middleware and dummy routes.
 
     We inject a custom session_provider that:
         * Creates an engine per request.
@@ -83,6 +83,19 @@ async def app() -> AsyncGenerator[FastAPI, None]:
         token = body.get("token") or "default"
         now = _utcnow_naive().isoformat()
         return JSONResponse({"token": token, "as_of": now})
+
+    @app.get("/idempotent")
+    async def idempotent_get() -> JSONResponse:
+        """GET variant to verify that non-write methods bypass idempotency."""
+        now = _utcnow_naive().isoformat()
+        return JSONResponse({"method": "GET", "as_of": now})
+
+    @app.post("/plaintext")
+    async def plaintext_endpoint(request: Request) -> PlainTextResponse:
+        """Non-JSON endpoint to exercise the non-JSON response branch."""
+        body = await request.body()
+        token = body.decode("utf-8") if body else "ok"
+        return PlainTextResponse(token, status_code=201)
 
     yield app
 
@@ -141,3 +154,97 @@ async def test_conflicting_payload_with_same_key_returns_409(client: httpx.Async
     assert r2.status_code == 409
     body = r2.json()
     assert body["error"]["code"] == "IDEMPOTENCY_KEY_CONFLICT"
+
+
+@pytest.mark.anyio
+async def test_requests_without_header_bypass_idempotency(client: httpx.AsyncClient) -> None:
+    """Requests without Idempotency-Key must behave as normal, non-idempotent writes."""
+    payload = {"token": "abc"}
+
+    r1 = await client.post("/idempotent", json=payload)
+    r2 = await client.post("/idempotent", json=payload)
+
+    assert r1.status_code == 200
+    assert r2.status_code == 200
+    # No 409s; we don't assert response equality here because the handler embeds a timestamp.
+
+
+@pytest.mark.anyio
+async def test_get_method_not_subject_to_idempotency_even_with_header(
+    client: httpx.AsyncClient,
+) -> None:
+    """Non-write methods should bypass idempotency logic even if the header is present."""
+    key = "idem-" + str(uuid4())
+
+    r1 = await client.get("/idempotent", headers={"Idempotency-Key": key})
+    r2 = await client.get("/idempotent", headers={"Idempotency-Key": key})
+
+    assert r1.status_code == 200
+    assert r2.status_code == 200
+    # No 409 conflicts; middleware only applies to configured write methods.
+
+
+@pytest.mark.anyio
+async def test_expired_record_allows_new_execution(client: httpx.AsyncClient) -> None:
+    """Expired idempotency records must not block a new execution with the same key."""
+    settings = get_settings()
+    key = "idem-expired-" + str(uuid4())
+
+    # Pre-insert an expired *started* record for this key.
+    engine: AsyncEngine = create_async_engine(settings.database_url, future=True)
+    async with engine.begin() as conn:
+        await conn.run_sync(IdempotencyKey.__table__.create, checkfirst=True)
+
+    session_factory = async_sessionmaker(engine, expire_on_commit=False, class_=AsyncSession)
+
+    async with session_factory() as session:
+        started = IdempotencyKey.new_started(
+            key=key,
+            request_hash="irrelevant-hash",
+            method="POST",
+            path="/idempotent",
+            ttl_seconds=60,
+            now=_utcnow_naive() - timedelta(hours=2),
+        )
+        session.add(started)
+        await session.commit()
+
+    await engine.dispose()
+
+    # Now send a POST with the same key. Because the record is expired, it should
+    # not cause a 409 and the handler should run normally.
+    r = await client.post(
+        "/idempotent",
+        json={"token": "abc"},
+        headers={"Idempotency-Key": key},
+    )
+    assert r.status_code == 200
+    body = r.json()
+    assert body["token"] == "abc"  # noqa: S105
+
+
+@pytest.mark.anyio
+async def test_non_json_response_is_handled_and_replayed_status_only(
+    client: httpx.AsyncClient,
+) -> None:
+    """Non-JSON responses should be stored with no body and replayed by status code only."""
+    key = "idem-plaintext-" + str(uuid4())
+
+    # First call stores a 201 + plaintext body.
+    r1 = await client.post(
+        "/plaintext",
+        content=b"hello",
+        headers={"Idempotency-Key": key},
+    )
+    assert r1.status_code == 201
+    assert r1.text == "hello"
+
+    # Second call should hit the *completed* record. Middleware will replay only
+    # the status code (no body), because it could not JSON-decode the payload.
+    r2 = await client.post(
+        "/plaintext",
+        content=b"hello",
+        headers={"Idempotency-Key": key},
+    )
+    assert r2.status_code == 201
+    assert r2.text == ""
