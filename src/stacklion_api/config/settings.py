@@ -26,7 +26,7 @@ from enum import Enum
 from functools import lru_cache
 from typing import Literal
 
-from pydantic import AnyHttpUrl, Field, ValidationError, model_validator
+from pydantic import AnyHttpUrl, Field, SecretStr, ValidationError, model_validator
 from pydantic_settings import BaseSettings, SettingsConfigDict
 
 # Local logger (global logging configuration is owned by bootstrap())
@@ -263,6 +263,35 @@ class Settings(BaseSettings):
         default=None,
         description="Public base URL for the API (used in links and docs).",
         validation_alias="API_BASE_URL",
+    )
+
+    # ---------------------------
+    # MCP / internal HTTP client
+    # ---------------------------
+    mcp_http_base_url: AnyHttpUrl | None = Field(
+        default=None,
+        description=(
+            "Optional override base URL for MCP→HTTP API calls. If not set, "
+            "api_base_url is used, then http://localhost:8000 as a final fallback."
+        ),
+        validation_alias="MCP_HTTP_BASE_URL",
+    )
+    mcp_http_api_key: SecretStr | None = Field(
+        default=None,
+        description=(
+            "API key used for MCP→HTTP API calls, sent as X-Api-Key. "
+            "If both mcp_http_bearer_token and mcp_http_api_key are set, "
+            "the bearer token takes precedence."
+        ),
+        validation_alias="MCP_HTTP_API_KEY",
+    )
+    mcp_http_bearer_token: SecretStr | None = Field(
+        default=None,
+        description=(
+            "Bearer token used for MCP→HTTP API calls, sent as Authorization: Bearer <token>. "
+            "If set, this takes precedence over mcp_http_api_key."
+        ),
+        validation_alias="MCP_HTTP_BEARER_TOKEN",
     )
 
     # ---------------------------
@@ -562,6 +591,13 @@ def get_settings() -> Settings:
                 "redis_socket_timeout_s": settings.redis_socket_timeout_s,
                 "redis_socket_connect_timeout_s": settings.redis_socket_connect_timeout_s,
                 "edgar_base_url": str(settings.edgar_base_url),
+                "mcp_http": {
+                    "base_url": (
+                        str(settings.mcp_http_base_url) if settings.mcp_http_base_url else None
+                    ),
+                    "has_api_key": settings.mcp_http_api_key is not None,
+                    "has_bearer_token": settings.mcp_http_bearer_token is not None,
+                },
             },
         )
         return settings
