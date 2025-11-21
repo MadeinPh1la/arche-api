@@ -1,0 +1,219 @@
+{
+  "name": "stacklion-mcp",
+  "version": "1.0.0",
+  "description": "Stacklion MCP service exposing live and historical quotes over a stable, typed interface.",
+  "contact": {
+    "name": "Stacklion API",
+    "url": "https://stacklion.io/",
+    "email": "support@stacklion.io"
+  },
+  "license": {
+    "name": "MIT"
+  },
+  "methods": [
+    {
+      "name": "quotes.live",
+      "description": "Fetch latest quotes (snapshots) for up to 50 tickers.",
+      "input_schema": {
+        "type": "object",
+        "required": ["tickers"],
+        "additionalProperties": false,
+        "properties": {
+          "tickers": {
+            "type": "array",
+            "items": { "type": "string" },
+            "minItems": 1,
+            "maxItems": 50,
+            "description": "Ticker symbols (case-insensitive, normalized to UPPERCASE)."
+          }
+        }
+      },
+      "result_schema": {
+        "type": "object",
+        "required": ["quotes"],
+        "additionalProperties": false,
+        "properties": {
+          "quotes": {
+            "type": "array",
+            "items": {
+              "type": "object",
+              "required": ["ticker", "price", "currency", "as_of"],
+              "additionalProperties": false,
+              "properties": {
+                "ticker": { "type": "string" },
+                "price": { "type": "string", "description": "Decimal string" },
+                "currency": { "type": "string" },
+                "as_of": { "type": "string", "format": "date-time" },
+                "volume": { "type": ["integer", "null"] }
+              }
+            }
+          },
+          "request_id": {
+            "type": ["string", "null"],
+            "description": "Underlying Stacklion X-Request-ID for correlation."
+          },
+          "source_status": {
+            "type": "integer",
+            "description": "HTTP status code returned by the underlying Stacklion endpoint."
+          }
+        }
+      }
+    },
+    {
+      "name": "quotes.historical",
+      "description": "Fetch historical OHLCV bars for tickers over a time window.",
+      "input_schema": {
+        "type": "object",
+        "required": ["tickers", "from", "to", "interval"],
+        "additionalProperties": false,
+        "properties": {
+          "tickers": {
+            "type": "array",
+            "items": { "type": "string" },
+            "minItems": 1,
+            "maxItems": 50
+          },
+          "from": {
+            "type": "string",
+            "format": "date",
+            "description": "Start date (YYYY-MM-DD, inclusive)."
+          },
+          "to": {
+            "type": "string",
+            "format": "date",
+            "description": "End date (YYYY-MM-DD, inclusive)."
+          },
+          "interval": {
+            "type": "string",
+            "enum": ["1d", "1m"],
+            "description": "Supported bar interval."
+          },
+          "page": {
+            "type": "integer",
+            "minimum": 1,
+            "default": 1
+          },
+          "page_size": {
+            "type": "integer",
+            "minimum": 1,
+            "maximum": 200,
+            "default": 50
+          }
+        }
+      },
+      "result_schema": {
+        "type": "object",
+        "required": ["items", "page", "page_size", "total"],
+        "additionalProperties": false,
+        "properties": {
+          "items": {
+            "type": "array",
+            "items": {
+              "type": "object",
+              "required": [
+                "ticker",
+                "timestamp",
+                "open",
+                "high",
+                "low",
+                "close",
+                "interval"
+              ],
+              "additionalProperties": false,
+              "properties": {
+                "ticker": { "type": "string" },
+                "timestamp": { "type": "string", "format": "date-time" },
+                "open": { "type": "string" },
+                "high": { "type": "string" },
+                "low": { "type": "string" },
+                "close": { "type": "string" },
+                "volume": { "type": ["string", "null"] },
+                "interval": { "type": "string" }
+              }
+            }
+          },
+          "page": { "type": "integer" },
+          "page_size": { "type": "integer" },
+          "total": { "type": "integer" },
+          "request_id": {
+            "type": ["string", "null"],
+            "description": "Underlying Stacklion X-Request-ID for correlation."
+          },
+          "source_status": { "type": "integer" }
+        }
+      }
+    },
+    {
+      "name": "system.health",
+      "description": "Simple health indicator for the Stacklion API via MCP.",
+      "input_schema": {
+        "type": "object",
+        "additionalProperties": false,
+        "properties": {}
+      },
+      "result_schema": {
+        "type": "object",
+        "required": ["status"],
+        "additionalProperties": false,
+        "properties": {
+          "status": { "type": "string", "enum": ["ok", "degraded", "down"] },
+          "request_id": { "type": ["string", "null"] },
+          "source_status": { "type": "integer" }
+        }
+      }
+    },
+    {
+      "name": "system.metadata",
+      "description": "Static metadata about Stacklion MCP capabilities and usage limits.",
+      "input_schema": {
+        "type": "object",
+        "additionalProperties": false,
+        "properties": {}
+      },
+      "result_schema": {
+        "type": "object",
+        "required": [
+          "mcp_version",
+          "api_version",
+          "quotes_contract_version",
+          "supported_intervals",
+          "max_page_size",
+          "max_range_days",
+          "max_tickers_per_request"
+        ],
+        "additionalProperties": false,
+        "properties": {
+          "mcp_version": { "type": "string" },
+          "api_version": { "type": "string" },
+          "quotes_contract_version": { "type": "string" },
+          "supported_intervals": {
+            "type": "array",
+            "items": { "type": "string" }
+          },
+          "max_page_size": { "type": "integer" },
+          "max_range_days": { "type": "integer" },
+          "max_tickers_per_request": { "type": "integer" }
+        }
+      }
+    }
+  ],
+  "errors": {
+    "schema": {
+      "type": "object",
+      "required": ["type", "message", "retryable"],
+      "additionalProperties": false,
+      "properties": {
+        "type": {
+          "type": "string",
+          "description": "Stable error type (e.g. VALIDATION_ERROR, RATE_LIMITED)."
+        },
+        "message": { "type": "string" },
+        "retryable": { "type": "boolean" },
+        "http_status": { "type": ["integer", "null"] },
+        "http_code": { "type": ["string", "null"] },
+        "trace_id": { "type": ["string", "null"] },
+        "retry_after_s": { "type": ["number", "null"] }
+      }
+    }
+  }
+}

@@ -355,12 +355,12 @@ def inc_market_data_error(*args: Any, **kwargs: Any) -> None:
     -----------------------
     The unit test exercises the legacy form:
 
-    >>> inc_market_data_error("validation", "/v1/quotes/historical")
+     inc_market_data_error("validation", "/v2/quotes/historical")
 
     This is interpreted as:
 
     * ``reason="validation"``
-    * ``endpoint="/v1/quotes/historical"``
+    * ``endpoint="/v2/quotes/historical"``
     * ``provider="api"``
     * ``interval="n/a"``
 
@@ -368,12 +368,12 @@ def inc_market_data_error(*args: Any, **kwargs: Any) -> None:
     -------------
     Newer code may use keyword arguments:
 
-    >>> inc_market_data_error(
-    ...     provider="marketstack",
-    ...     endpoint="eod",
-    ...     interval="1d",
-    ...     reason="rate_limited",
-    ... )
+     inc_market_data_error(
+         provider="marketstack",
+         endpoint="eod",
+         interval="1d",
+         reason="rate_limited",
+     )
 
     Args:
         *args: Optional positional arguments for the legacy form.

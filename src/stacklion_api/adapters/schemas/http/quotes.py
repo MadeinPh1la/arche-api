@@ -42,7 +42,7 @@ class QuotesBatch(BaseHTTPSchema):
 
 
 class HistoricalQuotesRequest(BaseHTTPSchema):
-    """Query parameters for /v1/quotes/historical."""
+    """Query parameters for /v2/quotes/historical."""
 
     model_config = ConfigDict(extra="forbid")
 
