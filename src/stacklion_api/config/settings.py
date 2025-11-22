@@ -73,7 +73,9 @@ class Settings(BaseSettings):
 
     database_url: str = Field(
         ...,
-        description="SQLAlchemy async DB URL. Example: postgresql+asyncpg://user:pass@host:5432/db",
+        description=(
+            "SQLAlchemy async DB URL. Example: " "postgresql+asyncpg://user:pass@host:5432/db"
+        ),
         validation_alias="DATABASE_URL",
     )
 
@@ -261,7 +263,10 @@ class Settings(BaseSettings):
     )
     api_base_url: AnyHttpUrl | None = Field(
         default=None,
-        description="Public base URL for the API (used in links and docs).",
+        description=(
+            "Public base URL for the Stacklion HTTP API (used in links, docs, "
+            "and as a fallback for MCP→HTTP calls when MCP_HTTP_BASE_URL is unset)."
+        ),
         validation_alias="API_BASE_URL",
     )
 
@@ -272,7 +277,7 @@ class Settings(BaseSettings):
         default=None,
         description=(
             "Optional override base URL for MCP→HTTP API calls. If not set, "
-            "api_base_url is used, then http://localhost:8000 as a final fallback."
+            "api_base_url is used, then http://127.0.0.1:8000 as a final fallback."
         ),
         validation_alias="MCP_HTTP_BASE_URL",
     )
@@ -288,8 +293,8 @@ class Settings(BaseSettings):
     mcp_http_bearer_token: SecretStr | None = Field(
         default=None,
         description=(
-            "Bearer token used for MCP→HTTP API calls, sent as Authorization: Bearer <token>. "
-            "If set, this takes precedence over mcp_http_api_key."
+            "Bearer token used for MCP→HTTP API calls, sent as Authorization: "
+            "Bearer <token>. If set, this takes precedence over mcp_http_api_key."
         ),
         validation_alias="MCP_HTTP_BEARER_TOKEN",
     )
@@ -518,7 +523,8 @@ class Settings(BaseSettings):
             if not (has_hs256 or has_clerk):
                 raise ValueError(
                     "AUTH_ENABLED is true but neither HS256 nor Clerk configuration is present. "
-                    "Set AUTH_HS256_SECRET or configure Clerk (CLERK_FRONTEND_API + CLERK_PUBLISHER).",
+                    "Set AUTH_HS256_SECRET or configure Clerk "
+                    "(CLERK_FRONTEND_API + CLERK_PUBLISHER).",
                 )
 
         return self
@@ -538,6 +544,29 @@ class Settings(BaseSettings):
             logger.info("STACKLION_TEST_MODE enabled due to ENVIRONMENT=test")
 
         return self
+
+    # --------------------------------------------------------------------- #
+    # MCP helpers
+    # --------------------------------------------------------------------- #
+    def mcp_resolved_http_base_url(self) -> str:
+        """Return the effective base URL used for MCP→HTTP calls.
+
+        Resolution order:
+            1. mcp_http_base_url (MCP_HTTP_BASE_URL), if set.
+            2. api_base_url (API_BASE_URL), if set.
+            3. http://127.0.0.1:8000 as a final local fallback.
+
+        Returns:
+            A string base URL suitable for use by MCP HTTP clients.
+        """
+        if self.mcp_http_base_url is not None:
+            return str(self.mcp_http_base_url)
+
+        if self.api_base_url is not None:
+            return str(self.api_base_url)
+
+        # Final fallback for local/dev and tests.
+        return "http://127.0.0.1:8000"
 
 
 @lru_cache(maxsize=1)
@@ -592,9 +621,10 @@ def get_settings() -> Settings:
                 "redis_socket_connect_timeout_s": settings.redis_socket_connect_timeout_s,
                 "edgar_base_url": str(settings.edgar_base_url),
                 "mcp_http": {
-                    "base_url": (
+                    "base_url_raw": (
                         str(settings.mcp_http_base_url) if settings.mcp_http_base_url else None
                     ),
+                    "resolved_base_url": settings.mcp_resolved_http_base_url(),
                     "has_api_key": settings.mcp_http_api_key is not None,
                     "has_bearer_token": settings.mcp_http_bearer_token is not None,
                 },

@@ -25,7 +25,7 @@ Notes:
 
         1. Settings.mcp_http_base_url
         2. Settings.api_base_url
-        3. "http://localhost:8000"
+        3. "http://127.0.0.1:8000"
 
     - When a lightweight settings object (e.g., tests' FakeSettings) is passed,
       only `api_base_url` is read; MCP-specific fields are ignored.
@@ -120,16 +120,22 @@ class StacklionHTTPClient:
         # Base URL precedence when using real Settings:
         #   1. mcp_http_base_url
         #   2. api_base_url
-        #   3. "http://localhost:8000"
+        #   3. "http://127.0.0.1:8000"
         #
         # When using a lightweight FakeSettings (tests), only api_base_url is
         # used and MCP-specific attributes are skipped to avoid AttributeError.
         if isinstance(self._settings, Settings):
-            base_url = self._settings.mcp_http_base_url or self._settings.api_base_url
+            if self._settings.mcp_http_base_url is not None:
+                base_url = str(self._settings.mcp_http_base_url)
+            elif self._settings.api_base_url is not None:
+                base_url = str(self._settings.api_base_url)
+            else:
+                base_url = "http://127.0.0.1:8000"
         else:
-            base_url = getattr(self._settings, "api_base_url", None)
+            base_url = getattr(self._settings, "api_base_url", None) or "http://127.0.0.1:8000"
 
-        self._base_url = str(base_url) if base_url is not None else "http://localhost:8000"
+        # Normalize and strip trailing slash for path concatenation.
+        self._base_url = base_url.rstrip("/")
 
         # Conservative default timeout; can be tuned via dedicated MCP settings in the future.
         self._timeout_s = 10.0
@@ -152,7 +158,8 @@ class StacklionHTTPClient:
             StacklionHTTPError: On transport failure or non-successful HTTP status.
         """
         request_id = uuid.uuid4().hex
-        url = f"{self._base_url}{path}"
+        normalized_path = path if path.startswith("/") else f"/{path}"
+        url = f"{self._base_url}{normalized_path}"
         headers = self._build_headers(request_id=request_id)
 
         async with httpx.AsyncClient(timeout=self._timeout_s) as client:

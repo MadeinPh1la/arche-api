@@ -10,6 +10,7 @@ model and the concrete repository to verify TTL and result persistence.
 
 from __future__ import annotations
 
+import os
 from collections.abc import AsyncGenerator, Mapping
 from datetime import datetime, timedelta
 from typing import Any
@@ -24,7 +25,6 @@ from sqlalchemy.ext.asyncio import (
 )
 
 from stacklion_api.adapters.repositories.idempotency_repository import IdempotencyRepository
-from stacklion_api.config.settings import get_settings
 from stacklion_api.infrastructure.database.models.idempotency import IdempotencyKey
 
 
@@ -41,8 +41,11 @@ async def idemp_session() -> AsyncGenerator[AsyncSession, None]:
     loop, which avoids asyncpg's 'another operation is in progress' and
     cross-loop errors.
     """
-    settings = get_settings()
-    engine: AsyncEngine = create_async_engine(settings.database_url, future=True)
+    database_url = os.getenv(
+        "DATABASE_URL",
+        "postgresql+asyncpg://stacklion:stacklion@127.0.0.1:5432/stacklion_test",
+    )
+    engine: AsyncEngine = create_async_engine(database_url, future=True)
 
     # Ensure table exists for this test.
     async with engine.begin() as conn:

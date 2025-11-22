@@ -1,3 +1,4 @@
+# src/stacklion_api/adapters/routers/quotes_router.py
 # Copyright (c) Stacklion.
 # SPDX-License-Identifier: MIT
 """
@@ -31,6 +32,7 @@ from stacklion_api.adapters.schemas.http.quotes import QuotesBatch
 from stacklion_api.application.use_cases.quotes.get_quotes import GetQuotes
 from stacklion_api.dependencies.market_data import get_quotes_uc
 from stacklion_api.domain.exceptions.market_data import (
+    MarketDataBadRequest,
     MarketDataUnavailable,
     MarketDataValidationError,
     SymbolNotFound,
@@ -49,6 +51,7 @@ class QuotesQuery(BaseModel):
 
 
 def _parse_tickers(tickers_csv: str) -> list[str]:
+    """Parse and validate the tickers CSV string."""
     vals = [x.strip().upper() for x in tickers_csv.split(",") if x.strip()]
     if not (1 <= len(vals) <= 50) or any(len(v) > 12 for v in vals):
         raise HTTPException(status_code=400, detail="1..50 tickers required (<=12 chars each)")
@@ -62,7 +65,7 @@ def _deterministic_etag(seed: str) -> str:
 
 @router.get(
     "",
-    response_model=SuccessEnvelope[QuotesBatch],
+    response_model=SuccessEnvelope[QuotesBatch] | ErrorEnvelope,
     status_code=status.HTTP_200_OK,
     responses=cast("dict[int | str, dict[str, Any]]", BaseRouter.std_error_responses()),
     summary="Get latest quotes for tickers",
@@ -84,15 +87,18 @@ async def get_quotes(
     try:
         q = QuotesQuery(tickers=_parse_tickers(tickers))
 
-        # Conditional GET pre-check using a deterministic seed
+        # Conditional GET pre-check using a deterministic seed.
         seed = "quotes:" + ",".join(q.tickers)
         etag = _deterministic_etag(seed)
         if_none_match = request.headers.get("If-None-Match")
         if if_none_match and if_none_match == etag:
-            # 304: no body, but keep caching headers
+            # 304: no body, but keep caching headers.
             return Response(
                 status_code=status.HTTP_304_NOT_MODIFIED,
-                headers={"ETag": etag, "Cache-Control": "public, max-age=5"},
+                headers={
+                    "ETag": etag,
+                    "Cache-Control": "public, max-age=5",
+                },
             )
 
         dto = await uc.execute(q.tickers)
@@ -104,7 +110,7 @@ async def get_quotes(
             etag_seed=seed,
         )
 
-        # Apply headers directly (ETag, X-Request-ID, Cache-Control, etc.)
+        # Apply headers directly (ETag, X-Request-ID, Cache-Control, etc.).
         response.headers.update(dict(result.headers))
 
         # For this endpoint, presenter always returns a body on success.
@@ -132,6 +138,19 @@ async def get_quotes(
             http_status=500,
             message=str(exc),
             details={},
+            trace_id=trace_id,
+        )
+        return ErrorEnvelope(error=error)
+
+    except MarketDataBadRequest as exc:
+        # Upstream rejected the request (e.g., bad credentials, invalid plan, bad params).
+        details = getattr(exc, "details", {}) or {}
+        response.status_code = status.HTTP_502_BAD_GATEWAY
+        error = ErrorObject(
+            code="MARKET_DATA_BAD_REQUEST",
+            http_status=response.status_code,
+            message="Upstream market data provider rejected the request.",
+            details=details,
             trace_id=trace_id,
         )
         return ErrorEnvelope(error=error)

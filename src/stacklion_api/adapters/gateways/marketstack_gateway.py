@@ -1,3 +1,4 @@
+# src/stacklion_api/adapters/gateways/marketstack_gateway.py
 # Copyright (c)
 # SPDX-License-Identifier: MIT
 """Adapter Gateway: Marketstack → application ingest + read mapping (V2).
@@ -6,6 +7,7 @@ This gateway sits on top of the V2 transport client and provides:
 
 * Ingest port for intraday bars (provider-agnostic record format).
 * Read helper for historical bars mapping to read-side DTOs.
+* Latest-quote helper for live quote use cases.
 
 Design principles:
     * Optionally fail fast on intervals outside your plan via an allow-list.
@@ -17,7 +19,7 @@ Design principles:
 from __future__ import annotations
 
 from collections.abc import Mapping, Sequence
-from datetime import UTC, datetime
+from datetime import UTC, datetime, timedelta
 from decimal import Decimal
 from typing import Any
 
@@ -29,6 +31,7 @@ from stacklion_api.application.interfaces.market_data_gateway import (
 )
 from stacklion_api.application.schemas.dto.quotes import HistoricalBarDTO, HistoricalQueryDTO
 from stacklion_api.domain.entities.historical_bar import BarInterval
+from stacklion_api.domain.entities.quote import Quote
 from stacklion_api.domain.exceptions.market_data import (
     MarketDataBadRequest,
     MarketDataQuotaExceeded,
@@ -286,6 +289,83 @@ class MarketstackGateway(MarketDataGateway):
                 details={"error": str(exc)},
             ) from exc
 
+    @staticmethod
+    def _row_to_quote(symbol: str, ts: datetime, row: Mapping[str, Any]) -> Quote:
+        """Convert a provider EOD row into a Quote entity.
+
+        Args:
+            symbol: Uppercase symbol that this row belongs to.
+            ts: Parsed timestamp for the bar.
+            row: Provider row mapping.
+
+        Returns:
+            A Quote domain entity.
+
+        Raises:
+            MarketDataValidationError: On malformed price/currency/volume values.
+        """
+        try:
+            price = Decimal(str(row["close"]))
+        except Exception as exc:  # noqa: BLE001
+            raise MarketDataValidationError(
+                "bad_values",
+                details={"error": str(exc)},
+            ) from exc
+
+        currency = str(row.get("currency") or "USD")
+        volume_raw = row.get("volume")
+        volume: int | None
+        try:
+            volume = int(volume_raw) if volume_raw is not None else None
+        except (TypeError, ValueError):
+            volume = None
+
+        return Quote(
+            ticker=symbol,
+            price=price,
+            currency=currency,
+            as_of=ts,
+            volume=volume,
+        )
+
+    def _select_latest_eod_by_symbol(
+        self,
+        rows: Sequence[Mapping[str, Any]],
+        tickers: Sequence[str],
+    ) -> dict[str, tuple[datetime, Mapping[str, Any]]]:
+        """Select the most recent EOD bar per requested symbol.
+
+        Args:
+            rows: Provider data rows from an EOD response.
+            tickers: Requested ticker symbols (case-insensitive).
+
+        Returns:
+            Mapping from uppercase symbol → (timestamp, provider row).
+        """
+        requested = {s.upper() for s in tickers if s}
+        latest: dict[str, tuple[datetime, Mapping[str, Any]]] = {}
+
+        for row in rows:
+            symbol_raw = row.get("symbol")
+            if not symbol_raw:
+                continue
+            sym = str(symbol_raw).upper()
+            if sym not in requested:
+                continue
+
+            date_raw = row.get("date")
+            try:
+                ts = datetime.fromisoformat(str(date_raw).replace("Z", "+00:00")).astimezone(UTC)
+            except (TypeError, ValueError):
+                # Skip rows with malformed dates; provider bug, not caller error.
+                continue
+
+            existing = latest.get(sym)
+            if existing is None or ts > existing[0]:
+                latest[sym] = (ts, row)
+
+        return latest
+
     async def _handle_httpx_response(
         self,
         response: httpx.Response,
@@ -423,6 +503,54 @@ class MarketstackGateway(MarketDataGateway):
         except httpx.RequestError as exc:
             raise MarketDataUnavailable() from exc
         return await self._handle_httpx_response(response)
+
+    # --------------------------------------------------------------------- #
+    # Latest quotes helper (for GetQuotes use case)
+    # --------------------------------------------------------------------- #
+    async def get_latest_quotes(self, symbols: Sequence[str]) -> list[Quote]:
+        """Return latest quotes for the given symbols using EOD data.
+
+        This method implements the "latest quotes" surface expected by the
+        GetQuotes use case:
+
+            - Fetches a recent EOD window for all requested symbols in a single call.
+            - Picks the most recent bar per symbol by timestamp.
+            - Maps each bar into a Quote domain entity.
+
+        Args:
+            symbols: Sequence of ticker symbols.
+
+        Returns:
+            A list of Quote entities, in no particular order. Missing symbols
+            are simply omitted from the result.
+        """
+        tickers = [s.upper() for s in symbols if s]
+        if not tickers:
+            return []
+
+        today = datetime.now(tz=UTC).date()
+        start = today - timedelta(days=5)
+
+        raw, _etag = await self._transport_eod(
+            tickers=tickers,
+            date_from=start.isoformat(),
+            date_to=today.isoformat(),
+            page=1,
+            limit=100,
+        )
+        rows, _total = self._validate_list_payload(raw)
+
+        latest_by_symbol = self._select_latest_eod_by_symbol(rows, tickers)
+
+        quotes: list[Quote] = []
+        for sym in tickers:
+            entry = latest_by_symbol.get(sym)
+            if entry is None:
+                continue
+            ts, row = entry
+            quotes.append(self._row_to_quote(sym, ts, row))
+
+        return quotes
 
     # --------------------------------------------------------------------- #
     # Ingest Port Implementation

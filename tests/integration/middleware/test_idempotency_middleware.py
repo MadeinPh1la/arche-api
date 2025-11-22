@@ -11,6 +11,7 @@ These tests exercise the end-to-end HTTP path:
 
 from __future__ import annotations
 
+import os
 from collections.abc import AsyncGenerator, AsyncIterator
 from contextlib import asynccontextmanager
 from datetime import datetime, timedelta
@@ -27,7 +28,6 @@ from sqlalchemy.ext.asyncio import (
     create_async_engine,
 )
 
-from stacklion_api.config.settings import get_settings
 from stacklion_api.infrastructure.database.models.idempotency import IdempotencyKey
 from stacklion_api.infrastructure.middleware.idempotency import IdempotencyMiddleware
 
@@ -52,8 +52,11 @@ async def app() -> AsyncGenerator[FastAPI, None]:
 
     @asynccontextmanager
     async def session_provider() -> AsyncIterator[AsyncSession]:
-        settings = get_settings()
-        engine: AsyncEngine = create_async_engine(settings.database_url, future=True)
+        database_url = os.getenv(
+            "DATABASE_URL",
+            "postgresql+asyncpg://stacklion:stacklion@127.0.0.1:5432/stacklion_test",
+        )
+        engine: AsyncEngine = create_async_engine(database_url, future=True)
 
         # Ensure table exists for this request.
         async with engine.begin() as conn:
@@ -187,11 +190,14 @@ async def test_get_method_not_subject_to_idempotency_even_with_header(
 @pytest.mark.anyio
 async def test_expired_record_allows_new_execution(client: httpx.AsyncClient) -> None:
     """Expired idempotency records must not block a new execution with the same key."""
-    settings = get_settings()
     key = "idem-expired-" + str(uuid4())
 
     # Pre-insert an expired *started* record for this key.
-    engine: AsyncEngine = create_async_engine(settings.database_url, future=True)
+    database_url = os.getenv(
+        "DATABASE_URL",
+        "postgresql+asyncpg://stacklion:stacklion@127.0.0.1:5432/stacklion_test",
+    )
+    engine: AsyncEngine = create_async_engine(database_url, future=True)
     async with engine.begin() as conn:
         await conn.run_sync(IdempotencyKey.__table__.create, checkfirst=True)
 

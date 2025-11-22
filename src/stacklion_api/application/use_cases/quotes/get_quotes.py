@@ -21,6 +21,7 @@ from typing import Any
 from stacklion_api.application.interfaces.cache_port import CachePort
 from stacklion_api.application.schemas.dto.quotes import QuoteDTO, QuotesBatchDTO
 from stacklion_api.domain.entities.quote import Quote
+from stacklion_api.domain.exceptions.market_data import MarketDataUnavailable
 from stacklion_api.domain.interfaces.gateways.market_data_gateway import (
     MarketDataGatewayProtocol,
 )
@@ -69,8 +70,7 @@ class GetQuotes:
         cache: Optional cache implementation for hot latest quotes.
 
     Raises:
-        MarketDataUnavailable: If provider is down.
-        MarketDataValidationError: If provider payload is invalid.
+        MarketDataUnavailable: If provider is down or improperly configured.
     """
 
     def __init__(
@@ -94,7 +94,7 @@ class GetQuotes:
 
         # ---------------------- Non-cached path ---------------------- #
         if self._cache is None or not normalized:
-            quotes = await self._gateway.get_latest_quotes(normalized)
+            quotes = await self._fetch_latest(normalized)
             dtos = [self._to_dto(q) for q in quotes]
             # Ensure deterministic order of input.
             by_symbol = {dto.ticker: dto for dto in dtos}
@@ -118,7 +118,7 @@ class GetQuotes:
         # 2. Fetch missing tickers from gateway in a single shot.
         fresh_dtos: dict[str, QuoteDTO] = {}
         if missing:
-            fresh_quotes: list[Quote] = await self._gateway.get_latest_quotes(missing)
+            fresh_quotes: list[Quote] = await self._fetch_latest(missing)
             for q in fresh_quotes:
                 dto = self._to_dto(q)
                 symbol = dto.ticker.upper()
@@ -135,6 +135,32 @@ class GetQuotes:
                 result_items.append(cached_dtos[symbol])
 
         return QuotesBatchDTO(items=result_items)
+
+    async def _fetch_latest(self, symbols: Sequence[str]) -> list[Quote]:
+        """Call the underlying gateway using the best-available method.
+
+        This shields the use case from concrete gateway method naming drift.
+        """
+        gw = self._gateway
+
+        # Preferred, protocol-aligned method.
+        if hasattr(gw, "get_latest_quotes"):
+            return await gw.get_latest_quotes(symbols)
+
+        # Common alternates used in some gateways.
+        if hasattr(gw, "get_latest"):
+            return await gw.get_latest(symbols)  # type: ignore[no-any-return]
+
+        if hasattr(gw, "get_intraday_latest_bars"):
+            return await gw.get_intraday_latest_bars(symbols)  # type: ignore[no-any-return]
+
+        if hasattr(gw, "get_quotes"):
+            return await gw.get_quotes(symbols)  # type: ignore[no-any-return]
+
+        # If we get here, the gateway wiring is simply wrong for this UC.
+        raise MarketDataUnavailable(
+            "Market data gateway does not implement a latest-quotes method compatible with GetQuotes.",
+        )
 
     @staticmethod
     def _to_dto(q: Quote) -> QuoteDTO:

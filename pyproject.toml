@@ -110,6 +110,7 @@ extend-exclude = [
   "build",
   "dist",
   "htmlcov",
+    "scripts",
 ]
 
 [tool.ruff.lint]
@@ -144,6 +145,7 @@ extend-exclude = '''
  |build
  |dist
  |htmlcov
+ |scripts
 )/
 '''
 
