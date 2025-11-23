@@ -42,6 +42,11 @@ def _bootstrap_test_db_schema(event_loop: asyncio.AbstractEventLoop) -> None:
         - public.md_intraday_bars_parent
         - staging.ingest_runs
         - staging.raw_payloads
+
+    IMPORTANT:
+        This fixture is *best-effort* locally. If the test database is not
+        reachable (e.g. Docker Postgres not running or port not mapped),
+        we log a warning and continue so non-DB tests can still run.
     """
     database_url = os.getenv(
         "DATABASE_URL",
@@ -49,69 +54,82 @@ def _bootstrap_test_db_schema(event_loop: asyncio.AbstractEventLoop) -> None:
     )
 
     async def _init() -> None:
-        engine: AsyncEngine = create_async_engine(database_url)
-        async with engine.begin() as conn:
-            # Ensure staging schema exists
-            await conn.execute(text("CREATE SCHEMA IF NOT EXISTS staging"))
+        engine: AsyncEngine = create_async_engine(
+            database_url,
+            # Avoid SSL / negotiation issues for local + CI test DB.
+            connect_args={"ssl": False},
+        )
+        try:
+            async with engine.begin() as conn:
+                # Ensure staging schema exists
+                await conn.execute(text("CREATE SCHEMA IF NOT EXISTS staging"))
 
-            # Minimal md_intraday_bars_parent table for intraday bar tests
-            await conn.execute(
-                text(
-                    """
-                    CREATE TABLE IF NOT EXISTS md_intraday_bars_parent (
-                        symbol_id UUID NOT NULL,
-                        ts TIMESTAMPTZ NOT NULL,
-                        open NUMERIC(20, 8) NOT NULL,
-                        high NUMERIC(20, 8) NOT NULL,
-                        low NUMERIC(20, 8) NOT NULL,
-                        close NUMERIC(20, 8) NOT NULL,
-                        volume NUMERIC(38, 0) NOT NULL,
-                        provider VARCHAR NOT NULL,
-                        PRIMARY KEY (symbol_id, ts)
-                    )
-                    """
-                ),
+                # Minimal md_intraday_bars_parent table for intraday bar tests
+                await conn.execute(
+                    text(
+                        """
+                        CREATE TABLE IF NOT EXISTS md_intraday_bars_parent (
+                            symbol_id UUID NOT NULL,
+                            ts TIMESTAMPTZ NOT NULL,
+                            open NUMERIC(20, 8) NOT NULL,
+                            high NUMERIC(20, 8) NOT NULL,
+                            low NUMERIC(20, 8) NOT NULL,
+                            close NUMERIC(20, 8) NOT NULL,
+                            volume NUMERIC(38, 0) NOT NULL,
+                            provider VARCHAR NOT NULL,
+                            PRIMARY KEY (symbol_id, ts)
+                        )
+                        """
+                    ),
+                )
+
+                # Minimal staging.ingest_runs table for ingest use case tests
+                await conn.execute(
+                    text(
+                        """
+                        CREATE TABLE IF NOT EXISTS staging.ingest_runs (
+                            run_id UUID PRIMARY KEY,
+                            source VARCHAR NOT NULL,
+                            endpoint VARCHAR NOT NULL,
+                            key VARCHAR NOT NULL,
+                            started_at TIMESTAMPTZ NOT NULL,
+                            finished_at TIMESTAMPTZ,
+                            result VARCHAR,
+                            error_reason VARCHAR
+                        )
+                        """
+                    ),
+                )
+
+                # Minimal staging.raw_payloads table for ingest staging payloads
+                await conn.execute(
+                    text(
+                        """
+                        CREATE TABLE IF NOT EXISTS staging.raw_payloads (
+                            payload_id UUID PRIMARY KEY,
+                            source VARCHAR NOT NULL,
+                            endpoint VARCHAR NOT NULL,
+                            symbol_or_cik VARCHAR NOT NULL,
+                            as_of TIMESTAMPTZ,
+                            window_from TIMESTAMPTZ,
+                            window_to TIMESTAMPTZ,
+                            etag VARCHAR,
+                            received_at TIMESTAMPTZ NOT NULL,
+                            payload JSON NOT NULL
+                        )
+                        """
+                    ),
+                )
+        except Exception as exc:  # noqa: BLE001
+            # Do NOT hard-fail the whole test session if DB is unreachable locally.
+            # CI should have a working Postgres; locally this is allowed to be absent.
+            print(
+                f"[TEST-DB-BOOTSTRAP] WARNING: "
+                f"Could not connect to test database at {database_url!r}: {exc!r}. "
+                "Skipping DB bootstrap; tests that require the DB may fail separately."
             )
-
-            # Minimal staging.ingest_runs table for ingest use case tests
-            await conn.execute(
-                text(
-                    """
-                    CREATE TABLE IF NOT EXISTS staging.ingest_runs (
-                        run_id UUID PRIMARY KEY,
-                        source VARCHAR NOT NULL,
-                        endpoint VARCHAR NOT NULL,
-                        key VARCHAR NOT NULL,
-                        started_at TIMESTAMPTZ NOT NULL,
-                        finished_at TIMESTAMPTZ,
-                        result VARCHAR,
-                        error_reason VARCHAR
-                    )
-                    """
-                ),
-            )
-
-            # Minimal staging.raw_payloads table for ingest staging payloads
-            await conn.execute(
-                text(
-                    """
-                    CREATE TABLE IF NOT EXISTS staging.raw_payloads (
-                        payload_id UUID PRIMARY KEY,
-                        source VARCHAR NOT NULL,
-                        endpoint VARCHAR NOT NULL,
-                        symbol_or_cik VARCHAR NOT NULL,
-                        as_of TIMESTAMPTZ,
-                        window_from TIMESTAMPTZ,
-                        window_to TIMESTAMPTZ,
-                        etag VARCHAR,
-                        received_at TIMESTAMPTZ NOT NULL,
-                        payload JSON NOT NULL
-                    )
-                    """
-                ),
-            )
-
-        await engine.dispose()
+        finally:
+            await engine.dispose()
 
     # Run the async bootstrap on the session-scoped event loop
     event_loop.run_until_complete(_init())

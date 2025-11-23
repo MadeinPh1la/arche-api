@@ -1,0 +1,241 @@
+stacklion_api
+├── adapters
+│   ├── controllers
+│   │   ├── __init__.py
+│   │   ├── base.py
+│   │   ├── historical_quotes_controller.py
+│   │   └── quotes_controller.py
+│   ├── dependencies
+│   │   ├── __init__.py
+│   │   └── health_probe.py
+│   ├── gateways
+│   │   ├── __init__.py
+│   │   └── marketstack_gateway.py
+│   ├── mappers
+│   │   └── __init__.py
+│   ├── presenters
+│   │   ├── __init__.py
+│   │   ├── base_presenter.py
+│   │   ├── market_data_presenter.py
+│   │   └── quotes_presenter.py
+│   ├── repositories
+│   │   ├── __init__.py
+│   │   ├── base_repository.py
+│   │   ├── idempotency_repository.py
+│   │   ├── market_data_repository.py
+│   │   └── staging_repository.py
+│   ├── routers
+│   │   ├── __init__.py
+│   │   ├── api_router.py
+│   │   ├── base_router.py
+│   │   ├── health_router.py
+│   │   ├── historical_quotes_router.py
+│   │   ├── mcp_router.py
+│   │   ├── metrics_router.py
+│   │   ├── openapi_registry.py
+│   │   ├── protected_router.py
+│   │   └── quotes_router.py
+│   ├── schemas
+│   │   ├── http
+│   │   │   ├── __init__.py
+│   │   │   ├── base.py
+│   │   │   ├── envelopes.py
+│   │   │   └── quotes.py
+│   │   └── __init__.py
+│   ├── uow
+│   │   └── __init__.py
+│   └── __init__.py
+├── application
+│   ├── interfaces
+│   │   ├── __init__.py
+│   │   ├── cache_port.py
+│   │   └── market_data_gateway.py
+│   ├── mappers
+│   │   └── __init__.py
+│   ├── schemas
+│   │   ├── analysis
+│   │   │   └── __init__.py
+│   │   ├── dto
+│   │   │   ├── __init__.py
+│   │   │   ├── base.py
+│   │   │   └── quotes.py
+│   │   └── __init__.py
+│   ├── services
+│   │   ├── risk_services
+│   │   │   └── __init__.py
+│   │   └── __init__.py
+│   ├── use_cases
+│   │   ├── external_apis
+│   │   │   ├── marketstack
+│   │   │   │   └── __init__.py
+│   │   │   ├── __init__.py
+│   │   │   ├── ingest_edgar_filings.py
+│   │   │   └── ingest_marketstack_intraday.py
+│   │   ├── maintenance
+│   │   │   ├── __init__.py
+│   │   │   └── replay_staging_to_md.py
+│   │   ├── portfolio
+│   │   │   └── __init__.py
+│   │   ├── quotes
+│   │   │   ├── __init__.py
+│   │   │   ├── get_historical_quotes.py
+│   │   │   └── get_quotes.py
+│   │   ├── risk
+│   │   │   └── __init__.py
+│   │   ├── statements
+│   │   │   └── __init__.py
+│   │   ├── valuation
+│   │   │   └── __init__.py
+│   │   └── __init__.py
+│   └── __init__.py
+├── config
+│   ├── features
+│   │   ├── __init__.py
+│   │   └── auth.py
+│   ├── __init__.py
+│   └── settings.py
+├── dependencies
+│   ├── core
+│   │   ├── __init__.py
+│   │   └── bootstrap.py
+│   ├── __init__.py
+│   └── market_data.py
+├── domain
+│   ├── entities
+│   │   ├── __init__.py
+│   │   ├── base.py
+│   │   ├── historical_bar.py
+│   │   └── quote.py
+│   ├── enums
+│   │   └── __init__.py
+│   ├── exceptions
+│   │   ├── __init__.py
+│   │   ├── base.py
+│   │   └── market_data.py
+│   ├── interfaces
+│   │   ├── gateways
+│   │   │   ├── __init__.py
+│   │   │   └── market_data_gateway.py
+│   │   ├── repositories
+│   │   │   ├── __init__.py
+│   │   │   ├── idempotency_repository.py
+│   │   │   ├── market_data_repository.py
+│   │   │   └── staging_repository.py
+│   │   └── __init__.py
+│   ├── validators
+│   │   └── __init__.py
+│   ├── value_objects
+│   │   ├── __init__.py
+│   │   └── value_objects.py
+│   └── __init__.py
+├── infrastructure
+│   ├── auth
+│   │   ├── __init__.py
+│   │   ├── clerk_principal_dependency.py
+│   │   └── jwt_dependency.py
+│   ├── background
+│   │   ├── tasks
+│   │   │   └── __init__.py
+│   │   └── __init__.py
+│   ├── caching
+│   │   ├── __init__.py
+│   │   ├── json_cache.py
+│   │   └── redis_client.py
+│   ├── database
+│   │   ├── maintenance
+│   │   │   ├── __init__.py
+│   │   │   └── partitions.py
+│   │   ├── mappers
+│   │   │   └── __init__.py
+│   │   ├── models
+│   │   │   ├── __init__.py
+│   │   │   ├── base.py
+│   │   │   ├── idempotency.py
+│   │   │   ├── md.py
+│   │   │   ├── ref.py
+│   │   │   └── staging.py
+│   │   ├── __init__.py
+│   │   └── session.py
+│   ├── external_apis
+│   │   ├── marketstack
+│   │   │   ├── __init__.py
+│   │   │   ├── client.py
+│   │   │   ├── settings.py
+│   │   │   └── types.py
+│   │   └── __init__.py
+│   ├── health
+│   │   ├── __init__.py
+│   │   └── probe.py
+│   ├── http
+│   │   ├── middleware
+│   │   │   ├── __init__.py
+│   │   │   └── trace.py
+│   │   ├── __init__.py
+│   │   └── errors.py
+│   ├── logging
+│   │   ├── __init__.py
+│   │   ├── logger.py
+│   │   └── tracing.py
+│   ├── middleware
+│   │   ├── __init__.py
+│   │   ├── access_log.py
+│   │   ├── idempotency.py
+│   │   ├── metrics.py
+│   │   ├── rate_limit.py
+│   │   ├── request_id.py
+│   │   ├── request_metrics.py
+│   │   └── security_headers.py
+│   ├── observability
+│   │   ├── __init__.py
+│   │   ├── metrics.py
+│   │   ├── metrics_market_data.py
+│   │   ├── otel.py
+│   │   └── tracing.py
+│   ├── resilience
+│   │   ├── __init__.py
+│   │   ├── circuit_breaker.py
+│   │   └── retry.py
+│   ├── security
+│   │   ├── __init__.py
+│   │   └── clerk_jwks.py
+│   ├── seed_data
+│   │   ├── models
+│   │   │   └── __init__.py
+│   │   ├── utils
+│   │   │   └── __init__.py
+│   │   └── __init__.py
+│   ├── system
+│   │   └── __init__.py
+│   ├── validation
+│   │   └── __init__.py
+│   └── __init__.py
+├── mcp
+│   ├── capabilities
+│   │   ├── __init__.py
+│   │   ├── quotes_historical.py
+│   │   ├── quotes_live.py
+│   │   ├── system_health.py
+│   │   └── system_metadata.py
+│   ├── client
+│   │   ├── __init__.py
+│   │   └── stacklion_http.py
+│   ├── manifest
+│   │   └── mcp.json
+│   ├── schemas
+│   │   ├── __init__.py
+│   │   ├── errors.py
+│   │   ├── quotes_historical.py
+│   │   ├── quotes_live.py
+│   │   └── system.py
+│   ├── __init__.py
+│   └── server.py
+├── tasks
+│   ├── __init__.py
+│   └── cli.py
+├── utils
+│   └── __init__.py
+├── .DS_Store
+├── __init__.py
+├── main.py
+├── py.typed
+└── types.py
