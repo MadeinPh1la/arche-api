@@ -1,7 +1,7 @@
-# src/stacklion_api/application/use_cases/external_apis/ingest_edgar_filings.py
+# src/stacklion_api/application/use_cases/external_apis/edgar/ingest_edgar_filings.py
 # Copyright (c)
 # SPDX-License-Identifier: MIT
-"""Use case: Ingest recent EDGAR filings (skeleton).
+"""Use case: Ingest recent EDGAR filings (raw stage only).
 
 Stores raw payloads under staging for replay and later mapping.
 

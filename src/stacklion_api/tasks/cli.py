@@ -26,7 +26,7 @@ from uuid import UUID
 import typer
 from sqlalchemy.ext.asyncio import AsyncSession, async_sessionmaker, create_async_engine
 
-from stacklion_api.application.use_cases.external_apis.ingest_marketstack_intraday import (
+from stacklion_api.application.use_cases.external_apis.marketstack.ingest_marketstack_intraday import (
     IngestIntradayRequest,
     IngestMarketstackIntradayBars,
 )

@@ -6,7 +6,7 @@ import os
 import pytest
 from sqlalchemy.ext.asyncio import AsyncSession, async_sessionmaker, create_async_engine
 
-from stacklion_api.application.use_cases.external_apis.ingest_edgar_filings import (
+from stacklion_api.application.use_cases.external_apis.edgar.ingest_edgar_filings import (
     EdgarGateway,
     IngestEdgarFilings,
     IngestEdgarRequest,
