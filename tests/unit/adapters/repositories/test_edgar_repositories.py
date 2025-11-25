@@ -1,5 +1,5 @@
 # tests/unit/adapters/repositories/test_edgar_repositories.py
-# Copyright (c) Stacklion.
+# Copyright (c)
 # SPDX-License-Identifier: MIT
 """
 Unit tests for EDGAR repositories.
@@ -8,6 +8,7 @@ Covers:
     - EdgarFilingsRepository.upsert_filing + get_filing_by_accession
     - EdgarStatementsRepository.latest_statement_version_for_company
     - EdgarStatementsRepository.list_statement_versions_for_company
+    - EdgarStatementsRepository.update_normalized_payload round-trip behavior
 
 These tests run against a real Postgres test database defined by TEST_DATABASE_URL.
 They create the minimal schemas/tables required via SQLAlchemy metadata and do
@@ -18,6 +19,7 @@ from __future__ import annotations
 
 import os
 from datetime import UTC, date, datetime
+from decimal import Decimal
 from uuid import UUID, uuid4
 
 import pytest
@@ -35,9 +37,15 @@ from stacklion_api.adapters.repositories.edgar_filings_repository import (
 from stacklion_api.adapters.repositories.edgar_statements_repository import (
     EdgarStatementsRepository,
 )
+from stacklion_api.domain.entities.canonical_statement_payload import (
+    CanonicalStatementPayload,
+)
 from stacklion_api.domain.entities.edgar_company import EdgarCompanyIdentity
 from stacklion_api.domain.entities.edgar_filing import EdgarFiling
 from stacklion_api.domain.entities.edgar_statement_version import EdgarStatementVersion
+from stacklion_api.domain.enums.canonical_statement_metric import (
+    CanonicalStatementMetric,
+)
 from stacklion_api.domain.enums.edgar import (
     AccountingStandard,
     FilingType,
@@ -373,3 +381,118 @@ async def test_edgar_statements_repository_latest_missing_returns_none() -> None
             fiscal_period=FiscalPeriod.FY,
         )
         assert latest is None
+
+
+@pytest.mark.anyio
+async def test_edgar_statements_repository_update_normalized_payload_round_trip() -> None:
+    """Normalized payloads can be updated and read back as canonical payloads."""
+    engine = create_async_engine(TEST_DATABASE_URL)
+    await _prepare_database(engine)
+    Session = async_sessionmaker(engine, expire_on_commit=False, class_=AsyncSession)
+
+    async with Session() as session:
+        cik = "0000987655"
+
+        # Ensure ref.companies row exists for this CIK without changing PK.
+        existing_company_id_result = await session.execute(
+            text(
+                """
+                SELECT company_id
+                FROM ref.companies
+                WHERE cik = :cik
+                """
+            ),
+            {"cik": cik},
+        )
+        existing_company_id: UUID | None = existing_company_id_result.scalar_one_or_none()
+
+        if existing_company_id is None:
+            company_id = uuid4()
+            await session.execute(
+                text(
+                    """
+                    INSERT INTO ref.companies (company_id, name, cik)
+                    VALUES (:company_id, :name, :cik)
+                    ON CONFLICT (cik) DO NOTHING
+                    """
+                ),
+                {"company_id": company_id, "name": "Normalized Corp", "cik": cik},
+            )
+
+        await session.commit()
+
+        # Seed base filing.
+        accession_id = "0000987655-24-000011"
+        base_filing = _make_edgar_filing(
+            accession_id=accession_id,
+            cik=cik,
+            company_name="Normalized Corp",
+        )
+
+        filings_repo = EdgarFilingsRepository(session=session)
+        await filings_repo.upsert_filings([base_filing])
+
+        # Seed statement versions for this company/filing.
+        await _seed_statement_versions_for_company(
+            session=session,
+            cik=cik,
+            company_name="Normalized Corp",
+            filing_accession=accession_id,
+        )
+
+        statements_repo = EdgarStatementsRepository(session=session)
+
+        # Build a simple canonical payload to attach to version_sequence=2.
+        statement_date = base_filing.period_end_date or base_filing.filing_date
+        payload = CanonicalStatementPayload(
+            cik=cik,
+            statement_type=StatementType.BALANCE_SHEET,
+            accounting_standard=AccountingStandard.US_GAAP,
+            statement_date=statement_date,
+            fiscal_year=statement_date.year,
+            fiscal_period=FiscalPeriod.FY,
+            currency="USD",
+            unit_multiplier=0,
+            core_metrics={
+                CanonicalStatementMetric.TOTAL_ASSETS: Decimal("1000"),
+            },
+            extra_metrics={
+                "CUSTOM_METRIC": Decimal("42.5"),
+            },
+            dimensions={
+                "consolidation": "CONSOLIDATED",
+            },
+            source_accession_id=accession_id,
+            source_taxonomy="US_GAAP_TEST",
+            source_version_sequence=2,
+        )
+
+        await statements_repo.update_normalized_payload(
+            company_cik=cik,
+            accession_id=accession_id,
+            statement_type=StatementType.BALANCE_SHEET,
+            version_sequence=2,
+            payload=payload,
+            payload_version="v1",
+        )
+
+        # Fetch latest and ensure the normalized payload round-trips correctly.
+        # NOTE: Seeded versions use fiscal_year=2024, so we must query 2024
+        # here rather than statement_date.year (which is 2023).
+        latest = await statements_repo.latest_statement_version_for_company(
+            cik=cik,
+            statement_type=StatementType.BALANCE_SHEET,
+            fiscal_year=2024,
+            fiscal_period=FiscalPeriod.FY,
+        )
+        assert latest is not None
+        assert latest.normalized_payload is not None
+
+        np = latest.normalized_payload
+        assert np.cik == cik
+        assert np.statement_type == StatementType.BALANCE_SHEET
+        assert np.core_metrics[CanonicalStatementMetric.TOTAL_ASSETS] == Decimal("1000")
+        assert np.extra_metrics["CUSTOM_METRIC"] == Decimal("42.5")
+        assert np.source_accession_id == accession_id
+        assert np.source_taxonomy == "US_GAAP_TEST"
+        assert np.source_version_sequence == 2

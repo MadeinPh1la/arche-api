@@ -11,6 +11,7 @@ Purpose:
     * Filing header normalization for a company and date range.
     * Metadata-only statement version construction for requested statement types.
     * Raw recent-filings fetch for the bootstrap ingest use case.
+    * Placeholder hook for future fact-level (XBRL) ingestion.
 
 Layer:
     adapters
@@ -33,7 +34,10 @@ from stacklion_api.domain.enums.edgar import (
     StatementType,
 )
 from stacklion_api.domain.exceptions.edgar import EdgarIngestionError, EdgarMappingError
-from stacklion_api.domain.interfaces.gateways.edgar_ingestion_gateway import EdgarIngestionGateway
+from stacklion_api.domain.interfaces.gateways.edgar_ingestion_gateway import (
+    EdgarIngestionGateway,
+)
+from stacklion_api.domain.services.edgar_normalization import EdgarFact
 from stacklion_api.infrastructure.external_apis.edgar.client import EdgarClient
 from stacklion_api.infrastructure.external_apis.edgar.types import (
     EdgarRecentFilingRow,
@@ -60,7 +64,32 @@ class HttpEdgarIngestionGateway(EdgarIngestionGateway):
     # ------------------------------------------------------------------ #
 
     async def fetch_recent_filings(self, *, cik: str, limit: int = 100) -> dict[str, Any]:
-        """Fetch recent filings JSON for staging ingest."""
+        """Fetch recent filings JSON for staging ingest.
+
+        Args:
+            cik: Central Index Key for the filer. Must be non-empty after
+                trimming.
+            limit: Optional upper bound on the number of normalized filing rows
+                to include in the returned payload. A non-positive value
+                results in an empty list of filings.
+
+        Returns:
+            Mapping with keys:
+                * "cik": Normalized CIK string.
+                * "filings": List of normalized recent filings, each with:
+                    - accession_id
+                    - filing_date
+                    - period_end_date
+                    - form
+                    - is_amendment
+                    - primary_document
+                    - accepted_at
+
+        Raises:
+            EdgarMappingError: If the CIK is empty or the upstream payload
+                cannot be mapped safely.
+            EdgarIngestionError: On upstream transport or shape failures.
+        """
         if not cik.strip():
             raise EdgarMappingError("CIK must not be empty for recent filings.")
 
@@ -101,7 +130,21 @@ class HttpEdgarIngestionGateway(EdgarIngestionGateway):
     # ------------------------------------------------------------------ #
 
     async def fetch_company_identity(self, cik: str) -> EdgarCompanyIdentity:
-        """Fetch and normalize the company identity for a given CIK."""
+        """Fetch and normalize the company identity for a given CIK.
+
+        Args:
+            cik: Central Index Key for the filer. Must be non-empty after
+                trimming.
+
+        Returns:
+            EdgarCompanyIdentity instance constructed from the EDGAR submissions
+            JSON root.
+
+        Raises:
+            EdgarMappingError: If required fields are missing from the
+                submissions payload or the CIK is empty.
+            EdgarIngestionError: On upstream failures surfaced by the client.
+        """
         if not cik.strip():
             raise EdgarMappingError("CIK must not be empty for company identity lookup.")
 
@@ -154,7 +197,29 @@ class HttpEdgarIngestionGateway(EdgarIngestionGateway):
         include_amendments: bool = True,
         max_results: int | None = None,
     ) -> Sequence[EdgarFiling]:
-        """Fetch filings for a company within a date range."""
+        """Fetch filings for a company within a date range.
+
+        Args:
+            company: Company identity for which to fetch filings.
+            filing_types: Filing types to include (e.g., 10-K, 10-Q). An empty
+                sequence means "all known types".
+            from_date: Inclusive lower bound on filing_date.
+            to_date: Inclusive upper bound on filing_date.
+            include_amendments: Whether to include amendment forms (e.g., 10-K/A).
+            max_results: Optional upper bound on the number of filings to
+                return. If provided and non-negative, the result list is
+                truncated after sorting.
+
+        Returns:
+            Sequence of mapped `EdgarFiling` domain entities, sorted in
+            descending order by (filing_date, accession_id).
+
+        Raises:
+            EdgarMappingError: If date bounds are invalid or EDGAR payloads
+                cannot be mapped into known filing types.
+            EdgarIngestionError: On upstream transport or payload-shape
+                failures.
+        """
         if from_date > to_date:
             raise EdgarMappingError(
                 "from_date must be on or before to_date.",
@@ -215,7 +280,6 @@ class HttpEdgarIngestionGateway(EdgarIngestionGateway):
 
             accession_id = row["accession_id"]
             primary_document = row.get("primary_document")
-
             amendment_sequence: int | None = 1 if is_amendment else None
 
             filings.append(
@@ -255,7 +319,23 @@ class HttpEdgarIngestionGateway(EdgarIngestionGateway):
         filing: EdgarFiling,
         statement_types: Sequence[StatementType],
     ) -> Sequence[EdgarStatementVersion]:
-        """Build metadata-only statement versions for a given filing."""
+        """Build metadata-only statement versions for a given filing.
+
+        This implementation does not yet inspect XBRL facts. Instead it
+        constructs "skeleton" statement versions using filing metadata and
+        fixed assumptions (US GAAP, FY, USD). The Normalized Statement Payload
+        Engine in subsequent phases enriches these versions with canonical
+        payloads.
+
+        Args:
+            filing: Filing metadata entity.
+            statement_types: Statement types to construct versions for. An empty
+                sequence results in an empty list.
+
+        Returns:
+            Sequence of `EdgarStatementVersion` entities with metadata filled
+            and `normalized_payload` set to None.
+        """
         if not statement_types:
             return []
 
@@ -288,13 +368,53 @@ class HttpEdgarIngestionGateway(EdgarIngestionGateway):
 
         return versions
 
+    async def fetch_facts_for_filing(self, accession_id: str) -> Sequence[EdgarFact]:
+        """Fetch fact-level (XBRL) data for a given filing.
+
+        This method is a forward-looking contract hook for the Normalized
+        Statement Payload Engine. It is intentionally not implemented against
+        live EDGAR yet. Application services that require fact-level data
+        should inject or patch a concrete implementation in later phases.
+
+        Args:
+            accession_id: EDGAR accession identifier (e.g., "
+                0000320193-24-000010").
+
+        Returns:
+            A sequence of `EdgarFact` records describing raw, provider-specific
+            facts for the filing.
+
+        Raises:
+            EdgarIngestionError: Always, until a concrete implementation is
+                added.
+        """
+        logger.info(
+            "edgar.fetch_facts_for_filing.unimplemented",
+            extra={"accession_id": accession_id},
+        )
+        raise EdgarIngestionError(
+            "fetch_facts_for_filing is not yet implemented for live EDGAR.",
+            details={"accession_id": accession_id},
+        )
+
     # ------------------------------------------------------------------ #
     # Internal helpers
     # ------------------------------------------------------------------ #
 
     @staticmethod
     def _ensure_submissions_root(raw: Any) -> EdgarSubmissionsRoot:
-        """Validate that the submissions payload has the expected root shape."""
+        """Validate that the submissions payload has the expected root shape.
+
+        Args:
+            raw: Raw JSON payload returned by the EDGAR client.
+
+        Returns:
+            Typed `EdgarSubmissionsRoot` mapping.
+
+        Raises:
+            EdgarMappingError: If the payload is not a JSON object.
+            EdgarIngestionError: If required top-level keys are missing.
+        """
         if not isinstance(raw, dict):
             raise EdgarMappingError(
                 "EDGAR submissions payload must be a JSON object.",
@@ -311,7 +431,18 @@ class HttpEdgarIngestionGateway(EdgarIngestionGateway):
 
     @staticmethod
     def _extract_recent_section(root: EdgarSubmissionsRoot) -> EdgarSubmissionsRecentSection:
-        """Extract and validate the 'recent' filings section."""
+        """Extract and validate the 'recent' filings section.
+
+        Args:
+            root: Submissions JSON root mapping.
+
+        Returns:
+            Typed recent section mapping.
+
+        Raises:
+            EdgarMappingError: If the expected shape for 'filings.recent' is
+                not present.
+        """
         filings = root.get("filings")
         if not isinstance(filings, dict):
             raise EdgarMappingError(
@@ -332,7 +463,14 @@ class HttpEdgarIngestionGateway(EdgarIngestionGateway):
     def _normalize_recent_filings(
         recent: EdgarSubmissionsRecentSection,
     ) -> list[EdgarRecentFilingRow]:
-        """Normalize the 'recent' section into a list of filing rows."""
+        """Normalize the 'recent' section into a list of filing rows.
+
+        Args:
+            recent: Typed recent section mapping from the submissions payload.
+
+        Returns:
+            A list of normalized `EdgarRecentFilingRow` structures.
+        """
         accession_numbers = recent.get("accessionNumber") or []
         filing_dates = recent.get("filingDate") or []
         report_dates = recent.get("reportDate") or []
@@ -372,7 +510,17 @@ class HttpEdgarIngestionGateway(EdgarIngestionGateway):
 
     @staticmethod
     def _parse_iso_date(value: str) -> date:
-        """Parse an ISO date string into a date object."""
+        """Parse an ISO date string into a date object.
+
+        Args:
+            value: Date string in YYYY-MM-DD format.
+
+        Returns:
+            Parsed `date` instance.
+
+        Raises:
+            EdgarMappingError: If the string cannot be parsed as an ISO date.
+        """
         try:
             return date.fromisoformat(value)
         except Exception as exc:  # noqa: BLE001
@@ -383,7 +531,21 @@ class HttpEdgarIngestionGateway(EdgarIngestionGateway):
 
     @staticmethod
     def _parse_acceptance_datetime(value: str) -> datetime:
-        """Parse EDGAR acceptance datetime string."""
+        """Parse EDGAR acceptance datetime string.
+
+        Handles both ISO-8601 strings and compact EDGAR formats like
+        "YYYYMMDDHHMMSS".
+
+        Args:
+            value: Acceptance datetime string.
+
+        Returns:
+            Parsed `datetime` instance.
+
+        Raises:
+            EdgarMappingError: If the value cannot be parsed as a supported
+                datetime format.
+        """
         try:
             if "-" in value or "T" in value:
                 return datetime.fromisoformat(value)

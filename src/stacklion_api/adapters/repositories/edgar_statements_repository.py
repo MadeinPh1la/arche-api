@@ -1,7 +1,21 @@
 # src/stacklion_api/adapters/repositories/edgar_statements_repository.py
 # Copyright (c)
 # SPDX-License-Identifier: MIT
-"""EDGAR statement versions repository (SQLAlchemy)."""
+"""EDGAR statement versions repository (SQLAlchemy).
+
+Purpose:
+    Provide persistence and query operations for EDGAR statement versions,
+    including support for storing and retrieving normalized statement payloads
+    produced by the Normalized Statement Payload Engine.
+
+Layer:
+    adapters/repositories
+
+Design:
+    * Uses SQLAlchemy Core/ORM with AsyncSession.
+    * Emits Prometheus-style metrics for latency and failures.
+    * Maps between DB models and domain entities/value objects.
+"""
 
 from __future__ import annotations
 
@@ -13,7 +27,7 @@ from decimal import Decimal, InvalidOperation
 from typing import Any, cast
 from uuid import uuid4
 
-from sqlalchemy import Select, insert, select
+from sqlalchemy import Select, insert, select, update
 from sqlalchemy.ext.asyncio import AsyncSession
 from sqlalchemy.orm import aliased
 
@@ -48,6 +62,12 @@ class EdgarStatementsRepository(BaseRepository[StatementVersion]):
     _MODEL_NAME = "sec_statement_versions"
 
     def __init__(self, session: AsyncSession) -> None:
+        """Initialize the repository.
+
+        Args:
+            session: Async SQLAlchemy session bound to the test or production
+                database.
+        """
         super().__init__(session=session)
         self._metrics_hist = get_db_operation_duration_seconds()
         self._metrics_err = get_db_errors_total()
@@ -60,14 +80,33 @@ class EdgarStatementsRepository(BaseRepository[StatementVersion]):
         self,
         version: EdgarStatementVersion,
     ) -> None:
-        """Insert a single statement version."""
+        """Insert a single statement version.
+
+        This is a thin convenience wrapper over
+        :meth:`upsert_statement_versions`.
+        """
         await self.upsert_statement_versions([version])
 
     async def upsert_statement_versions(
         self,
         versions: Sequence[EdgarStatementVersion],
     ) -> None:
-        """Insert a batch of statement versions."""
+        """Insert a batch of statement versions.
+
+        Implementations:
+            * Resolve `ref.companies` and `sec.filings` foreign keys by CIK and
+              accession.
+            * Insert new rows into `sec.statement_versions` using fresh UUIDs.
+            * Store any attached normalized payloads as JSON, with a default
+              `normalized_payload_version` of "v1" when unspecified.
+
+        Args:
+            versions: Statement version entities to persist.
+
+        Raises:
+            EdgarIngestionError: If the reference company or filing rows are
+                missing for any version, or if the insert fails.
+        """
         if not versions:
             return
 
@@ -148,6 +187,102 @@ class EdgarStatementsRepository(BaseRepository[StatementVersion]):
                     outcome=outcome,
                 ).observe(duration)
 
+    async def update_normalized_payload(
+        self,
+        *,
+        company_cik: str,
+        accession_id: str,
+        statement_type: StatementType,
+        version_sequence: int,
+        payload: CanonicalStatementPayload,
+        payload_version: str,
+    ) -> None:
+        """Update normalized payload fields for a single statement version.
+
+        This method is used by the Normalized Statement Payload Engine to
+        attach or refresh the canonical payload and its schema version for an
+        existing statement version row. It does not modify any other metadata.
+
+        Args:
+            company_cik: CIK of the company that owns the statement version.
+            accession_id: EDGAR accession ID of the underlying filing.
+            statement_type: Statement type (e.g., INCOME_STATEMENT).
+            version_sequence: Monotonic sequence number of the version to
+                update.
+            payload: Canonical normalized statement payload to store.
+            payload_version: Stable identifier for the payload schema
+                (e.g., "v1").
+
+        Raises:
+            EdgarIngestionError: If the company cannot be resolved or no
+                matching `sec.statement_versions` row exists for the provided
+                identity tuple, or if the update fails.
+        """
+        start = time.perf_counter()
+        outcome = "success"
+
+        try:
+            company = await self._get_company_by_cik(company_cik)
+            if company is None:
+                raise EdgarIngestionError(
+                    "Cannot update normalized payload; ref.company row not found.",
+                    details={"cik": company_cik},
+                )
+
+            normalized_payload_dict = self._serialize_normalized_payload(payload)
+
+            stmt = (
+                update(StatementVersion)
+                .where(
+                    StatementVersion.company_id == company.company_id,
+                    StatementVersion.accession_id == accession_id,
+                    StatementVersion.statement_type == statement_type.value,
+                    StatementVersion.version_sequence == version_sequence,
+                )
+                .values(
+                    normalized_payload=normalized_payload_dict,
+                    normalized_payload_version=payload_version,
+                )
+            )
+
+            # Explicitly treat the result as Any so mypy does not complain
+            # about SQLAlchemy's Result.rowcount attribute.
+            result: Any = await self._session.execute(stmt)
+            affected = getattr(result, "rowcount", None)
+
+            # If the backend reports a concrete 0 rowcount, treat this as a
+            # hard error; if it reports None (unknown), we allow it and rely
+            # on downstream reads to surface inconsistencies.
+            if affected == 0:
+                raise EdgarIngestionError(
+                    "No sec.statement_versions row matched for normalized payload update.",
+                    details={
+                        "cik": company_cik,
+                        "accession_id": accession_id,
+                        "statement_type": statement_type.value,
+                        "version_sequence": version_sequence,
+                    },
+                )
+
+        except Exception as exc:  # noqa: BLE001
+            outcome = "error"
+            with suppress(Exception):
+                self._metrics_err.labels(
+                    operation="update_normalized_payload",
+                    model=self._MODEL_NAME,
+                    reason=type(exc).__name__,
+                ).inc()
+            raise
+
+        finally:
+            with suppress(Exception):
+                duration = time.perf_counter() - start
+                self._metrics_hist.labels(
+                    operation="update_normalized_payload",
+                    model=self._MODEL_NAME,
+                    outcome=outcome,
+                ).observe(duration)
+
     # ------------------------------------------------------------------
     # QUERIES
     # ------------------------------------------------------------------
@@ -160,7 +295,17 @@ class EdgarStatementsRepository(BaseRepository[StatementVersion]):
         fiscal_year: int,
         fiscal_period: FiscalPeriod,
     ) -> EdgarStatementVersion | None:
-        """Return the latest statement version for a company/year/period."""
+        """Return the latest statement version for a company/year/period.
+
+        Args:
+            cik: Company CIK.
+            statement_type: Statement type to filter by.
+            fiscal_year: Fiscal year to filter by.
+            fiscal_period: Fiscal period (e.g., FY, Q1, Q2).
+
+        Returns:
+            The latest `EdgarStatementVersion`, or None if none exist.
+        """
         start = time.perf_counter()
         outcome = "success"
 
@@ -220,7 +365,19 @@ class EdgarStatementsRepository(BaseRepository[StatementVersion]):
         fiscal_year: int,
         fiscal_period: FiscalPeriod | None = None,
     ) -> list[EdgarStatementVersion]:
-        """List all statement versions for a company/year/type (optionally period)."""
+        """List all statement versions for a company/year/type (optionally period).
+
+        Args:
+            cik: Company CIK.
+            statement_type: Statement type to filter by.
+            fiscal_year: Fiscal year to filter by.
+            fiscal_period: Optional fiscal period filter. If None, all periods
+                within the year are returned.
+
+        Returns:
+            List of `EdgarStatementVersion` entities, ordered by
+            (version_sequence ASC, statement_version_id ASC).
+        """
         start = time.perf_counter()
         outcome = "success"
 
@@ -278,6 +435,7 @@ class EdgarStatementsRepository(BaseRepository[StatementVersion]):
         self,
         ciks: set[str],
     ) -> dict[str, Company]:
+        """Fetch reference companies by CIK into a lookup map."""
         if not ciks:
             return {}
 
@@ -290,6 +448,7 @@ class EdgarStatementsRepository(BaseRepository[StatementVersion]):
         self,
         accessions: set[str],
     ) -> dict[str, Filing]:
+        """Fetch SEC filings by accession into a lookup map."""
         if not accessions:
             return {}
 
@@ -299,6 +458,7 @@ class EdgarStatementsRepository(BaseRepository[StatementVersion]):
         return {row.accession: row for row in rows}
 
     async def _get_company_by_cik(self, cik: str) -> Company | None:
+        """Return the `Company` row for a given CIK, or None if missing."""
         stmt = select(Company).where(Company.cik == cik).limit(1)
         res = await self._session.execute(stmt)
         return res.scalar_one_or_none()
@@ -309,7 +469,20 @@ class EdgarStatementsRepository(BaseRepository[StatementVersion]):
         filing_row: Filing,
         sv_row: StatementVersion,
     ) -> EdgarStatementVersion:
-        """Map ORM rows into a domain `EdgarStatementVersion`."""
+        """Map ORM rows into a domain `EdgarStatementVersion`.
+
+        Args:
+            company_row: Reference company row.
+            filing_row: Filing row.
+            sv_row: Statement version row.
+
+        Returns:
+            Mapped `EdgarStatementVersion` entity.
+
+        Raises:
+            EdgarIngestionError: If the company row is missing a CIK or the
+                normalized payload cannot be mapped.
+        """
         if company_row.cik is None:
             raise EdgarIngestionError(
                 "ref.company has null CIK; cannot map to EdgarCompanyIdentity.",
@@ -408,6 +581,9 @@ class EdgarStatementsRepository(BaseRepository[StatementVersion]):
         payload: Mapping[str, Any] | None,
     ) -> CanonicalStatementPayload | None:
         """Map a stored JSON payload into a CanonicalStatementPayload.
+
+        Args:
+            payload: Raw JSON mapping from the database, or None.
 
         Returns:
             A CanonicalStatementPayload instance, or None if the stored payload
