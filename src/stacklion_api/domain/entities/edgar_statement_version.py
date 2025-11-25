@@ -2,20 +2,22 @@
 # Copyright (c) Stacklion.
 # SPDX-License-Identifier: MIT
 """
-EDGAR financial statement version entity.
+EDGAR statement version domain entity.
 
 Purpose:
-    Represent a single version of a financial statement (income, balance sheet,
-    cash flow) tied to an EDGAR filing. Encode versioning, restatement
-    semantics, and provenance in a modeling-friendly way.
+    Represent a single version of a financial statement derived from an EDGAR
+    filing, including metadata required for deterministic modeling and,
+    optionally, a normalized, provider-agnostic payload suitable for
+    Bloomberg-class analytics.
 
 Layer:
     domain
 
 Notes:
-    This entity is metadata-centric; it does not carry individual line items.
-    Line items and dimensional data will be modeled separately and refer to
-    this statement version via identifiers in later phases.
+    - This entity is transport-agnostic and persistence-agnostic.
+    - Normalized payloads are modeled via the CanonicalStatementPayload
+      value object; earlier phases may have statement versions without a
+      normalized payload attached (None).
 """
 
 from __future__ import annotations
@@ -23,42 +25,66 @@ from __future__ import annotations
 from dataclasses import dataclass
 from datetime import date
 
+from stacklion_api.domain.entities.canonical_statement_payload import (
+    CanonicalStatementPayload,
+)
 from stacklion_api.domain.entities.edgar_company import EdgarCompanyIdentity
 from stacklion_api.domain.entities.edgar_filing import EdgarFiling
-from stacklion_api.domain.enums.edgar import AccountingStandard, FiscalPeriod, StatementType
+from stacklion_api.domain.enums.edgar import (
+    AccountingStandard,
+    FiscalPeriod,
+    StatementType,
+)
 from stacklion_api.domain.exceptions.edgar import EdgarMappingError
 
 
 @dataclass(frozen=True)
 class EdgarStatementVersion:
-    """Domain entity representing a versioned financial statement.
+    """Normalized EDGAR statement version.
 
-    Args:
-        company: Company identity associated with this statement.
-        filing: EDGAR filing that carries this statement version.
-        statement_type: High-level statement taxonomy (income, balance sheet,
-            cash flow).
-        accounting_standard: Accounting standard (US_GAAP, IFRS, etc.).
+    A single version of a financial statement derived from an EDGAR filing,
+    with enough metadata to support deterministic modeling and optional
+    normalized payloads.
+
+    This entity is the "truth layer" for statement metadata in the domain.
+    It enforces invariants between the statement and its underlying filing
+    so that downstream repositories and mappers can rely on consistent,
+    self-contained records.
+
+    Attributes:
+        company: Company identity for which this statement was reported.
+        filing: Underlying EDGAR filing metadata this statement is derived from.
+        statement_type: Type of statement (income, balance sheet, cash flow, etc.).
+        accounting_standard: Accounting standard used (e.g., US_GAAP, IFRS).
         statement_date: Reporting period end date for this statement version.
-        fiscal_year: Fiscal year associated with the statement (e.g., 2024).
-        fiscal_period: Fiscal period within the year (e.g., Q1, FY).
-        currency: ISO-4217 currency code for all monetary values associated with
-            this statement version.
-        is_restated: Whether this statement represents a restatement of a prior
-            version.
-        restatement_reason: Human-readable reason for restatement. Must be
-            provided when ``is_restated`` is True.
-        version_source: Short code describing where this version originates
-            (e.g., "EDGAR_PRIMARY", "EDGAR_CORRECTED_FEED").
-        version_sequence: Monotonically increasing version number for the
-            (company, statement_type, statement_date) tuple.
-        accession_id: EDGAR accession ID for convenience lookups; must match the
-            associated filing.
-        filing_date: Filing date; must match ``filing.filing_date`` for
-            consistency.
-
-    Raises:
-        EdgarMappingError: If versioning or date invariants are violated.
+        fiscal_year: Fiscal year associated with the statement (must be > 0).
+        fiscal_period: Fiscal period (e.g., FY, Q1, Q2).
+        currency: ISO currency code for reported values (non-empty, trimmed).
+        is_restated: Whether this version is a restatement of prior figures.
+        restatement_reason:
+            Optional reason for restatement. Must be:
+                - Non-None when is_restated is True.
+                - None when is_restated is False.
+        version_source:
+            Provenance of this version (e.g., "EDGAR_METADATA_ONLY",
+            "EDGAR_XBRL_NORMALIZED"). Must be a non-blank string.
+        version_sequence:
+            Monotonic sequence number for the version within a given
+            (company, statement_type, statement_date) identity tuple.
+            Typically 1 for the first version, 2+ for restatements.
+        accession_id:
+            EDGAR accession identifier for the originating filing. Must match
+            filing.accession_id exactly.
+        filing_date:
+            Filing date associated with the originating filing. Must match
+            filing.filing_date exactly.
+        normalized_payload:
+            Optional canonical normalized payload for this statement version.
+            This is populated by the Normalized Statement Payload Engine in
+            Phase E6-F and may be None for older or metadata-only rows.
+        normalized_payload_version:
+            Optional version identifier for the normalized payload schema.
+            For payloads produced in E6-F, this is expected to be "v1".
     """
 
     company: EdgarCompanyIdentity
@@ -76,80 +102,71 @@ class EdgarStatementVersion:
     accession_id: str
     filing_date: date
 
+    normalized_payload: CanonicalStatementPayload | None = None
+    normalized_payload_version: str | None = None
+
     def __post_init__(self) -> None:
-        """Validate versioning, date, and provenance invariants."""
-        self._validate_dates()
-        self._validate_provenance()
-        self._validate_version_metadata()
+        """Enforce invariants between the statement version and its filing.
 
-    def _validate_dates(self) -> None:
-        """Validate statement and filing dates."""
-        if self.statement_date > self.filing_date:
+        Validation rules (aligned with domain tests):
+
+        * statement_date must not be after filing.filing_date.
+        * accession_id must exactly match filing.accession_id.
+        * filing_date must exactly match filing.filing_date.
+        * fiscal_year must be a positive integer (> 0).
+        * currency must be a non-empty, non-whitespace ISO code.
+        * version_source must be a non-empty, non-whitespace string.
+        * If is_restated is True, restatement_reason must be non-None.
+        * If is_restated is False, restatement_reason must be None.
+
+        Raises:
+            EdgarMappingError: If any invariant is violated.
+        """
+        # 1) statement_date cannot be after the filing date that reported it.
+        if self.statement_date > self.filing.filing_date:
             raise EdgarMappingError(
-                "statement_date must be on or before filing_date.",
-                details={
-                    "statement_date": self.statement_date.isoformat(),
-                    "filing_date": self.filing_date.isoformat(),
-                },
+                "statement_date cannot be after filing_date: "
+                f"statement_date={self.statement_date}, filing_date={self.filing.filing_date}"
             )
 
-    def _validate_provenance(self) -> None:
-        """Validate provenance fields against the associated filing."""
-        if self.filing.accession_id != self.accession_id:
+        # 2) accession_id must match the underlying filing metadata.
+        if self.accession_id != self.filing.accession_id:
             raise EdgarMappingError(
-                "accession_id on statement_version must match associated filing.",
-                details={
-                    "filing_accession_id": self.filing.accession_id,
-                    "statement_accession_id": self.accession_id,
-                },
+                "accession_id must match filing.accession_id: "
+                f"accession_id={self.accession_id}, filing.accession_id={self.filing.accession_id}"
             )
 
-        if self.filing.filing_date != self.filing_date:
+        # 3) filing_date must match the underlying filing metadata.
+        if self.filing_date != self.filing.filing_date:
             raise EdgarMappingError(
-                "filing_date on statement_version must match associated filing.",
-                details={
-                    "filing_filing_date": self.filing.filing_date.isoformat(),
-                    "statement_filing_date": self.filing_date.isoformat(),
-                },
+                "filing_date must match filing.filing_date: "
+                f"filing_date={self.filing_date}, filing.filing_date={self.filing.filing_date}"
             )
 
-    def _validate_version_metadata(self) -> None:
-        """Validate versioning, currency, and restatement metadata."""
+        # 4) fiscal_year must be positive (0 is explicitly rejected by tests).
         if self.fiscal_year <= 0:
             raise EdgarMappingError(
-                "fiscal_year must be a positive integer.",
-                details={"fiscal_year": self.fiscal_year},
+                f"fiscal_year must be a positive integer; got {self.fiscal_year}"
             )
 
-        if not self.currency.strip():
+        # 5) currency must be a non-empty, non-whitespace ISO code.
+        if not self.currency or not self.currency.strip():
+            raise EdgarMappingError("currency must be a non-empty ISO code.")
+
+        # 6) version_source must be a non-empty, non-whitespace string.
+        if not self.version_source or not self.version_source.strip():
             raise EdgarMappingError(
-                "currency must not be empty.",
-                details={"currency": self.currency},
+                "version_source must be a non-empty string describing provenance."
             )
 
-        if self.version_sequence <= 0:
-            raise EdgarMappingError(
-                "version_sequence must be a positive integer.",
-                details={"version_sequence": self.version_sequence},
-            )
+        # 7) Restatement reason consistency:
+        #    - If is_restated, restatement_reason must be provided.
+        #    - If not restated, restatement_reason must be None.
+        if self.is_restated and self.restatement_reason is None:
+            raise EdgarMappingError("restatement_reason must be provided when is_restated is True.")
 
-        normalized_version_source = self.version_source.strip()
-        if not normalized_version_source:
-            raise EdgarMappingError(
-                "version_source must not be empty.",
-                details={"version_source": self.version_source},
-            )
-        object.__setattr__(self, "version_source", normalized_version_source)
+        if not self.is_restated and self.restatement_reason is not None:
+            raise EdgarMappingError("restatement_reason must be None when is_restated is False.")
 
-        if self.is_restated:
-            if self.restatement_reason is None or not self.restatement_reason.strip():
-                raise EdgarMappingError(
-                    "restatement_reason must be provided when is_restated is True.",
-                    details={"restatement_reason": self.restatement_reason},
-                )
-        else:
-            if self.restatement_reason is not None:
-                raise EdgarMappingError(
-                    "restatement_reason must be None when is_restated is False.",
-                    details={"restatement_reason": self.restatement_reason},
-                )
+
+__all__ = ["EdgarStatementVersion"]

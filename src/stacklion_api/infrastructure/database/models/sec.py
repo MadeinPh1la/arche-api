@@ -139,6 +139,19 @@ class StatementVersion(Base):
     version_source: Mapped[str] = mapped_column(String(64), nullable=False)
     version_sequence: Mapped[int] = mapped_column(Integer, nullable=False)
 
+    # Normalized statement payload (Bloomberg-class, modeling-ready).
+    # Stored as JSONB for flexibility, with a separate version field to allow
+    # schema evolution over time.
+    normalized_payload: Mapped[dict[str, Any] | None] = mapped_column(
+        JSON,
+        nullable=True,
+    )
+    normalized_payload_version: Mapped[str] = mapped_column(
+        String(16),
+        nullable=False,
+        server_default=text("'v1'"),
+    )
+
     accession_id: Mapped[str] = mapped_column(String(32), nullable=False)
     filing_date: Mapped[date] = mapped_column(Date, nullable=False)
 

@@ -6,8 +6,10 @@
 from __future__ import annotations
 
 import time
-from collections.abc import Sequence
+from collections.abc import Mapping, Sequence
 from contextlib import suppress
+from datetime import date
+from decimal import Decimal, InvalidOperation
 from typing import Any, cast
 from uuid import uuid4
 
@@ -16,9 +18,15 @@ from sqlalchemy.ext.asyncio import AsyncSession
 from sqlalchemy.orm import aliased
 
 from stacklion_api.adapters.repositories.base_repository import BaseRepository
+from stacklion_api.domain.entities.canonical_statement_payload import (
+    CanonicalStatementPayload,
+)
 from stacklion_api.domain.entities.edgar_company import EdgarCompanyIdentity
 from stacklion_api.domain.entities.edgar_filing import EdgarFiling
 from stacklion_api.domain.entities.edgar_statement_version import EdgarStatementVersion
+from stacklion_api.domain.enums.canonical_statement_metric import (
+    CanonicalStatementMetric,
+)
 from stacklion_api.domain.enums.edgar import (
     AccountingStandard,
     FilingType,
@@ -89,25 +97,34 @@ class EdgarStatementsRepository(BaseRepository[StatementVersion]):
                         details={"accession_id": v.accession_id},
                     )
 
-                payload.append(
-                    {
-                        "statement_version_id": uuid4(),
-                        "company_id": company.company_id,
-                        "filing_id": filing.filing_id,
-                        "statement_type": v.statement_type.value,
-                        "accounting_standard": v.accounting_standard.value,
-                        "statement_date": v.statement_date,
-                        "fiscal_year": v.fiscal_year,
-                        "fiscal_period": v.fiscal_period.value,
-                        "currency": v.currency,
-                        "is_restated": v.is_restated,
-                        "restatement_reason": v.restatement_reason,
-                        "version_source": v.version_source,
-                        "version_sequence": v.version_sequence,
-                        "accession_id": v.accession_id,
-                        "filing_date": v.filing_date,
-                    }
-                )
+                normalized_payload_dict: dict[str, Any] | None = None
+                normalized_payload_version = v.normalized_payload_version or "v1"
+                if v.normalized_payload is not None:
+                    normalized_payload_dict = self._serialize_normalized_payload(
+                        v.normalized_payload,
+                    )
+
+                row: dict[str, Any] = {
+                    "statement_version_id": uuid4(),
+                    "company_id": company.company_id,
+                    "filing_id": filing.filing_id,
+                    "statement_type": v.statement_type.value,
+                    "accounting_standard": v.accounting_standard.value,
+                    "statement_date": v.statement_date,
+                    "fiscal_year": v.fiscal_year,
+                    "fiscal_period": v.fiscal_period.value,
+                    "currency": v.currency,
+                    "is_restated": v.is_restated,
+                    "restatement_reason": v.restatement_reason,
+                    "version_source": v.version_source,
+                    "version_sequence": v.version_sequence,
+                    "accession_id": v.accession_id,
+                    "filing_date": v.filing_date,
+                    "normalized_payload": normalized_payload_dict,
+                    "normalized_payload_version": normalized_payload_version,
+                }
+
+                payload.append(row)
 
             stmt = insert(StatementVersion).values(payload)
             await self._session.execute(stmt)
@@ -325,6 +342,10 @@ class EdgarStatementsRepository(BaseRepository[StatementVersion]):
         accounting_standard = AccountingStandard(sv_row.accounting_standard)
         fiscal_period = FiscalPeriod(sv_row.fiscal_period)
 
+        normalized_payload = EdgarStatementsRepository._map_normalized_payload(
+            sv_row.normalized_payload,
+        )
+
         return EdgarStatementVersion(
             company=company_identity,
             filing=filing,
@@ -340,4 +361,156 @@ class EdgarStatementsRepository(BaseRepository[StatementVersion]):
             version_sequence=sv_row.version_sequence,
             accession_id=sv_row.accession_id,
             filing_date=sv_row.filing_date,
+            normalized_payload=normalized_payload,
+            normalized_payload_version=sv_row.normalized_payload_version,
         )
+
+    # ------------------------------------------------------------------
+    # Normalized payload mapping helpers
+    # ------------------------------------------------------------------
+
+    @staticmethod
+    def _serialize_normalized_payload(
+        payload: CanonicalStatementPayload,
+    ) -> dict[str, Any]:
+        """Serialize a CanonicalStatementPayload into a JSON-serializable dict.
+
+        Notes:
+            - Decimal values are converted to strings to avoid loss of
+              precision when stored as JSON.
+            - Enum keys and values are serialized using their `.value`
+              representation to keep the payload stable and readable.
+        """
+        core_metrics = {
+            metric.value: str(amount) for metric, amount in payload.core_metrics.items()
+        }
+        extra_metrics = {key: str(amount) for key, amount in payload.extra_metrics.items()}
+
+        return {
+            "cik": payload.cik,
+            "statement_type": payload.statement_type.value,
+            "accounting_standard": payload.accounting_standard.value,
+            "statement_date": payload.statement_date.isoformat(),
+            "fiscal_year": payload.fiscal_year,
+            "fiscal_period": payload.fiscal_period.value,
+            "currency": payload.currency,
+            "unit_multiplier": payload.unit_multiplier,
+            "core_metrics": core_metrics,
+            "extra_metrics": extra_metrics,
+            "dimensions": dict(payload.dimensions),
+            "source_accession_id": payload.source_accession_id,
+            "source_taxonomy": payload.source_taxonomy,
+            "source_version_sequence": payload.source_version_sequence,
+        }
+
+    @staticmethod
+    def _map_normalized_payload(
+        payload: Mapping[str, Any] | None,
+    ) -> CanonicalStatementPayload | None:
+        """Map a stored JSON payload into a CanonicalStatementPayload.
+
+        Returns:
+            A CanonicalStatementPayload instance, or None if the stored payload
+            is None.
+
+        Raises:
+            EdgarIngestionError: If the payload structure is invalid or
+                contains values that cannot be coerced into the expected
+                types.
+        """
+        if payload is None:
+            return None
+
+        try:
+            raw_statement_date = payload["statement_date"]
+            if isinstance(raw_statement_date, str):
+                statement_date = date.fromisoformat(raw_statement_date)
+            elif isinstance(raw_statement_date, date):
+                statement_date = raw_statement_date
+            else:
+                raise EdgarIngestionError(
+                    "Invalid type for statement_date in normalized payload.",
+                    details={"type": type(raw_statement_date).__name__},
+                )
+
+            statement_type = StatementType(payload["statement_type"])
+            accounting_standard = AccountingStandard(payload["accounting_standard"])
+            fiscal_period = FiscalPeriod(payload["fiscal_period"])
+
+            currency = str(payload["currency"])
+            cik = str(payload["cik"])
+            fiscal_year = int(payload["fiscal_year"])
+            unit_multiplier = int(payload["unit_multiplier"])
+
+            core_metrics_raw = cast(Mapping[str, Any], payload.get("core_metrics", {}))
+            extra_metrics_raw = cast(Mapping[str, Any], payload.get("extra_metrics", {}))
+            dimensions_raw = cast(Mapping[str, Any], payload.get("dimensions", {}))
+
+            core_metrics: dict[CanonicalStatementMetric, Decimal] = {}
+            for key, value in core_metrics_raw.items():
+                metric = CanonicalStatementMetric(key)
+                core_metrics[metric] = EdgarStatementsRepository._to_decimal(
+                    value,
+                    metric_name=metric.value,
+                )
+
+            extra_metrics: dict[str, Decimal] = {}
+            for key, value in extra_metrics_raw.items():
+                extra_metrics[str(key)] = EdgarStatementsRepository._to_decimal(
+                    value,
+                    metric_name=str(key),
+                )
+
+            dimensions: dict[str, str] = {str(k): str(v) for k, v in dimensions_raw.items()}
+
+            source_accession_id = str(payload["source_accession_id"])
+            source_taxonomy = str(payload["source_taxonomy"])
+            source_version_sequence = int(payload["source_version_sequence"])
+
+            return CanonicalStatementPayload(
+                cik=cik,
+                statement_type=statement_type,
+                accounting_standard=accounting_standard,
+                statement_date=statement_date,
+                fiscal_year=fiscal_year,
+                fiscal_period=fiscal_period,
+                currency=currency,
+                unit_multiplier=unit_multiplier,
+                core_metrics=core_metrics,
+                extra_metrics=extra_metrics,
+                dimensions=dimensions,
+                source_accession_id=source_accession_id,
+                source_taxonomy=source_taxonomy,
+                source_version_sequence=source_version_sequence,
+            )
+
+        except EdgarIngestionError:
+            # Bubble up explicit ingestion errors unchanged.
+            raise
+        except Exception as exc:  # noqa: BLE001
+            raise EdgarIngestionError(
+                "Failed to map normalized payload from sec.statement_versions.",
+                details={"reason": type(exc).__name__},
+            ) from exc
+
+    @staticmethod
+    def _to_decimal(value: Any, *, metric_name: str) -> Decimal:
+        """Coerce a stored JSON value into a Decimal.
+
+        Args:
+            value: Raw JSON value (string, int, float, etc.).
+            metric_name: Name of the metric for error reporting.
+
+        Returns:
+            Decimal representation of the value.
+
+        Raises:
+            EdgarIngestionError: If the value cannot be converted to Decimal.
+        """
+        try:
+            return Decimal(str(value))
+        except (InvalidOperation, TypeError) as exc:
+            raise EdgarIngestionError(
+                "Invalid numeric value in normalized payload.",
+                details={"metric": metric_name, "value": repr(value)},
+            ) from exc

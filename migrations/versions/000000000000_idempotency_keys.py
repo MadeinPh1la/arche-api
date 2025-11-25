@@ -11,7 +11,7 @@ from stacklion_api.infrastructure.database.models.base import DEFAULT_DB_SCHEMA
 
 # Revision identifiers, used by Alembic.
 revision = "000000000000_idempotency_keys"
-down_revision = "<REPLACE_WITH_PREVIOUS_REVISION>"
+down_revision = "20251124_0001_edgar_metadata"
 branch_labels = None
 depends_on = None
 

@@ -66,6 +66,52 @@ class EdgarFilingListDTO(BaseDTO):
     items: list[EdgarFilingDTO]
 
 
+class NormalizedStatementPayloadDTO(BaseDTO):
+    """DTO for a canonical normalized financial statement payload.
+
+    This mirrors the CanonicalStatementPayload domain value object but uses
+    wire-friendly representations (e.g., strings for decimal values and
+    string keys for canonical metrics).
+
+    Attributes:
+        cik: Company CIK associated with this statement.
+        statement_type: Statement type (income, balance sheet, cash flow, etc.).
+        accounting_standard: Accounting standard (e.g., US_GAAP, IFRS).
+        statement_date: Reporting period end date.
+        fiscal_year: Fiscal year associated with the statement.
+        fiscal_period: Fiscal period (e.g., FY, Q1, Q2).
+        currency: ISO currency code (e.g., "USD").
+        unit_multiplier: Scaling factor; for normalized payloads this MUST be 0.
+        core_metrics: Mapping from canonical metric identifiers (strings) to
+            stringified numeric values (full units) suitable for JSON.
+        extra_metrics: Mapping for long-tail or company-specific metrics.
+        dimensions: Simple dimensional context tags (e.g. consolidation).
+        source_accession_id: Originating EDGAR accession ID.
+        source_taxonomy: Taxonomy identifier (e.g., "US_GAAP_2024").
+        source_version_sequence: StatementVersion sequence number this payload
+            was derived from.
+    """
+
+    model_config = ConfigDict(extra="forbid")
+
+    cik: str
+    statement_type: StatementType
+    accounting_standard: AccountingStandard
+    statement_date: date
+    fiscal_year: int
+    fiscal_period: FiscalPeriod
+    currency: str
+    unit_multiplier: int
+
+    core_metrics: dict[str, str]
+    extra_metrics: dict[str, str]
+    dimensions: dict[str, str]
+
+    source_accession_id: str
+    source_taxonomy: str
+    source_version_sequence: int
+
+
 class EdgarStatementVersionDTO(BaseDTO):
     """DTO for a normalized EDGAR statement version.
 
@@ -86,6 +132,10 @@ class EdgarStatementVersionDTO(BaseDTO):
         filing_type: Filing type (e.g., 10-K, 10-Q).
         filing_date: Filing date of the underlying filing.
         accepted_at: Optional EDGAR acceptance timestamp.
+        normalized_payload: Optional canonical normalized payload attached to
+            this version. May be None for metadata-only or pre-E6-F rows.
+        normalized_payload_version: Version identifier for the normalized
+            payload schema (e.g., "v1").
     """
 
     model_config = ConfigDict(extra="forbid")
@@ -107,6 +157,9 @@ class EdgarStatementVersionDTO(BaseDTO):
     filing_date: date
     accepted_at: datetime | None = None
 
+    normalized_payload: NormalizedStatementPayloadDTO | None = None
+    normalized_payload_version: str | None = None
+
 
 class EdgarStatementVersionListDTO(BaseDTO):
     """DTO representing a batch of EDGAR statement versions."""
@@ -119,6 +172,7 @@ class EdgarStatementVersionListDTO(BaseDTO):
 __all__ = [
     "EdgarFilingDTO",
     "EdgarFilingListDTO",
+    "NormalizedStatementPayloadDTO",
     "EdgarStatementVersionDTO",
     "EdgarStatementVersionListDTO",
 ]
