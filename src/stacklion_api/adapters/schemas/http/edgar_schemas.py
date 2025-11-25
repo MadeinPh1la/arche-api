@@ -1,22 +1,23 @@
-# Copyright (c) Stacklion.
+# src/stacklion_api/adapters/schemas/http/edgar_schemas.py
+# Copyright (c)
 # SPDX-License-Identifier: MIT
-"""HTTP Schemas: EDGAR filings and statement versions.
+"""HTTP Schemas: EDGAR filings, statements, and normalized facts.
 
 Purpose:
-    Define HTTP-facing schemas for EDGAR filings and normalized statement
-    versions. These models are used by routers / presenters to expose
-    application-layer DTOs via canonical envelopes:
+    Define HTTP-facing schemas for EDGAR-related payloads:
 
-        * PaginatedEnvelope[EdgarFilingHTTP]
-        * PaginatedEnvelope[EdgarStatementVersionSummaryHTTP]
-        * SuccessEnvelope[EdgarFilingHTTP]
-        * SuccessEnvelope[EdgarStatementVersionListHTTP]
+        * Normalized facts and statements (analytics-grade, modeling-ready).
+        * EDGAR statement versions (with optional normalized payloads).
+        * EDGAR filing metadata and statement-version listings.
 
 Design:
     * Strict Pydantic models with extra="forbid".
-    * Field names and types follow API_STANDARDS.
-    * Numeric values are exposed as decimal strings for precision.
-    * Long-form normalized payloads are modeled but not populated yet.
+    * Field names and types follow API_STANDARDS:
+        - snake_case
+        - ISO dates
+        - stringified numeric values on the wire where applicable.
+    * These are transport-facing projections of domain entities and DTOs:
+        - EdgarFiling / EdgarStatementVersion / CanonicalStatementPayload, etc.
 
 Layer:
     adapters/schemas/http
@@ -36,191 +37,53 @@ from stacklion_api.domain.enums.edgar import (
     StatementType,
 )
 
-
-class EdgarFilingHTTP(BaseHTTPSchema):
-    """HTTP schema for a single EDGAR filing.
-
-    This model is a transport-facing projection of :class:`EdgarFilingDTO` and
-    is suitable for direct inclusion in PaginatedEnvelope and SuccessEnvelope.
-
-    Attributes:
-        accession_id: EDGAR accession identifier (e.g., "0000320193-24-000012").
-        cik: Central Index Key string for the filer.
-        company_name: Legal company name, if known.
-        filing_type: Filing type enumeration value (e.g., "10-K", "10-Q").
-        filing_date: Filing date as published by EDGAR.
-        period_end_date: Reporting period end date, if provided.
-        is_amendment: Whether this filing is an amendment (e.g., "10-K/A").
-        amendment_sequence: Optional amendment sequence number.
-        primary_document: Primary document filename, if known.
-        accepted_at: Acceptance timestamp from EDGAR, if available.
-    """
-
-    model_config = ConfigDict(
-        title="EdgarFilingHTTP",
-        extra="forbid",
-        json_schema_extra={
-            "examples": [
-                {
-                    "accession_id": "0000320193-24-000012",
-                    "cik": "0000320193",
-                    "company_name": "Apple Inc.",
-                    "filing_type": "10-K",
-                    "filing_date": "2024-10-25",
-                    "period_end_date": "2024-09-28",
-                    "is_amendment": False,
-                    "amendment_sequence": None,
-                    "primary_document": "aapl-20240928.htm",
-                    "accepted_at": "2024-10-25T16:05:00",
-                }
-            ]
-        },
-    )
-
-    accession_id: str = Field(
-        ...,
-        description="EDGAR accession identifier (e.g., 0000320193-24-000012).",
-    )
-    cik: str = Field(..., description="Central Index Key for the filer.")
-    company_name: str | None = Field(
-        default=None,
-        description="Legal name of the company, if known.",
-    )
-    filing_type: FilingType = Field(
-        ...,
-        description="Filing type enumeration (e.g., 10-K, 10-Q).",
-    )
-    filing_date: date = Field(
-        ...,
-        description="Calendar date when the filing was accepted by the SEC.",
-    )
-    period_end_date: date | None = Field(
-        default=None,
-        description="Reporting period end date, when provided by EDGAR.",
-    )
-    is_amendment: bool = Field(
-        ...,
-        description="Whether this filing is an amendment to a prior submission.",
-    )
-    amendment_sequence: int | None = Field(
-        default=None,
-        description="Amendment sequence number when this is an amendment.",
-    )
-    primary_document: str | None = Field(
-        default=None,
-        description="Primary document filename or identifier, if known.",
-    )
-    accepted_at: datetime | None = Field(
-        default=None,
-        description="Acceptance timestamp from EDGAR, if available.",
-    )
-
-
-class EdgarStatementVersionSummaryHTTP(BaseHTTPSchema):
-    """HTTP summary schema for a statement version.
-
-    This shape is used in company-level listing endpoints where the primary
-    concern is metadata and versioning, not full normalized line items.
-
-    Attributes:
-        accession_id: EDGAR accession identifier for the backing filing.
-        cik: Company CIK.
-        company_name: Legal company name, if known.
-        statement_type: Statement type (income, balance sheet, cash flow).
-        accounting_standard: Accounting standard (e.g., US_GAAP).
-        statement_date: Statement period end date.
-        fiscal_year: Fiscal year associated with the statement.
-        fiscal_period: Fiscal period (e.g., FY, Q1, Q2).
-        currency: ISO 4217 currency code.
-        is_restated: Whether this version is a restatement.
-        restatement_reason: Optional reason for restatement.
-        version_source: Provenance of this version.
-        version_sequence: Monotonic sequence per (company, type, date).
-        filing_type: Filing type (e.g., 10-K, 10-Q).
-        filing_date: Filing date of the underlying filing.
-    """
-
-    model_config = ConfigDict(
-        title="EdgarStatementVersionSummaryHTTP",
-        extra="forbid",
-    )
-
-    accession_id: str = Field(..., description="EDGAR accession identifier.")
-    cik: str = Field(..., description="Central Index Key for the filer.")
-    company_name: str | None = Field(
-        default=None,
-        description="Legal company name, if known.",
-    )
-    statement_type: StatementType = Field(
-        ...,
-        description="High-level statement taxonomy (income, balance sheet, cash flow).",
-    )
-    accounting_standard: AccountingStandard = Field(
-        ...,
-        description="Accounting standard (e.g., US_GAAP, IFRS).",
-    )
-    statement_date: date = Field(
-        ...,
-        description="Reporting period end date for this statement version.",
-    )
-    fiscal_year: int = Field(
-        ...,
-        ge=1,
-        description="Fiscal year associated with the statement (e.g., 2024).",
-    )
-    fiscal_period: FiscalPeriod = Field(
-        ...,
-        description="Fiscal period within the year (e.g., Q1, Q2, FY).",
-    )
-    currency: str = Field(..., description="ISO 4217 currency code (e.g., USD).")
-    is_restated: bool = Field(
-        ...,
-        description="Whether this statement represents a restatement.",
-    )
-    restatement_reason: str | None = Field(
-        default=None,
-        description="Human-readable reason for restatement, when applicable.",
-    )
-    version_source: str = Field(
-        ...,
-        description="Short code describing where this version originates.",
-    )
-    version_sequence: int = Field(
-        ...,
-        ge=1,
-        description="Monotonically increasing version number.",
-    )
-    filing_type: FilingType = Field(
-        ...,
-        description="Filing type (e.g., 10-K, 10-Q).",
-    )
-    filing_date: date = Field(
-        ...,
-        description="Filing date of the associated EDGAR filing.",
-    )
+# --------------------------------------------------------------------------- #
+# Normalized facts and statements (analytics-grade view)                      #
+# --------------------------------------------------------------------------- #
 
 
 class NormalizedFactHTTP(BaseHTTPSchema):
-    """HTTP schema for a normalized financial fact within a statement.
+    """HTTP schema for a single normalized fact.
 
-    This schema is forward-looking: E5 exposes the contract, but the
-    normalized payload is not yet populated. Numeric values are carried
-    as decimal strings to preserve precision for clients.
+    This is the atomic modeling unit extracted from a normalized EDGAR
+    payload. It is intentionally simple and wire-friendly.
 
     Attributes:
-        metric: Canonical metric code (e.g., 'REVENUE', 'NET_INCOME').
-        label: Human-readable label for the metric, if available.
-        unit: Unit code for the value (e.g., 'USD', 'shares').
-        period_start: Inclusive period start date, or None for instant metrics.
-        period_end: Inclusive period end date.
-        value: Decimal string representation of the value.
-        dimension: Optional dimensional breakdown (e.g., segment, class).
-        source_line_item: Optional original line item label from the filing.
+        metric:
+            Canonical metric code (e.g., "REVENUE", "NET_INCOME").
+        label:
+            Human-readable label for the metric, when available.
+        unit:
+            ISO 4217 currency code or other unit code (e.g., "USD").
+        period_start:
+            Inclusive start of the fact's reporting period.
+        period_end:
+            Inclusive end of the fact's reporting period.
+        value:
+            Stringified numeric value in full units, suitable for JSON.
+        dimension:
+            Optional simple dimensional context (e.g., {"segment": "US"}).
+        source_line_item:
+            Original line-item label from the filing, when available.
     """
 
     model_config = ConfigDict(
         title="NormalizedFactHTTP",
         extra="forbid",
+        json_schema_extra={
+            "examples": [
+                {
+                    "metric": "REVENUE",
+                    "label": "Revenue",
+                    "unit": "USD",
+                    "period_start": "2024-01-01",
+                    "period_end": "2024-03-31",
+                    "value": "123456.78",
+                    "dimension": {"segment": "US"},
+                    "source_line_item": "Net sales",
+                }
+            ]
+        },
     )
 
     metric: str = Field(
@@ -229,49 +92,101 @@ class NormalizedFactHTTP(BaseHTTPSchema):
     )
     label: str | None = Field(
         default=None,
-        description="Human-readable label for the metric, if available.",
+        description="Human-readable label for the metric, when available.",
     )
     unit: str = Field(
         ...,
-        description="Unit code for the metric (e.g., USD, shares).",
+        description="Unit code for the value (e.g., ISO 4217 currency code such as USD).",
     )
-    period_start: date | None = Field(
-        default=None,
-        description="Inclusive period start date, or null for instant metrics.",
+    period_start: date = Field(
+        ...,
+        description="Inclusive start date of the reporting period.",
     )
     period_end: date = Field(
         ...,
-        description="Inclusive period end date for the metric value.",
+        description="Inclusive end date of the reporting period.",
     )
     value: str = Field(
         ...,
-        description="Value as a decimal string, preserving precision.",
+        description="Stringified numeric value in full units suitable for JSON.",
     )
     dimension: dict[str, str] | None = Field(
         default=None,
-        description="Optional dimensional breakdown (e.g., segment, class).",
+        description="Optional simple dimensional context (e.g., {'segment': 'US'}).",
     )
     source_line_item: str | None = Field(
         default=None,
-        description="Original line item label from the filing, if known.",
+        description="Original line-item label from the filing, when available.",
     )
 
 
 class NormalizedStatementHTTP(BaseHTTPSchema):
-    """HTTP schema for a normalized financial statement payload.
+    """HTTP schema for a normalized EDGAR statement.
+
+    This is a wire-facing analytics view that groups normalized facts under a
+    statement identity. It keeps the required surface small for clients while
+    exposing richer metadata when available.
 
     Attributes:
-        statement_type: Statement type (income, balance sheet, cash flow).
-        accounting_standard: Accounting standard (e.g., US_GAAP).
-        fiscal_year: Fiscal year associated with the statement.
-        fiscal_period: Fiscal period within the year (e.g., Q1, FY).
-        currency: ISO 4217 currency for all monetary values.
-        facts: Collection of normalized metric facts.
+        statement_type:
+            Statement type (income, balance sheet, cash flow, etc.).
+        accounting_standard:
+            Accounting standard (e.g., US_GAAP, IFRS).
+        statement_date:
+            Reporting period end date, if known.
+        fiscal_year:
+            Fiscal year associated with the statement, when available.
+        fiscal_period:
+            Fiscal period within the year (e.g., FY, Q1, Q2), when available.
+        currency:
+            ISO 4217 currency code for monetary values (e.g., "USD"), when known.
+        cik:
+            Central Index Key for the filer, when available.
+        unit_multiplier:
+            Unit multiplier used when the statement was normalized. For fully
+            normalized payloads this SHOULD be 0.
+        source_accession_id:
+            Originating EDGAR accession identifier, when available.
+        source_taxonomy:
+            Source taxonomy identifier (e.g., "US_GAAP_2024"), when available.
+        source_version_sequence:
+            Version sequence from the canonical normalized payload, when tracked.
+        facts:
+            Collection of normalized facts belonging to this statement.
     """
 
     model_config = ConfigDict(
         title="NormalizedStatementHTTP",
         extra="forbid",
+        json_schema_extra={
+            "examples": [
+                {
+                    "statement_type": "INCOME_STATEMENT",
+                    "accounting_standard": "US_GAAP",
+                    "statement_date": "2024-03-31",
+                    "fiscal_year": 2024,
+                    "fiscal_period": "Q1",
+                    "currency": "USD",
+                    "cik": "0000320193",
+                    "unit_multiplier": 0,
+                    "source_accession_id": "0000320193-24-000012",
+                    "source_taxonomy": "US_GAAP_2024",
+                    "source_version_sequence": 3,
+                    "facts": [
+                        {
+                            "metric": "REVENUE",
+                            "label": "Revenue",
+                            "unit": "USD",
+                            "period_start": "2024-01-01",
+                            "period_end": "2024-03-31",
+                            "value": "123456.78",
+                            "dimension": {"segment": "US"},
+                            "source_line_item": "Net sales",
+                        }
+                    ],
+                }
+            ],
+        },
     )
 
     statement_type: StatementType = Field(
@@ -282,61 +197,211 @@ class NormalizedStatementHTTP(BaseHTTPSchema):
         ...,
         description="Accounting standard (e.g., US_GAAP, IFRS).",
     )
-    fiscal_year: int = Field(
-        ...,
+    statement_date: date | None = Field(
+        default=None,
+        description="Reporting period end date for the statement, when known.",
+    )
+    fiscal_year: int | None = Field(
+        default=None,
         ge=1,
-        description="Fiscal year associated with the statement (e.g., 2024).",
+        description="Fiscal year associated with the statement, when available.",
     )
-    fiscal_period: FiscalPeriod = Field(
-        ...,
-        description="Fiscal period within the year (e.g., Q1, FY).",
+    fiscal_period: FiscalPeriod | None = Field(
+        default=None,
+        description="Fiscal period within the year (e.g., Q1, Q2, FY), when available.",
     )
-    currency: str = Field(
-        ...,
-        description="ISO 4217 currency code used for monetary facts.",
+    currency: str | None = Field(
+        default=None,
+        description="ISO 4217 currency code for monetary values (e.g., USD), when known.",
+    )
+    cik: str | None = Field(
+        default=None,
+        description="Central Index Key for the filer, if known.",
+    )
+    unit_multiplier: int = Field(
+        default=0,
+        description=(
+            "Unit multiplier applied when the statement was normalized. "
+            "Normalized canonical payloads should typically use 0."
+        ),
+    )
+    source_accession_id: str | None = Field(
+        default=None,
+        description="Originating EDGAR accession identifier, when available.",
+    )
+    source_taxonomy: str | None = Field(
+        default=None,
+        description="Source taxonomy identifier (e.g., 'US_GAAP_2024'), when available.",
+    )
+    source_version_sequence: int | None = Field(
+        default=None,
+        description="Version sequence of the canonical normalized payload, when tracked.",
     )
     facts: list[NormalizedFactHTTP] = Field(
         default_factory=list,
-        description="Normalized financial facts for this statement version.",
+        description="Collection of normalized facts belonging to this statement.",
+    )
+
+
+# --------------------------------------------------------------------------- #
+# Filing metadata                                                             #
+# --------------------------------------------------------------------------- #
+
+
+class EdgarFilingHTTP(BaseHTTPSchema):
+    """HTTP schema for normalized EDGAR filing metadata.
+
+    Mirrors :class:`EdgarFilingDTO` at the application layer but is
+    transport-facing and API_STANDARDS-compliant.
+    """
+
+    model_config = ConfigDict(
+        title="EdgarFilingHTTP",
+        extra="forbid",
+    )
+
+    accession_id: str = Field(
+        ...,
+        description="EDGAR accession identifier (e.g., '0000123456-24-000001').",
+    )
+    cik: str = Field(
+        ...,
+        description="Central Index Key string for the filer.",
+    )
+    company_name: str | None = Field(
+        default=None,
+        description="Legal company name for the filer, when known.",
+    )
+    filing_type: FilingType = Field(
+        ...,
+        description="Normalized filing type (e.g., FORM_10_K, FORM_10_Q).",
+    )
+    filing_date: date = Field(
+        ...,
+        description="Filing date as recorded by EDGAR.",
+    )
+    period_end_date: date | None = Field(
+        default=None,
+        description="Reporting period end date, if provided.",
+    )
+    is_amendment: bool = Field(
+        ...,
+        description="Whether this filing represents an amendment (e.g., 10-K/A).",
+    )
+    amendment_sequence: int | None = Field(
+        default=None,
+        description="Optional amendment sequence number, when tracked.",
+    )
+    primary_document: str | None = Field(
+        default=None,
+        description="Primary document filename for the filing, when known.",
+    )
+    accepted_at: datetime | None = Field(
+        default=None,
+        description="Optional EDGAR acceptance timestamp, when available.",
+    )
+
+
+# --------------------------------------------------------------------------- #
+# Statement versions (metadata + normalized payloads)                         #
+# --------------------------------------------------------------------------- #
+
+
+class EdgarStatementVersionSummaryHTTP(BaseHTTPSchema):
+    """HTTP schema for a summary view of an EDGAR statement version.
+
+    Used for lightweight listings where the full normalized payload is not
+    required, but we still want restatement provenance.
+    """
+
+    model_config = ConfigDict(
+        title="EdgarStatementVersionSummaryHTTP",
+        extra="forbid",
+    )
+
+    accession_id: str = Field(
+        ...,
+        description="EDGAR accession identifier for the filing that produced this version.",
+    )
+    cik: str = Field(
+        ...,
+        description="Central Index Key string for the filer.",
+    )
+    company_name: str | None = Field(
+        default=None,
+        description="Legal company name for the filer, when available.",
+    )
+    statement_type: StatementType = Field(
+        ...,
+        description="High-level statement taxonomy (income, balance sheet, cash flow).",
+    )
+    accounting_standard: AccountingStandard = Field(
+        ...,
+        description="Accounting standard used (e.g., US_GAAP, IFRS).",
+    )
+    statement_date: date = Field(
+        ...,
+        description="Statement period end date.",
+    )
+    fiscal_year: int = Field(
+        ...,
+        ge=1,
+        description="Fiscal year associated with the statement.",
+    )
+    fiscal_period: FiscalPeriod = Field(
+        ...,
+        description="Fiscal period within the year (e.g., Q1, Q2, FY).",
+    )
+    currency: str = Field(
+        ...,
+        description="ISO 4217 currency code for reported values (e.g., USD).",
+    )
+    is_restated: bool = Field(
+        ...,
+        description="Whether this version represents a restatement.",
+    )
+    restatement_reason: str | None = Field(
+        default=None,
+        description="Optional reason for restatement, when supplied.",
+    )
+    version_sequence: int = Field(
+        ...,
+        ge=1,
+        description="Monotonic sequence number for the version.",
+    )
+    version_source: str = Field(
+        ...,
+        description="Provenance of this version (e.g., 'EDGAR_METADATA_ONLY').",
+    )
+    filing_type: FilingType = Field(
+        ...,
+        description="Filing type (e.g., FORM_10_K, FORM_10_Q).",
+    )
+    filing_date: date = Field(
+        ...,
+        description="Filing date of the underlying filing.",
     )
 
 
 class EdgarStatementVersionHTTP(BaseHTTPSchema):
-    """HTTP schema for a full statement version (per filing).
-
-    This schema mirrors :class:`EdgarStatementVersionDTO` and adds an
-    optional ``normalized_payload`` field for future long-form normalized
-    statement data.
-
-    Attributes:
-        accession_id: EDGAR accession identifier.
-        cik: Company CIK.
-        company_name: Legal company name, if known.
-        statement_type: Statement type (income, balance sheet, cash flow).
-        accounting_standard: Accounting standard (e.g., US_GAAP).
-        statement_date: Reporting period end date.
-        fiscal_year: Fiscal year.
-        fiscal_period: Fiscal period within the year.
-        currency: ISO 4217 currency code.
-        is_restated: Whether this version is a restatement.
-        restatement_reason: Explanation when restated.
-        version_source: Provenance of the version.
-        version_sequence: Monotonic sequence per (company, type, date).
-        filing_type: Filing type (e.g., 10-K, 10-Q).
-        filing_date: Filing date.
-        normalized_payload: Optional normalized statement payload (future use).
-    """
+    """HTTP schema for a full EDGAR statement version with optional payload."""
 
     model_config = ConfigDict(
         title="EdgarStatementVersionHTTP",
         extra="forbid",
     )
 
-    accession_id: str = Field(..., description="EDGAR accession identifier.")
-    cik: str = Field(..., description="Central Index Key for the filer.")
+    accession_id: str = Field(
+        ...,
+        description="EDGAR accession identifier for the filing that produced this version.",
+    )
+    cik: str = Field(
+        ...,
+        description="Central Index Key string for the filer.",
+    )
     company_name: str | None = Field(
         default=None,
-        description="Legal company name, if known.",
+        description="Legal company name for the filer, when available.",
     )
     statement_type: StatementType = Field(
         ...,
@@ -344,62 +409,73 @@ class EdgarStatementVersionHTTP(BaseHTTPSchema):
     )
     accounting_standard: AccountingStandard = Field(
         ...,
-        description="Accounting standard (e.g., US_GAAP, IFRS).",
+        description="Accounting standard used (e.g., US_GAAP, IFRS).",
     )
     statement_date: date = Field(
         ...,
-        description="Reporting period end date for this statement version.",
+        description="Statement period end date.",
     )
     fiscal_year: int = Field(
         ...,
         ge=1,
-        description="Fiscal year associated with the statement (e.g., 2024).",
+        description="Fiscal year associated with the statement.",
     )
     fiscal_period: FiscalPeriod = Field(
         ...,
         description="Fiscal period within the year (e.g., Q1, Q2, FY).",
     )
-    currency: str = Field(..., description="ISO 4217 currency code (e.g., USD).")
+    currency: str = Field(
+        ...,
+        description="ISO 4217 currency code for reported values (e.g., USD).",
+    )
     is_restated: bool = Field(
         ...,
-        description="Whether this statement represents a restatement.",
+        description="Whether this version represents a restatement.",
     )
     restatement_reason: str | None = Field(
         default=None,
-        description="Human-readable reason for restatement, if applicable.",
+        description="Optional reason for restatement, when supplied.",
     )
     version_source: str = Field(
         ...,
-        description="Short code describing where this version originates.",
+        description="Provenance of this version (e.g., 'EDGAR_METADATA_ONLY').",
     )
     version_sequence: int = Field(
         ...,
         ge=1,
-        description="Monotonically increasing version number.",
+        description="Monotonic sequence number for the version.",
     )
     filing_type: FilingType = Field(
         ...,
-        description="Filing type (e.g., 10-K, 10-Q).",
+        description="Filing type (e.g., FORM_10_K, FORM_10_Q).",
     )
     filing_date: date = Field(
         ...,
-        description="Filing date of the associated EDGAR filing.",
+        description="Filing date of the underlying filing.",
+    )
+    accepted_at: datetime | None = Field(
+        default=None,
+        description="EDGAR acceptance timestamp, when available.",
     )
     normalized_payload: NormalizedStatementHTTP | None = Field(
         default=None,
         description=(
-            "Optional normalized financial statement payload. "
-            "This field is reserved for future use and is currently null."
+            "Optional normalized statement payload attached to this version. "
+            "May be None for metadata-only or pre-normalization rows."
         ),
+    )
+    normalized_payload_version: str | None = Field(
+        default=None,
+        description="Version identifier for the normalized payload schema (e.g., 'v1').",
     )
 
 
 class EdgarStatementVersionListHTTP(BaseHTTPSchema):
-    """HTTP container for statement versions associated with a single filing.
+    """HTTP schema for a list of EDGAR statement versions.
 
-    Attributes:
-        filing: Filing metadata associated with the statement versions.
-        items: Collection of statement versions for the filing.
+    This is a thin wrapper around a collection of full statement-version
+    representations. Pagination is handled by the standard PaginatedEnvelope
+    contract.
     """
 
     model_config = ConfigDict(
@@ -407,21 +483,24 @@ class EdgarStatementVersionListHTTP(BaseHTTPSchema):
         extra="forbid",
     )
 
-    filing: EdgarFilingHTTP = Field(
-        ...,
-        description="Filing metadata associated with the statement versions.",
+    filing: EdgarFilingHTTP | None = Field(
+        default=None,
+        description=(
+            "Optional filing metadata shared across all versions when listing "
+            "versions for a single filing."
+        ),
     )
     items: list[EdgarStatementVersionHTTP] = Field(
         default_factory=list,
-        description="Statement versions attached to the filing.",
+        description="Collection of full statement-version records.",
     )
 
 
 __all__ = [
-    "EdgarFilingHTTP",
-    "EdgarStatementVersionSummaryHTTP",
     "NormalizedFactHTTP",
     "NormalizedStatementHTTP",
+    "EdgarFilingHTTP",
+    "EdgarStatementVersionSummaryHTTP",
     "EdgarStatementVersionHTTP",
     "EdgarStatementVersionListHTTP",
 ]

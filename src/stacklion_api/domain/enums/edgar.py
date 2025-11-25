@@ -26,8 +26,11 @@ class FilingType(str, Enum):
     """Supported EDGAR filing types.
 
     Values are normalized, provider-agnostic tokens rather than raw SEC form codes.
+    Naming is stable and JSON/OpenAPI-friendly; values preserve the original
+    EDGAR form codes (e.g., "10-K").
     """
 
+    # Canonical names (original in your codebase)
     FORM_10K = "10-K"
     FORM_10Q = "10-Q"
     FORM_8K = "8-K"
@@ -37,6 +40,17 @@ class FilingType(str, Enum):
     REG_S1 = "S-1"
     REG_S3 = "S-3"
     OTHER = "OTHER"
+
+    # Backwards-compat synonyms used in newer code/tests.
+    # These share the same underlying members and values.
+    FORM_10_K = "10-K"
+    FORM_10_Q = "10-Q"
+    FORM_8_K = "8-K"
+    FORM_20_F = "20-F"
+    FORM_40_F = "40-F"
+    FORM_6_K = "6-K"
+    REG_S_1 = "S-1"
+    REG_S_3 = "S-3"
 
 
 class StatementType(str, Enum):
@@ -76,3 +90,11 @@ class FiscalPeriod(str, Enum):
     Q4 = "Q4"
     H1 = "H1"
     OTHER = "OTHER"
+
+
+__all__ = [
+    "FilingType",
+    "StatementType",
+    "AccountingStandard",
+    "FiscalPeriod",
+]

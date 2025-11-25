@@ -10,6 +10,71 @@
         "title": "AccountingStandard",
         "type": "string"
       },
+      "CanonicalStatementMetric": {
+        "enum": [
+          "REVENUE",
+          "COST_OF_REVENUE",
+          "GROSS_PROFIT",
+          "RESEARCH_AND_DEVELOPMENT_EXPENSE",
+          "SELLING_GENERAL_AND_ADMINISTRATIVE_EXPENSE",
+          "DEPRECIATION_AND_AMORTIZATION_EXPENSE",
+          "OPERATING_INCOME",
+          "OPERATING_EXPENSE",
+          "INTEREST_INCOME",
+          "INTEREST_EXPENSE",
+          "OTHER_NON_OPERATING_INCOME_EXPENSE",
+          "INCOME_BEFORE_TAX",
+          "INCOME_TAX_EXPENSE",
+          "NET_INCOME",
+          "BASIC_EPS",
+          "DILUTED_EPS",
+          "WEIGHTED_AVERAGE_SHARES_BASIC",
+          "WEIGHTED_AVERAGE_SHARES_DILUTED",
+          "TOTAL_ASSETS",
+          "TOTAL_CURRENT_ASSETS",
+          "CASH_AND_CASH_EQUIVALENTS",
+          "SHORT_TERM_INVESTMENTS",
+          "ACCOUNTS_RECEIVABLE_NET",
+          "INVENTORIES",
+          "OTHER_CURRENT_ASSETS",
+          "TOTAL_NON_CURRENT_ASSETS",
+          "PROPERTY_PLANT_AND_EQUIPMENT_NET",
+          "GOODWILL",
+          "INTANGIBLE_ASSETS_NET",
+          "OTHER_NON_CURRENT_ASSETS",
+          "TOTAL_LIABILITIES",
+          "TOTAL_CURRENT_LIABILITIES",
+          "ACCOUNTS_PAYABLE",
+          "SHORT_TERM_DEBT",
+          "CURRENT_PORTION_OF_LONG_TERM_DEBT",
+          "OTHER_CURRENT_LIABILITIES",
+          "TOTAL_NON_CURRENT_LIABILITIES",
+          "LONG_TERM_DEBT",
+          "OTHER_NON_CURRENT_LIABILITIES",
+          "TOTAL_EQUITY",
+          "RETAINED_EARNINGS",
+          "ADDITIONAL_PAID_IN_CAPITAL",
+          "TREASURY_STOCK",
+          "ACCUMULATED_OTHER_COMPREHENSIVE_INCOME",
+          "NET_CASH_FROM_OPERATING_ACTIVITIES",
+          "NET_CASH_FROM_INVESTING_ACTIVITIES",
+          "NET_CASH_FROM_FINANCING_ACTIVITIES",
+          "NET_INCREASE_DECREASE_IN_CASH",
+          "CASH_PAID_FOR_INTEREST",
+          "CASH_PAID_FOR_INCOME_TAXES",
+          "CAPITAL_EXPENDITURES",
+          "FREE_CASH_FLOW",
+          "OTHER_OPERATING_INCOME_EXPENSE",
+          "OTHER_ASSETS",
+          "OTHER_LIABILITIES",
+          "OTHER_EQUITY",
+          "OTHER_CASH_FLOW_FROM_OPERATIONS",
+          "OTHER_CASH_FLOW_FROM_INVESTING",
+          "OTHER_CASH_FLOW_FROM_FINANCING"
+        ],
+        "title": "CanonicalStatementMetric",
+        "type": "string"
+      },
       "CheckResult": {
         "additionalProperties": false,
         "properties": {
@@ -55,19 +120,6 @@
       },
       "EdgarFilingHTTP": {
         "additionalProperties": false,
-        "examples": [
-          {
-            "accepted_at": "2024-10-25T16:05:00",
-            "accession_id": "0000320193-24-000012",
-            "cik": "0000320193",
-            "company_name": "Apple Inc.",
-            "filing_date": "2024-10-25",
-            "filing_type": "10-K",
-            "is_amendment": false,
-            "period_end_date": "2024-09-28",
-            "primary_document": "aapl-20240928.htm"
-          }
-        ],
         "properties": {
           "accepted_at": {
             "anyOf": [
@@ -160,6 +212,18 @@
       "EdgarStatementVersionHTTP": {
         "additionalProperties": false,
         "properties": {
+          "accepted_at": {
+            "anyOf": [
+              {
+                "format": "date-time",
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Accepted At"
+          },
           "accession_id": {
             "title": "Accession Id",
             "type": "string"
@@ -216,6 +280,17 @@
               }
             ]
           },
+          "normalized_payload_version": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Normalized Payload Version"
+          },
           "restatement_reason": {
             "anyOf": [
               {
@@ -267,7 +342,14 @@
         "additionalProperties": false,
         "properties": {
           "filing": {
-            "$ref": "#/components/schemas/EdgarFilingHTTP"
+            "anyOf": [
+              {
+                "$ref": "#/components/schemas/EdgarFilingHTTP"
+              },
+              {
+                "type": "null"
+              }
+            ]
           },
           "items": {
             "items": {
@@ -277,9 +359,6 @@
             "type": "array"
           }
         },
-        "required": [
-          "filing"
-        ],
         "title": "EdgarStatementVersionListHTTP",
         "type": "object"
       },
@@ -373,7 +452,15 @@
           "6-K",
           "S-1",
           "S-3",
-          "OTHER"
+          "OTHER",
+          "10-K",
+          "10-Q",
+          "8-K",
+          "20-F",
+          "40-F",
+          "6-K",
+          "S-1",
+          "S-3"
         ],
         "title": "FilingType",
         "type": "string"
@@ -548,6 +635,20 @@
       },
       "NormalizedFactHTTP": {
         "additionalProperties": false,
+        "examples": [
+          {
+            "dimension": {
+              "segment": "US"
+            },
+            "label": "Revenue",
+            "metric": "REVENUE",
+            "period_end": "2024-03-31",
+            "period_start": "2024-01-01",
+            "source_line_item": "Net sales",
+            "unit": "USD",
+            "value": "123456.78"
+          }
+        ],
         "properties": {
           "dimension": {
             "anyOf": [
@@ -584,16 +685,9 @@
             "type": "string"
           },
           "period_start": {
-            "anyOf": [
-              {
-                "format": "date",
-                "type": "string"
-              },
-              {
-                "type": "null"
-              }
-            ],
-            "title": "Period Start"
+            "format": "date",
+            "title": "Period Start",
+            "type": "string"
           },
           "source_line_item": {
             "anyOf": [
@@ -618,6 +712,7 @@
         "required": [
           "metric",
           "unit",
+          "period_start",
           "period_end",
           "value"
         ],
@@ -626,13 +721,60 @@
       },
       "NormalizedStatementHTTP": {
         "additionalProperties": false,
+        "examples": [
+          {
+            "accounting_standard": "US_GAAP",
+            "cik": "0000320193",
+            "currency": "USD",
+            "facts": [
+              {
+                "dimension": {
+                  "segment": "US"
+                },
+                "label": "Revenue",
+                "metric": "REVENUE",
+                "period_end": "2024-03-31",
+                "period_start": "2024-01-01",
+                "source_line_item": "Net sales",
+                "unit": "USD",
+                "value": "123456.78"
+              }
+            ],
+            "fiscal_period": "Q1",
+            "fiscal_year": 2024,
+            "source_accession_id": "0000320193-24-000012",
+            "source_taxonomy": "US_GAAP_2024",
+            "source_version_sequence": 3,
+            "statement_date": "2024-03-31",
+            "statement_type": "INCOME_STATEMENT",
+            "unit_multiplier": 0
+          }
+        ],
         "properties": {
           "accounting_standard": {
             "$ref": "#/components/schemas/AccountingStandard"
           },
+          "cik": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Cik"
+          },
           "currency": {
-            "title": "Currency",
-            "type": "string"
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Currency"
           },
           "facts": {
             "items": {
@@ -642,25 +784,106 @@
             "type": "array"
           },
           "fiscal_period": {
-            "$ref": "#/components/schemas/FiscalPeriod"
+            "anyOf": [
+              {
+                "$ref": "#/components/schemas/FiscalPeriod"
+              },
+              {
+                "type": "null"
+              }
+            ]
           },
           "fiscal_year": {
-            "minimum": 1.0,
-            "title": "Fiscal Year",
-            "type": "integer"
+            "anyOf": [
+              {
+                "minimum": 1.0,
+                "type": "integer"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Fiscal Year"
+          },
+          "source_accession_id": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Source Accession Id"
+          },
+          "source_taxonomy": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Source Taxonomy"
+          },
+          "source_version_sequence": {
+            "anyOf": [
+              {
+                "type": "integer"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Source Version Sequence"
+          },
+          "statement_date": {
+            "anyOf": [
+              {
+                "format": "date",
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Statement Date"
           },
           "statement_type": {
             "$ref": "#/components/schemas/StatementType"
+          },
+          "unit_multiplier": {
+            "default": 0,
+            "title": "Unit Multiplier",
+            "type": "integer"
           }
         },
         "required": [
           "statement_type",
-          "accounting_standard",
-          "fiscal_year",
-          "fiscal_period",
-          "currency"
+          "accounting_standard"
         ],
         "title": "NormalizedStatementHTTP",
+        "type": "object"
+      },
+      "NormalizedStatementViewHTTP": {
+        "additionalProperties": false,
+        "properties": {
+          "latest": {
+            "$ref": "#/components/schemas/EdgarStatementVersionHTTP"
+          },
+          "version_history": {
+            "items": {
+              "$ref": "#/components/schemas/EdgarStatementVersionHTTP"
+            },
+            "title": "Version History",
+            "type": "array"
+          }
+        },
+        "required": [
+          "latest"
+        ],
+        "title": "NormalizedStatementViewHTTP",
         "type": "object"
       },
       "PaginatedEnvelope": {
@@ -790,6 +1013,115 @@
         "title": "ReadinessResponse",
         "type": "object"
       },
+      "RestatementDeltaHTTP": {
+        "additionalProperties": false,
+        "properties": {
+          "accounting_standard": {
+            "$ref": "#/components/schemas/AccountingStandard"
+          },
+          "cik": {
+            "title": "Cik",
+            "type": "string"
+          },
+          "currency": {
+            "title": "Currency",
+            "type": "string"
+          },
+          "fiscal_period": {
+            "$ref": "#/components/schemas/FiscalPeriod"
+          },
+          "fiscal_year": {
+            "minimum": 1.0,
+            "title": "Fiscal Year",
+            "type": "integer"
+          },
+          "from_version_sequence": {
+            "minimum": 1.0,
+            "title": "From Version Sequence",
+            "type": "integer"
+          },
+          "metrics": {
+            "additionalProperties": {
+              "$ref": "#/components/schemas/RestatementMetricDeltaHTTP"
+            },
+            "title": "Metrics",
+            "type": "object"
+          },
+          "statement_date": {
+            "format": "date",
+            "title": "Statement Date",
+            "type": "string"
+          },
+          "statement_type": {
+            "$ref": "#/components/schemas/StatementType"
+          },
+          "to_version_sequence": {
+            "minimum": 1.0,
+            "title": "To Version Sequence",
+            "type": "integer"
+          }
+        },
+        "required": [
+          "cik",
+          "statement_type",
+          "accounting_standard",
+          "statement_date",
+          "fiscal_year",
+          "fiscal_period",
+          "currency",
+          "from_version_sequence",
+          "to_version_sequence"
+        ],
+        "title": "RestatementDeltaHTTP",
+        "type": "object"
+      },
+      "RestatementMetricDeltaHTTP": {
+        "additionalProperties": false,
+        "properties": {
+          "diff": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Diff"
+          },
+          "metric": {
+            "title": "Metric",
+            "type": "string"
+          },
+          "new": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "New"
+          },
+          "old": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Old"
+          }
+        },
+        "required": [
+          "metric"
+        ],
+        "title": "RestatementMetricDeltaHTTP",
+        "type": "object"
+      },
       "StatementType": {
         "enum": [
           "INCOME_STATEMENT",
@@ -838,11 +1170,37 @@
         "title": "SuccessEnvelope",
         "type": "object"
       },
+      "SuccessEnvelope_NormalizedStatementViewHTTP_": {
+        "additionalProperties": false,
+        "properties": {
+          "data": {
+            "$ref": "#/components/schemas/NormalizedStatementViewHTTP"
+          }
+        },
+        "required": [
+          "data"
+        ],
+        "title": "SuccessEnvelope",
+        "type": "object"
+      },
       "SuccessEnvelope_QuotesBatch_": {
         "additionalProperties": false,
         "properties": {
           "data": {
             "$ref": "#/components/schemas/QuotesBatch"
+          }
+        },
+        "required": [
+          "data"
+        ],
+        "title": "SuccessEnvelope",
+        "type": "object"
+      },
+      "SuccessEnvelope_RestatementDeltaHTTP_": {
+        "additionalProperties": false,
+        "properties": {
+          "data": {
+            "$ref": "#/components/schemas/RestatementDeltaHTTP"
           }
         },
         "required": [
@@ -1781,6 +2139,321 @@
         },
         "tags": [
           "EDGAR Filings"
+        ]
+      }
+    },
+    "/v1/fundamentals/normalized-statements": {
+      "get": {
+        "parameters": [
+          {
+            "in": "query",
+            "name": "cik",
+            "required": true,
+            "schema": {
+              "title": "Cik",
+              "type": "string"
+            }
+          },
+          {
+            "in": "query",
+            "name": "statement_type",
+            "required": true,
+            "schema": {
+              "$ref": "#/components/schemas/StatementType"
+            }
+          },
+          {
+            "in": "query",
+            "name": "fiscal_year",
+            "required": true,
+            "schema": {
+              "minimum": 1,
+              "title": "Fiscal Year",
+              "type": "integer"
+            }
+          },
+          {
+            "in": "query",
+            "name": "fiscal_period",
+            "required": true,
+            "schema": {
+              "$ref": "#/components/schemas/FiscalPeriod"
+            }
+          },
+          {
+            "in": "query",
+            "name": "include_version_history",
+            "required": false,
+            "schema": {
+              "default": true,
+              "title": "Include Version History",
+              "type": "boolean"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/SuccessEnvelope_NormalizedStatementViewHTTP_"
+                }
+              }
+            }
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            }
+          }
+        },
+        "tags": [
+          "Fundamentals",
+          "Fundamentals"
+        ]
+      }
+    },
+    "/v1/fundamentals/restatement-delta": {
+      "get": {
+        "parameters": [
+          {
+            "in": "query",
+            "name": "cik",
+            "required": true,
+            "schema": {
+              "title": "Cik",
+              "type": "string"
+            }
+          },
+          {
+            "in": "query",
+            "name": "statement_type",
+            "required": true,
+            "schema": {
+              "$ref": "#/components/schemas/StatementType"
+            }
+          },
+          {
+            "in": "query",
+            "name": "fiscal_year",
+            "required": true,
+            "schema": {
+              "minimum": 1,
+              "title": "Fiscal Year",
+              "type": "integer"
+            }
+          },
+          {
+            "in": "query",
+            "name": "fiscal_period",
+            "required": true,
+            "schema": {
+              "$ref": "#/components/schemas/FiscalPeriod"
+            }
+          },
+          {
+            "in": "query",
+            "name": "from_version_sequence",
+            "required": true,
+            "schema": {
+              "minimum": 1,
+              "title": "From Version Sequence",
+              "type": "integer"
+            }
+          },
+          {
+            "in": "query",
+            "name": "to_version_sequence",
+            "required": true,
+            "schema": {
+              "minimum": 1,
+              "title": "To Version Sequence",
+              "type": "integer"
+            }
+          },
+          {
+            "in": "query",
+            "name": "metrics",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "items": {
+                    "$ref": "#/components/schemas/CanonicalStatementMetric"
+                  },
+                  "type": "array"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Metrics"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/SuccessEnvelope_RestatementDeltaHTTP_"
+                }
+              }
+            }
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            }
+          }
+        },
+        "tags": [
+          "Fundamentals",
+          "Fundamentals"
+        ]
+      }
+    },
+    "/v1/fundamentals/time-series": {
+      "get": {
+        "parameters": [
+          {
+            "in": "query",
+            "name": "ciks",
+            "required": true,
+            "schema": {
+              "items": {
+                "type": "string"
+              },
+              "title": "Ciks",
+              "type": "array"
+            }
+          },
+          {
+            "in": "query",
+            "name": "statement_type",
+            "required": true,
+            "schema": {
+              "$ref": "#/components/schemas/StatementType"
+            }
+          },
+          {
+            "in": "query",
+            "name": "metrics",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "items": {
+                    "$ref": "#/components/schemas/CanonicalStatementMetric"
+                  },
+                  "type": "array"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Metrics"
+            }
+          },
+          {
+            "in": "query",
+            "name": "frequency",
+            "required": false,
+            "schema": {
+              "default": "annual",
+              "title": "Frequency",
+              "type": "string"
+            }
+          },
+          {
+            "in": "query",
+            "name": "from",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "format": "date",
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "From"
+            }
+          },
+          {
+            "in": "query",
+            "name": "to",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "format": "date",
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "To"
+            }
+          },
+          {
+            "in": "query",
+            "name": "page",
+            "required": false,
+            "schema": {
+              "default": 1,
+              "minimum": 1,
+              "title": "Page",
+              "type": "integer"
+            }
+          },
+          {
+            "in": "query",
+            "name": "page_size",
+            "required": false,
+            "schema": {
+              "default": 50,
+              "maximum": 200,
+              "minimum": 1,
+              "title": "Page Size",
+              "type": "integer"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/PaginatedEnvelope"
+                }
+              }
+            }
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            }
+          }
+        },
+        "tags": [
+          "Fundamentals",
+          "Fundamentals"
         ]
       }
     },

@@ -18,6 +18,9 @@ Notes:
     - Normalized payloads are modeled via the CanonicalStatementPayload
       value object; earlier phases may have statement versions without a
       normalized payload attached (None).
+    - `accession_id` and `filing_date` are accepted as constructor arguments
+      (for compatibility with repositories, gateways, and tests) but are
+      always validated against and normalized from the attached `filing`.
 """
 
 from __future__ import annotations
@@ -73,11 +76,13 @@ class EdgarStatementVersion:
             (company, statement_type, statement_date) identity tuple.
             Typically 1 for the first version, 2+ for restatements.
         accession_id:
-            EDGAR accession identifier for the originating filing. Must match
-            filing.accession_id exactly.
+            EDGAR accession identifier for the originating filing. If omitted,
+            this is derived from `filing.accession_id`. If provided, it must
+            match `filing.accession_id` exactly.
         filing_date:
-            Filing date associated with the originating filing. Must match
-            filing.filing_date exactly.
+            Filing date associated with the originating filing. If omitted,
+            this is derived from `filing.filing_date`. If provided, it must
+            match `filing.filing_date` exactly.
         normalized_payload:
             Optional canonical normalized payload for this statement version.
             This is populated by the Normalized Statement Payload Engine in
@@ -99,74 +104,115 @@ class EdgarStatementVersion:
     restatement_reason: str | None
     version_source: str
     version_sequence: int
-    accession_id: str
-    filing_date: date
+
+    # These are accepted as kwargs by all existing code. When omitted or blank,
+    # they are derived from `filing` and then validated.
+    accession_id: str = ""
+    filing_date: date | None = None
 
     normalized_payload: CanonicalStatementPayload | None = None
     normalized_payload_version: str | None = None
 
     def __post_init__(self) -> None:
-        """Enforce invariants between the statement version and its filing.
+        """Enforce core invariants between the statement version and its filing."""
+        self._normalize_and_validate_accession_id()
+        self._normalize_and_validate_filing_date()
+        self._validate_fiscal_year()
+        self._validate_currency()
+        self._validate_version_source()
+        self._validate_restatement_reason()
 
-        Validation rules (aligned with domain tests):
+    # -------------------------------------------------------------------------
+    # Normalization / validation helpers
+    # -------------------------------------------------------------------------
 
-        * statement_date must not be after filing.filing_date.
-        * accession_id must exactly match filing.accession_id.
-        * filing_date must exactly match filing.filing_date.
-        * fiscal_year must be a positive integer (> 0).
-        * currency must be a non-empty, non-whitespace ISO code.
-        * version_source must be a non-empty, non-whitespace string.
-        * If is_restated is True, restatement_reason must be non-None.
-        * If is_restated is False, restatement_reason must be None.
+    def _normalize_and_validate_accession_id(self) -> None:
+        """Derive and validate accession_id against the underlying filing."""
+        expected_accession = self.filing.accession_id
+        raw_accession = (self.accession_id or "").strip()
 
-        Raises:
-            EdgarMappingError: If any invariant is violated.
-        """
-        # 1) statement_date cannot be after the filing date that reported it.
-        if self.statement_date > self.filing.filing_date:
+        if not raw_accession:
+            # Derive when not provided.
+            object.__setattr__(self, "accession_id", expected_accession)
+            return
+
+        if raw_accession != expected_accession:
             raise EdgarMappingError(
-                "statement_date cannot be after filing_date: "
-                f"statement_date={self.statement_date}, filing_date={self.filing.filing_date}"
+                "accession_id on statement version must match filing.accession_id.",
+                details={
+                    "statement_accession_id": raw_accession,
+                    "filing_accession_id": expected_accession,
+                },
             )
 
-        # 2) accession_id must match the underlying filing metadata.
-        if self.accession_id != self.filing.accession_id:
+        # Normalize whitespace if any.
+        object.__setattr__(self, "accession_id", expected_accession)
+
+    def _normalize_and_validate_filing_date(self) -> None:
+        """Derive and validate filing_date against the underlying filing."""
+        expected_filing_date = self.filing.filing_date
+
+        if self.filing_date is None:
+            object.__setattr__(self, "filing_date", expected_filing_date)
+            return
+
+        if self.filing_date != expected_filing_date:
             raise EdgarMappingError(
-                "accession_id must match filing.accession_id: "
-                f"accession_id={self.accession_id}, filing.accession_id={self.filing.accession_id}"
+                "filing_date on statement version must match filing.filing_date.",
+                details={
+                    "statement_filing_date": self.filing_date.isoformat(),
+                    "filing_filing_date": expected_filing_date.isoformat(),
+                },
             )
 
-        # 3) filing_date must match the underlying filing metadata.
-        if self.filing_date != self.filing.filing_date:
-            raise EdgarMappingError(
-                "filing_date must match filing.filing_date: "
-                f"filing_date={self.filing_date}, filing.filing_date={self.filing.filing_date}"
-            )
-
-        # 4) fiscal_year must be positive (0 is explicitly rejected by tests).
+    def _validate_fiscal_year(self) -> None:
+        """Ensure fiscal_year is a positive integer."""
         if self.fiscal_year <= 0:
             raise EdgarMappingError(
-                f"fiscal_year must be a positive integer; got {self.fiscal_year}"
+                "fiscal_year must be a positive integer for EdgarStatementVersion.",
+                details={"fiscal_year": self.fiscal_year},
             )
 
-        # 5) currency must be a non-empty, non-whitespace ISO code.
-        if not self.currency or not self.currency.strip():
-            raise EdgarMappingError("currency must be a non-empty ISO code.")
-
-        # 6) version_source must be a non-empty, non-whitespace string.
-        if not self.version_source or not self.version_source.strip():
+    def _validate_currency(self) -> None:
+        """Ensure currency is a non-empty ISO code."""
+        currency = (self.currency or "").strip()
+        if not currency:
             raise EdgarMappingError(
-                "version_source must be a non-empty string describing provenance."
+                "currency must be a non-empty ISO code for EdgarStatementVersion.",
+                details={"currency": self.currency},
             )
 
-        # 7) Restatement reason consistency:
-        #    - If is_restated, restatement_reason must be provided.
-        #    - If not restated, restatement_reason must be None.
-        if self.is_restated and self.restatement_reason is None:
-            raise EdgarMappingError("restatement_reason must be provided when is_restated is True.")
+    def _validate_version_source(self) -> None:
+        """Ensure version_source is a non-empty, non-whitespace string."""
+        version_source = (self.version_source or "").strip()
+        if not version_source:
+            raise EdgarMappingError(
+                "version_source must be a non-empty string for EdgarStatementVersion.",
+                details={"version_source": self.version_source},
+            )
 
-        if not self.is_restated and self.restatement_reason is not None:
-            raise EdgarMappingError("restatement_reason must be None when is_restated is False.")
+    def _validate_restatement_reason(self) -> None:
+        """Ensure restatement_reason consistency with is_restated flag.
+
+        Rules:
+            * If is_restated is True:
+                - restatement_reason must be non-None and non-blank.
+            * If is_restated is False:
+                - restatement_reason must be None.
+        """
+        if self.is_restated:
+            if self.restatement_reason is None or not self.restatement_reason.strip():
+                raise EdgarMappingError(
+                    "restatement_reason must be provided and non-blank when is_restated is True.",
+                    details={"restatement_reason": self.restatement_reason},
+                )
+            return
+
+        if self.restatement_reason is not None:
+            raise EdgarMappingError(
+                "restatement_reason must be None when is_restated is False.",
+                details={"restatement_reason": self.restatement_reason},
+            )
 
 
 __all__ = ["EdgarStatementVersion"]
