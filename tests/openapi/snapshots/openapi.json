@@ -1,6 +1,15 @@
 {
   "components": {
     "schemas": {
+      "AccountingStandard": {
+        "enum": [
+          "US_GAAP",
+          "IFRS",
+          "OTHER"
+        ],
+        "title": "AccountingStandard",
+        "type": "string"
+      },
       "CheckResult": {
         "additionalProperties": false,
         "properties": {
@@ -42,6 +51,236 @@
           "duration_ms"
         ],
         "title": "CheckResult",
+        "type": "object"
+      },
+      "EdgarFilingHTTP": {
+        "additionalProperties": false,
+        "examples": [
+          {
+            "accepted_at": "2024-10-25T16:05:00",
+            "accession_id": "0000320193-24-000012",
+            "cik": "0000320193",
+            "company_name": "Apple Inc.",
+            "filing_date": "2024-10-25",
+            "filing_type": "10-K",
+            "is_amendment": false,
+            "period_end_date": "2024-09-28",
+            "primary_document": "aapl-20240928.htm"
+          }
+        ],
+        "properties": {
+          "accepted_at": {
+            "anyOf": [
+              {
+                "format": "date-time",
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Accepted At"
+          },
+          "accession_id": {
+            "title": "Accession Id",
+            "type": "string"
+          },
+          "amendment_sequence": {
+            "anyOf": [
+              {
+                "type": "integer"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Amendment Sequence"
+          },
+          "cik": {
+            "title": "Cik",
+            "type": "string"
+          },
+          "company_name": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Company Name"
+          },
+          "filing_date": {
+            "format": "date",
+            "title": "Filing Date",
+            "type": "string"
+          },
+          "filing_type": {
+            "$ref": "#/components/schemas/FilingType"
+          },
+          "is_amendment": {
+            "title": "Is Amendment",
+            "type": "boolean"
+          },
+          "period_end_date": {
+            "anyOf": [
+              {
+                "format": "date",
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Period End Date"
+          },
+          "primary_document": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Primary Document"
+          }
+        },
+        "required": [
+          "accession_id",
+          "cik",
+          "filing_type",
+          "filing_date",
+          "is_amendment"
+        ],
+        "title": "EdgarFilingHTTP",
+        "type": "object"
+      },
+      "EdgarStatementVersionHTTP": {
+        "additionalProperties": false,
+        "properties": {
+          "accession_id": {
+            "title": "Accession Id",
+            "type": "string"
+          },
+          "accounting_standard": {
+            "$ref": "#/components/schemas/AccountingStandard"
+          },
+          "cik": {
+            "title": "Cik",
+            "type": "string"
+          },
+          "company_name": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Company Name"
+          },
+          "currency": {
+            "title": "Currency",
+            "type": "string"
+          },
+          "filing_date": {
+            "format": "date",
+            "title": "Filing Date",
+            "type": "string"
+          },
+          "filing_type": {
+            "$ref": "#/components/schemas/FilingType"
+          },
+          "fiscal_period": {
+            "$ref": "#/components/schemas/FiscalPeriod"
+          },
+          "fiscal_year": {
+            "minimum": 1.0,
+            "title": "Fiscal Year",
+            "type": "integer"
+          },
+          "is_restated": {
+            "title": "Is Restated",
+            "type": "boolean"
+          },
+          "normalized_payload": {
+            "anyOf": [
+              {
+                "$ref": "#/components/schemas/NormalizedStatementHTTP"
+              },
+              {
+                "type": "null"
+              }
+            ]
+          },
+          "restatement_reason": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Restatement Reason"
+          },
+          "statement_date": {
+            "format": "date",
+            "title": "Statement Date",
+            "type": "string"
+          },
+          "statement_type": {
+            "$ref": "#/components/schemas/StatementType"
+          },
+          "version_sequence": {
+            "minimum": 1.0,
+            "title": "Version Sequence",
+            "type": "integer"
+          },
+          "version_source": {
+            "title": "Version Source",
+            "type": "string"
+          }
+        },
+        "required": [
+          "accession_id",
+          "cik",
+          "statement_type",
+          "accounting_standard",
+          "statement_date",
+          "fiscal_year",
+          "fiscal_period",
+          "currency",
+          "is_restated",
+          "version_source",
+          "version_sequence",
+          "filing_type",
+          "filing_date"
+        ],
+        "title": "EdgarStatementVersionHTTP",
+        "type": "object"
+      },
+      "EdgarStatementVersionListHTTP": {
+        "additionalProperties": false,
+        "properties": {
+          "filing": {
+            "$ref": "#/components/schemas/EdgarFilingHTTP"
+          },
+          "items": {
+            "items": {
+              "$ref": "#/components/schemas/EdgarStatementVersionHTTP"
+            },
+            "title": "Items",
+            "type": "array"
+          }
+        },
+        "required": [
+          "filing"
+        ],
+        "title": "EdgarStatementVersionListHTTP",
         "type": "object"
       },
       "ErrorEnvelope": {
@@ -123,6 +362,34 @@
         ],
         "title": "ErrorObject",
         "type": "object"
+      },
+      "FilingType": {
+        "enum": [
+          "10-K",
+          "10-Q",
+          "8-K",
+          "20-F",
+          "40-F",
+          "6-K",
+          "S-1",
+          "S-3",
+          "OTHER"
+        ],
+        "title": "FilingType",
+        "type": "string"
+      },
+      "FiscalPeriod": {
+        "enum": [
+          "FY",
+          "Q1",
+          "Q2",
+          "Q3",
+          "Q4",
+          "H1",
+          "OTHER"
+        ],
+        "title": "FiscalPeriod",
+        "type": "string"
       },
       "HTTPValidationError": {
         "properties": {
@@ -279,6 +546,123 @@
         "title": "MCPResponse",
         "type": "object"
       },
+      "NormalizedFactHTTP": {
+        "additionalProperties": false,
+        "properties": {
+          "dimension": {
+            "anyOf": [
+              {
+                "additionalProperties": {
+                  "type": "string"
+                },
+                "type": "object"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Dimension"
+          },
+          "label": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Label"
+          },
+          "metric": {
+            "title": "Metric",
+            "type": "string"
+          },
+          "period_end": {
+            "format": "date",
+            "title": "Period End",
+            "type": "string"
+          },
+          "period_start": {
+            "anyOf": [
+              {
+                "format": "date",
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Period Start"
+          },
+          "source_line_item": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Source Line Item"
+          },
+          "unit": {
+            "title": "Unit",
+            "type": "string"
+          },
+          "value": {
+            "title": "Value",
+            "type": "string"
+          }
+        },
+        "required": [
+          "metric",
+          "unit",
+          "period_end",
+          "value"
+        ],
+        "title": "NormalizedFactHTTP",
+        "type": "object"
+      },
+      "NormalizedStatementHTTP": {
+        "additionalProperties": false,
+        "properties": {
+          "accounting_standard": {
+            "$ref": "#/components/schemas/AccountingStandard"
+          },
+          "currency": {
+            "title": "Currency",
+            "type": "string"
+          },
+          "facts": {
+            "items": {
+              "$ref": "#/components/schemas/NormalizedFactHTTP"
+            },
+            "title": "Facts",
+            "type": "array"
+          },
+          "fiscal_period": {
+            "$ref": "#/components/schemas/FiscalPeriod"
+          },
+          "fiscal_year": {
+            "minimum": 1.0,
+            "title": "Fiscal Year",
+            "type": "integer"
+          },
+          "statement_type": {
+            "$ref": "#/components/schemas/StatementType"
+          }
+        },
+        "required": [
+          "statement_type",
+          "accounting_standard",
+          "fiscal_year",
+          "fiscal_period",
+          "currency"
+        ],
+        "title": "NormalizedStatementHTTP",
+        "type": "object"
+      },
       "PaginatedEnvelope": {
         "additionalProperties": false,
         "properties": {
@@ -406,11 +790,46 @@
         "title": "ReadinessResponse",
         "type": "object"
       },
+      "StatementType": {
+        "enum": [
+          "INCOME_STATEMENT",
+          "BALANCE_SHEET",
+          "CASH_FLOW_STATEMENT"
+        ],
+        "title": "StatementType",
+        "type": "string"
+      },
       "SuccessEnvelope": {
         "additionalProperties": false,
         "properties": {
           "data": {
             "title": "Data"
+          }
+        },
+        "required": [
+          "data"
+        ],
+        "title": "SuccessEnvelope",
+        "type": "object"
+      },
+      "SuccessEnvelope_EdgarFilingHTTP_": {
+        "additionalProperties": false,
+        "properties": {
+          "data": {
+            "$ref": "#/components/schemas/EdgarFilingHTTP"
+          }
+        },
+        "required": [
+          "data"
+        ],
+        "title": "SuccessEnvelope",
+        "type": "object"
+      },
+      "SuccessEnvelope_EdgarStatementVersionListHTTP_": {
+        "additionalProperties": false,
+        "properties": {
+          "data": {
+            "$ref": "#/components/schemas/EdgarStatementVersionListHTTP"
           }
         },
         "required": [
@@ -614,6 +1033,754 @@
         },
         "tags": [
           "mcp"
+        ]
+      }
+    },
+    "/v1/edgar/companies/{cik}/filings": {
+      "get": {
+        "parameters": [
+          {
+            "in": "path",
+            "name": "cik",
+            "required": true,
+            "schema": {
+              "title": "Cik",
+              "type": "string"
+            }
+          },
+          {
+            "in": "query",
+            "name": "filing_types",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "items": {
+                    "$ref": "#/components/schemas/FilingType"
+                  },
+                  "type": "array"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Filing Types"
+            }
+          },
+          {
+            "in": "query",
+            "name": "from_date",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "format": "date",
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "From Date"
+            }
+          },
+          {
+            "in": "query",
+            "name": "to_date",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "format": "date",
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "To Date"
+            }
+          },
+          {
+            "in": "query",
+            "name": "include_amendments",
+            "required": false,
+            "schema": {
+              "default": true,
+              "title": "Include Amendments",
+              "type": "boolean"
+            }
+          },
+          {
+            "in": "query",
+            "name": "page",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "minimum": 1,
+                  "type": "integer"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Page"
+            }
+          },
+          {
+            "in": "query",
+            "name": "page_size",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "minimum": 1,
+                  "type": "integer"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Page Size"
+            }
+          },
+          {
+            "in": "query",
+            "name": "per_page",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "minimum": 1,
+                  "type": "integer"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Per Page"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/PaginatedEnvelope"
+                }
+              }
+            }
+          },
+          "400": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorEnvelope"
+                }
+              }
+            }
+          },
+          "401": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorEnvelope"
+                }
+              }
+            }
+          },
+          "403": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorEnvelope"
+                }
+              }
+            }
+          },
+          "404": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorEnvelope"
+                }
+              }
+            }
+          },
+          "409": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorEnvelope"
+                }
+              }
+            }
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorEnvelope"
+                }
+              }
+            }
+          },
+          "429": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorEnvelope"
+                }
+              }
+            }
+          },
+          "500": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorEnvelope"
+                }
+              }
+            }
+          },
+          "503": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorEnvelope"
+                }
+              }
+            }
+          }
+        },
+        "tags": [
+          "EDGAR Filings"
+        ]
+      }
+    },
+    "/v1/edgar/companies/{cik}/filings/{accession_id}": {
+      "get": {
+        "parameters": [
+          {
+            "in": "path",
+            "name": "cik",
+            "required": true,
+            "schema": {
+              "title": "Cik",
+              "type": "string"
+            }
+          },
+          {
+            "in": "path",
+            "name": "accession_id",
+            "required": true,
+            "schema": {
+              "title": "Accession Id",
+              "type": "string"
+            }
+          },
+          {
+            "in": "query",
+            "name": "include_statements",
+            "required": false,
+            "schema": {
+              "default": true,
+              "title": "Include Statements",
+              "type": "boolean"
+            }
+          },
+          {
+            "in": "query",
+            "name": "include_long_form",
+            "required": false,
+            "schema": {
+              "default": false,
+              "title": "Include Long Form",
+              "type": "boolean"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "anyOf": [
+                    {
+                      "$ref": "#/components/schemas/SuccessEnvelope_EdgarFilingHTTP_"
+                    },
+                    {
+                      "$ref": "#/components/schemas/ErrorEnvelope"
+                    }
+                  ],
+                  "title": "Response Get  V1 Edgar Companies Cik Filings Accession Id"
+                }
+              }
+            }
+          },
+          "400": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorEnvelope"
+                }
+              }
+            }
+          },
+          "401": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorEnvelope"
+                }
+              }
+            }
+          },
+          "403": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorEnvelope"
+                }
+              }
+            }
+          },
+          "404": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorEnvelope"
+                }
+              }
+            }
+          },
+          "409": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorEnvelope"
+                }
+              }
+            }
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorEnvelope"
+                }
+              }
+            }
+          },
+          "429": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorEnvelope"
+                }
+              }
+            }
+          },
+          "500": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorEnvelope"
+                }
+              }
+            }
+          },
+          "503": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorEnvelope"
+                }
+              }
+            }
+          }
+        },
+        "tags": [
+          "EDGAR Filings"
+        ]
+      }
+    },
+    "/v1/edgar/companies/{cik}/filings/{accession_id}/statements": {
+      "get": {
+        "parameters": [
+          {
+            "in": "path",
+            "name": "cik",
+            "required": true,
+            "schema": {
+              "title": "Cik",
+              "type": "string"
+            }
+          },
+          {
+            "in": "path",
+            "name": "accession_id",
+            "required": true,
+            "schema": {
+              "title": "Accession Id",
+              "type": "string"
+            }
+          },
+          {
+            "in": "query",
+            "name": "statement_type",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "$ref": "#/components/schemas/StatementType"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Statement Type"
+            }
+          },
+          {
+            "in": "query",
+            "name": "include_restated",
+            "required": false,
+            "schema": {
+              "default": false,
+              "title": "Include Restated",
+              "type": "boolean"
+            }
+          },
+          {
+            "in": "query",
+            "name": "include_normalized",
+            "required": false,
+            "schema": {
+              "default": false,
+              "title": "Include Normalized",
+              "type": "boolean"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "anyOf": [
+                    {
+                      "$ref": "#/components/schemas/SuccessEnvelope_EdgarStatementVersionListHTTP_"
+                    },
+                    {
+                      "$ref": "#/components/schemas/ErrorEnvelope"
+                    }
+                  ],
+                  "title": "Response Get  V1 Edgar Companies Cik Filings Accession Id Statements"
+                }
+              }
+            }
+          },
+          "400": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorEnvelope"
+                }
+              }
+            }
+          },
+          "401": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorEnvelope"
+                }
+              }
+            }
+          },
+          "403": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorEnvelope"
+                }
+              }
+            }
+          },
+          "404": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorEnvelope"
+                }
+              }
+            }
+          },
+          "409": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorEnvelope"
+                }
+              }
+            }
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorEnvelope"
+                }
+              }
+            }
+          },
+          "429": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorEnvelope"
+                }
+              }
+            }
+          },
+          "500": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorEnvelope"
+                }
+              }
+            }
+          },
+          "503": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorEnvelope"
+                }
+              }
+            }
+          }
+        },
+        "tags": [
+          "EDGAR Filings"
+        ]
+      }
+    },
+    "/v1/edgar/companies/{cik}/statements": {
+      "get": {
+        "parameters": [
+          {
+            "in": "path",
+            "name": "cik",
+            "required": true,
+            "schema": {
+              "title": "Cik",
+              "type": "string"
+            }
+          },
+          {
+            "in": "query",
+            "name": "statement_type",
+            "required": true,
+            "schema": {
+              "title": "Statement Type",
+              "type": "string"
+            }
+          },
+          {
+            "in": "query",
+            "name": "from_date",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "format": "date",
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "From Date"
+            }
+          },
+          {
+            "in": "query",
+            "name": "to_date",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "format": "date",
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "To Date"
+            }
+          },
+          {
+            "in": "query",
+            "name": "include_restated",
+            "required": false,
+            "schema": {
+              "default": false,
+              "title": "Include Restated",
+              "type": "boolean"
+            }
+          },
+          {
+            "in": "query",
+            "name": "page",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "minimum": 1,
+                  "type": "integer"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Page"
+            }
+          },
+          {
+            "in": "query",
+            "name": "page_size",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "minimum": 1,
+                  "type": "integer"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Page Size"
+            }
+          },
+          {
+            "in": "query",
+            "name": "per_page",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "minimum": 1,
+                  "type": "integer"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Per Page"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/PaginatedEnvelope"
+                }
+              }
+            }
+          },
+          "400": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorEnvelope"
+                }
+              }
+            }
+          },
+          "401": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorEnvelope"
+                }
+              }
+            }
+          },
+          "403": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorEnvelope"
+                }
+              }
+            }
+          },
+          "404": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorEnvelope"
+                }
+              }
+            }
+          },
+          "409": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorEnvelope"
+                }
+              }
+            }
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorEnvelope"
+                }
+              }
+            }
+          },
+          "429": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorEnvelope"
+                }
+              }
+            }
+          },
+          "500": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorEnvelope"
+                }
+              }
+            }
+          },
+          "503": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorEnvelope"
+                }
+              }
+            }
+          }
+        },
+        "tags": [
+          "EDGAR Filings"
         ]
       }
     },

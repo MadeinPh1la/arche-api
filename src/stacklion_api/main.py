@@ -37,6 +37,7 @@ from starlette.responses import Response as StarletteResponse
 
 from stacklion_api.adapters.routers import mcp_router
 from stacklion_api.adapters.routers.api_router import router as api_router
+from stacklion_api.adapters.routers.edgar_router import router as edgar_router  # <-- EDGAR router
 from stacklion_api.adapters.routers.metrics_router import router as metrics_router
 from stacklion_api.adapters.routers.openapi_registry import (
     attach_openapi_contract_registry,
@@ -303,6 +304,9 @@ def create_app() -> FastAPI:
 
     # Mount all API routers via the aggregator (health, historical, protected, etc.)
     app.include_router(api_router)
+
+    # EDGAR router (v1/edgar/* endpoints)
+    app.include_router(edgar_router)
 
     # MCP router
     app.include_router(mcp_router.router)
