@@ -44,6 +44,8 @@ dev = [
   "anyio>=4.4",
   "fakeredis>=2.23",
   "python-dotenv>=1.0",
+    "grimp>=3.4,<4.0",
+
 
   # quality
   "ruff>=0.6",

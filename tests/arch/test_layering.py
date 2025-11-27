@@ -9,7 +9,7 @@ a strict layering policy:
     domain         → may depend only on domain
     application    → may depend on {domain, application}
     adapters       → may depend on {domain, application, adapters}
-    infrastructure → may depend only on infrastructure
+    infrastructure → may depend on {domain, application, adapters, infrastructure}
 
 Additionally, we forbid *upward* imports from infrastructure into adapters
 or higher layers.
