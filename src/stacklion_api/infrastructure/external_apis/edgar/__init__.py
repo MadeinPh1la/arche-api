@@ -1,7 +1,6 @@
 # Copyright (c) Stacklion.
 # SPDX-License-Identifier: MIT
-"""
-EDGAR external API package.
+"""EDGAR external API package.
 
 Purpose:
     Group EDGAR-related infrastructure modules:

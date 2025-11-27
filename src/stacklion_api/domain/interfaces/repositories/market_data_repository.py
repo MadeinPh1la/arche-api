@@ -64,7 +64,6 @@ class MarketDataRepository(Protocol):
         Returns:
             Number of rows processed (inserted or updated).
         """
-
         raise NotImplementedError
 
     async def get_latest_intraday_bar(self, symbol_id: UUID) -> Any:
@@ -77,5 +76,4 @@ class MarketDataRepository(Protocol):
             Implementation-specific bar representation or ``None`` when
             no data exists for the symbol.
         """
-
         raise NotImplementedError

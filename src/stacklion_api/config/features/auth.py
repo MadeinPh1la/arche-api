@@ -1,7 +1,6 @@
 # Copyright (c) Stacklion.
 # SPDX-License-Identifier: MIT
-"""
-Auth Feature Settings (Adapters-facing view)
+"""Auth Feature Settings (Adapters-facing view)
 
 Summary:
     A minimal, typed projection of authentication-related toggles/secrets for

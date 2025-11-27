@@ -1,8 +1,7 @@
 # src/stacklion_api/domain/interfaces/repositories/edgar_statements_repository.py
 # Copyright (c) Stacklion.
 # SPDX-License-Identifier: MIT
-"""
-EDGAR statements repository interface.
+"""EDGAR statements repository interface.
 
 Purpose:
     Define persistence and query operations for normalized EDGAR statement
@@ -27,7 +26,7 @@ from typing import Protocol
 
 from stacklion_api.domain.entities.edgar_company import EdgarCompanyIdentity
 from stacklion_api.domain.entities.edgar_statement_version import EdgarStatementVersion
-from stacklion_api.domain.enums.edgar import StatementType
+from stacklion_api.domain.enums.edgar import FiscalPeriod, StatementType
 
 
 class EdgarStatementsRepository(Protocol):
@@ -48,11 +47,11 @@ class EdgarStatementsRepository(Protocol):
 
         Args:
             versions: Statement version entities to persist.
-
-        Raises:
-            EdgarIngestionError: If persistence fails due to infrastructure
-                issues.
         """
+
+    # ------------------------------------------------------------------
+    # Legacy date-window API
+    # ------------------------------------------------------------------
 
     async def get_latest_statement_version(
         self,
@@ -60,7 +59,7 @@ class EdgarStatementsRepository(Protocol):
         statement_type: StatementType,
         statement_date: date,
     ) -> EdgarStatementVersion:
-        """Retrieve the latest statement version for a given company and period.
+        """Retrieve the latest statement version for a given company and date.
 
         Args:
             company: Company identity.
@@ -69,9 +68,6 @@ class EdgarStatementsRepository(Protocol):
 
         Returns:
             The latest statement version for the specified company and period.
-
-        Raises:
-            EdgarNotFound: If no statement version exists for the given inputs.
         """
 
     async def list_statement_versions(
@@ -89,12 +85,54 @@ class EdgarStatementsRepository(Protocol):
             statement_type: Statement type to filter by.
             from_date: Inclusive lower bound on statement_date.
             to_date: Inclusive upper bound on statement_date.
-            include_restated: Whether to include restated versions (True) or only
-                the latest non-restated versions per period (False).
+            include_restated: Whether to include restated versions (True) or
+                only the latest non-restated versions per period (False).
 
         Returns:
             A sequence of statement versions. Implementations must document and
             guarantee deterministic ordering, for example:
                 - statement_date asc
                 - version_sequence asc
+        """
+
+    # ------------------------------------------------------------------
+    # Identity-based API used by normalized-statement / fundamentals use cases
+    # ------------------------------------------------------------------
+
+    async def latest_statement_version_for_company(
+        self,
+        *,
+        cik: str,
+        statement_type: StatementType,
+        fiscal_year: int,
+        fiscal_period: FiscalPeriod,
+    ) -> EdgarStatementVersion | None:
+        """Return the latest statement version for a company/year/period.
+
+        Args:
+            cik: Company CIK.
+            statement_type: Statement type to filter by.
+            fiscal_year: Fiscal year.
+            fiscal_period: Fiscal period (e.g., FY, Q1, Q2).
+        """
+
+    async def list_statement_versions_for_company(
+        self,
+        *,
+        cik: str,
+        statement_type: StatementType,
+        fiscal_year: int,
+        fiscal_period: FiscalPeriod | None = None,
+    ) -> Sequence[EdgarStatementVersion]:
+        """List all statement versions for a company/year/type (optionally period).
+
+        Args:
+            cik: Company CIK.
+            statement_type: Statement type to filter by.
+            fiscal_year: Fiscal year.
+            fiscal_period: Optional fiscal period; when None, all periods
+                within the year are returned.
+
+        Returns:
+            Deterministically ordered versions for the given identity tuple.
         """

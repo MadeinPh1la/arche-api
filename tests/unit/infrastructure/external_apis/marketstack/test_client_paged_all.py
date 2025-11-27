@@ -16,8 +16,7 @@ from stacklion_api.infrastructure.external_apis.marketstack.settings import (
 
 
 def make_client_for_paged(monkeypatch, pages: dict[int, tuple[dict, str | None, str | None]]):
-    """
-    pages: dict[int, tuple[payload, etag, last_modified]]
+    """pages: dict[int, tuple[payload, etag, last_modified]]
 
     Simulates the internal build(page) callback passed to _paged_all().
     """
@@ -39,8 +38,7 @@ def make_client_for_paged(monkeypatch, pages: dict[int, tuple[dict, str | None, 
 
 @pytest.mark.anyio
 async def test_paged_all_single_page(monkeypatch: pytest.MonkeyPatch) -> None:
-    """
-    D1 — Single page with data, no pagination.
+    """D1 — Single page with data, no pagination.
     Should stop after first page.
     """
     pages = {
@@ -64,9 +62,7 @@ async def test_paged_all_single_page(monkeypatch: pytest.MonkeyPatch) -> None:
 
 @pytest.mark.anyio
 async def test_paged_all_two_pages(monkeypatch: pytest.MonkeyPatch) -> None:
-    """
-    D2 — Multi-page concatenation until a page returns empty data.
-    """
+    """D2 — Multi-page concatenation until a page returns empty data."""
     pages = {
         1: ({"data": [{"x": 1}]}, "E1", "LM1"),
         2: ({"data": [{"x": 2}]}, None, None),
@@ -91,9 +87,7 @@ async def test_paged_all_two_pages(monkeypatch: pytest.MonkeyPatch) -> None:
 
 @pytest.mark.anyio
 async def test_paged_all_stop_on_total(monkeypatch: pytest.MonkeyPatch) -> None:
-    """
-    D3 — pagination.total stops iteration early.
-    """
+    """D3 — pagination.total stops iteration early."""
     pages = {
         1: ({"data": [{"x": 1}], "pagination": {"total": 1}}, "E1", "LM1"),
         # Second page would have more, but should not be reached.
@@ -117,9 +111,7 @@ async def test_paged_all_stop_on_total(monkeypatch: pytest.MonkeyPatch) -> None:
 
 @pytest.mark.anyio
 async def test_paged_all_max_pages(monkeypatch: pytest.MonkeyPatch) -> None:
-    """
-    D4 — max_pages=1 forces stop after first page, regardless of pagination.total.
-    """
+    """D4 — max_pages=1 forces stop after first page, regardless of pagination.total."""
     pages = {
         1: ({"data": [{"x": 1}]}, "E1", None),
         2: ({"data": [{"x": 2}]}, "E2", None),
@@ -142,8 +134,7 @@ async def test_paged_all_max_pages(monkeypatch: pytest.MonkeyPatch) -> None:
 
 @pytest.mark.anyio
 async def test_paged_all_bad_data_not_list(monkeypatch: pytest.MonkeyPatch) -> None:
-    """
-    D5 — data exists but is NOT a list.
+    """D5 — data exists but is NOT a list.
     Should raise MarketDataValidationError.
     """
     pages = {
@@ -174,8 +165,7 @@ async def test_paged_all_bad_data_not_list(monkeypatch: pytest.MonkeyPatch) -> N
 
 @pytest.mark.anyio
 async def test_eod_all_basic(monkeypatch: pytest.MonkeyPatch) -> None:
-    """
-    E3 — eod_all delegates to _paged_all correctly, concatenating rows.
+    """E3 — eod_all delegates to _paged_all correctly, concatenating rows.
     We patch the *instance* method to avoid real HTTP and observe parameters.
     """
     captured: dict[str, object] = {}
@@ -220,9 +210,7 @@ async def test_eod_all_basic(monkeypatch: pytest.MonkeyPatch) -> None:
 
 @pytest.mark.anyio
 async def test_intraday_all_basic(monkeypatch: pytest.MonkeyPatch) -> None:
-    """
-    E4 — intraday_all delegates correctly to _paged_all.
-    """
+    """E4 — intraday_all delegates correctly to _paged_all."""
     captured: dict[str, object] = {}
 
     async def fake_paged_all(

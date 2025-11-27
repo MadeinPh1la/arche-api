@@ -1,8 +1,7 @@
 # src/stacklion_api/application/use_cases/statements/compute_restatement_delta.py
 # Copyright (c)
 # SPDX-License-Identifier: MIT
-"""
-Use case: Compute restatement deltas between two statement versions.
+"""Use case: Compute restatement deltas between two statement versions.
 
 Purpose:
     Given a company, statement identity, and two version sequences, compute
@@ -17,16 +16,16 @@ Notes:
       repository via the UnitOfWork abstraction.
     - It delegates metric-level delta computation to the domain-level
       `compute_restatement_delta` helper.
+    - Concrete repositories live in the adapters layer and are resolved
+      indirectly via the UnitOfWork to preserve layering.
 """
 
 from __future__ import annotations
 
 import logging
 from dataclasses import dataclass
+from typing import Any, cast
 
-from stacklion_api.adapters.repositories.edgar_statements_repository import (
-    EdgarStatementsRepository,
-)
 from stacklion_api.application.uow import UnitOfWork
 from stacklion_api.domain.entities.edgar_restatement_delta import (
     RestatementDelta,
@@ -36,6 +35,9 @@ from stacklion_api.domain.entities.edgar_statement_version import EdgarStatement
 from stacklion_api.domain.enums.canonical_statement_metric import CanonicalStatementMetric
 from stacklion_api.domain.enums.edgar import FiscalPeriod, StatementType
 from stacklion_api.domain.exceptions.edgar import EdgarIngestionError, EdgarMappingError
+from stacklion_api.domain.interfaces.repositories.edgar_statements_repository import (
+    EdgarStatementsRepository as EdgarStatementsRepositoryProtocol,
+)
 
 logger = logging.getLogger(__name__)
 
@@ -83,7 +85,19 @@ class ComputeRestatementDeltaResult:
 
 
 class ComputeRestatementDeltaUseCase:
-    """Compute restatement deltas between two EDGAR statement versions."""
+    """Compute deltas between two versions of the same EDGAR statement.
+
+    Args:
+        uow: Unit-of-work used to access the EDGAR statements repository.
+
+    Returns:
+        EdgarRestatementDelta: Domain object describing numeric deltas between
+        the requested version pair, scoped to the requested metrics.
+
+    Raises:
+        EdgarIngestionError: If either version is missing, lacks a normalized
+            payload, or the repository lookup fails.
+    """
 
     def __init__(self, uow: UnitOfWork) -> None:
         """Initialize the use case.
@@ -153,10 +167,7 @@ class ComputeRestatementDeltaUseCase:
         )
 
         async with self._uow as tx:
-            statements_repo: EdgarStatementsRepository = tx.get_repository(
-                EdgarStatementsRepository,
-            )
-
+            statements_repo = _get_edgar_statements_repository(tx)
             versions = await statements_repo.list_statement_versions_for_company(
                 cik=cik,
                 statement_type=req.statement_type,
@@ -246,3 +257,23 @@ class ComputeRestatementDeltaUseCase:
             to_version=to_version,
             delta=delta,
         )
+
+
+def _get_edgar_statements_repository(tx: Any) -> EdgarStatementsRepositoryProtocol:
+    """Resolve the EDGAR statements repository via the UnitOfWork.
+
+    Test doubles may expose `repo`, `statements_repo`, or `_repo` attributes
+    instead of a full repository registry. Prefer those when present to keep
+    tests and fakes simple.
+    """
+    if hasattr(tx, "repo"):
+        return cast(EdgarStatementsRepositoryProtocol, tx.repo)
+    if hasattr(tx, "statements_repo"):
+        return cast(EdgarStatementsRepositoryProtocol, tx.statements_repo)
+    if hasattr(tx, "_repo"):
+        return cast(EdgarStatementsRepositoryProtocol, tx._repo)
+
+    return cast(
+        EdgarStatementsRepositoryProtocol,
+        tx.get_repository(EdgarStatementsRepositoryProtocol),
+    )

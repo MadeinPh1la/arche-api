@@ -1,8 +1,7 @@
 # src/stacklion_api/adapters/repositories/base_repository.py
 # Copyright (c)
 # SPDX-License-Identifier: MIT
-"""
-BaseRepository: Rule-enforcing repository foundation for Stacklion.
+"""BaseRepository: Rule-enforcing repository foundation for Stacklion.
 
 Purpose:
     Shared mechanics for all repositories:

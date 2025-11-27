@@ -1,7 +1,6 @@
 # Copyright (c) Stacklion.
 # SPDX-License-Identifier: MIT
-"""
-EDGAR metrics.
+"""EDGAR metrics.
 
 Purpose:
     Provide Prometheus-style metrics for EDGAR external API calls:

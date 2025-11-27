@@ -1,5 +1,4 @@
-"""
-Alembic Environment (migrations/env.py)
+"""Alembic Environment (migrations/env.py)
 
 Purpose:
     Configure Alembic for Stacklion’s SQLAlchemy models with safe, deterministic

@@ -1,5 +1,4 @@
-"""
-Declarative Base and canonical persistence mixins for Stacklion.
+"""Declarative Base and canonical persistence mixins for Stacklion.
 
 This module defines:
     - A project-wide SQLAlchemy Declarative Base with deterministic naming

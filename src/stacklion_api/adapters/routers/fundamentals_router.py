@@ -1,8 +1,7 @@
 # src/stacklion_api/adapters/routers/fundamentals_router.py
 # Copyright (c)
 # SPDX-License-Identifier: MIT
-"""
-Fundamentals and restatement HTTP router (v1).
+"""Fundamentals and restatement HTTP router (v1).
 
 Purpose:
     Expose Bloomberg-class modeling endpoints on top of normalized EDGAR

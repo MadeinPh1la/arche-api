@@ -3,24 +3,31 @@ stacklion_api
 │   ├── controllers
 │   │   ├── __init__.py
 │   │   ├── base.py
+│   │   ├── edgar_controller.py
 │   │   ├── historical_quotes_controller.py
 │   │   └── quotes_controller.py
 │   ├── dependencies
 │   │   ├── __init__.py
+│   │   ├── edgar_uow.py
 │   │   └── health_probe.py
 │   ├── gateways
 │   │   ├── __init__.py
+│   │   ├── edgar_gateway.py
 │   │   └── marketstack_gateway.py
 │   ├── mappers
 │   │   └── __init__.py
 │   ├── presenters
 │   │   ├── __init__.py
 │   │   ├── base_presenter.py
+│   │   ├── edgar_presenter.py
+│   │   ├── fundamentals_presenter.py
 │   │   ├── market_data_presenter.py
 │   │   └── quotes_presenter.py
 │   ├── repositories
 │   │   ├── __init__.py
 │   │   ├── base_repository.py
+│   │   ├── edgar_filings_repository.py
+│   │   ├── edgar_statements_repository.py
 │   │   ├── idempotency_repository.py
 │   │   ├── market_data_repository.py
 │   │   └── staging_repository.py
@@ -28,6 +35,8 @@ stacklion_api
 │   │   ├── __init__.py
 │   │   ├── api_router.py
 │   │   ├── base_router.py
+│   │   ├── edgar_router.py
+│   │   ├── fundamentals_router.py
 │   │   ├── health_router.py
 │   │   ├── historical_quotes_router.py
 │   │   ├── mcp_router.py
@@ -39,16 +48,20 @@ stacklion_api
 │   │   ├── http
 │   │   │   ├── __init__.py
 │   │   │   ├── base.py
+│   │   │   ├── edgar_schemas.py
 │   │   │   ├── envelopes.py
+│   │   │   ├── fundamentals.py
 │   │   │   └── quotes.py
 │   │   └── __init__.py
 │   ├── uow
-│   │   └── __init__.py
+│   │   ├── __init__.py
+│   │   └── sqlalchemy_uow.py
 │   └── __init__.py
 ├── application
 │   ├── interfaces
 │   │   ├── __init__.py
 │   │   ├── cache_port.py
+│   │   ├── edgar_gateway.py
 │   │   └── market_data_gateway.py
 │   ├── mappers
 │   │   └── __init__.py
@@ -58,6 +71,7 @@ stacklion_api
 │   │   ├── dto
 │   │   │   ├── __init__.py
 │   │   │   ├── base.py
+│   │   │   ├── edgar.py
 │   │   │   └── quotes.py
 │   │   └── __init__.py
 │   ├── services
@@ -66,11 +80,15 @@ stacklion_api
 │   │   └── __init__.py
 │   ├── use_cases
 │   │   ├── external_apis
+│   │   │   ├── edgar
+│   │   │   │   ├── __init__.py
+│   │   │   │   ├── ingest_edgar_filing.py
+│   │   │   │   ├── ingest_edgar_filings.py
+│   │   │   │   └── sync_recent_filings.py
 │   │   │   ├── marketstack
-│   │   │   │   └── __init__.py
-│   │   │   ├── __init__.py
-│   │   │   ├── ingest_edgar_filings.py
-│   │   │   └── ingest_marketstack_intraday.py
+│   │   │   │   ├── __init__.py
+│   │   │   │   └── ingest_marketstack_intraday.py
+│   │   │   └── __init__.py
 │   │   ├── maintenance
 │   │   │   ├── __init__.py
 │   │   │   └── replay_staging_to_md.py
@@ -83,11 +101,15 @@ stacklion_api
 │   │   ├── risk
 │   │   │   └── __init__.py
 │   │   ├── statements
-│   │   │   └── __init__.py
+│   │   │   ├── __init__.py
+│   │   │   ├── compute_restatement_delta.py
+│   │   │   ├── get_fundamentals_timeseries.py
+│   │   │   └── get_normalized_statement.py
 │   │   ├── valuation
 │   │   │   └── __init__.py
 │   │   └── __init__.py
-│   └── __init__.py
+│   ├── __init__.py
+│   └── uow.py
 ├── config
 │   ├── features
 │   │   ├── __init__.py
@@ -99,29 +121,44 @@ stacklion_api
 │   │   ├── __init__.py
 │   │   └── bootstrap.py
 │   ├── __init__.py
+│   ├── edgar.py
 │   └── market_data.py
 ├── domain
 │   ├── entities
 │   │   ├── __init__.py
 │   │   ├── base.py
+│   │   ├── canonical_statement_payload.py
+│   │   ├── edgar_company.py
+│   │   ├── edgar_filing.py
+│   │   ├── edgar_fundamentals_timeseries.py
+│   │   ├── edgar_restatement_delta.py
+│   │   ├── edgar_statement_version.py
 │   │   ├── historical_bar.py
-│   │   └── quote.py
+│   │   ├── quote.py
+│   │   └── restatement_delta.py
 │   ├── enums
-│   │   └── __init__.py
+│   │   ├── __init__.py
+│   │   ├── canonical_statement_metric.py
+│   │   └── edgar.py
 │   ├── exceptions
 │   │   ├── __init__.py
 │   │   ├── base.py
+│   │   ├── edgar.py
 │   │   └── market_data.py
 │   ├── interfaces
 │   │   ├── gateways
 │   │   │   ├── __init__.py
+│   │   │   ├── edgar_ingestion_gateway.py
 │   │   │   └── market_data_gateway.py
 │   │   ├── repositories
 │   │   │   ├── __init__.py
+│   │   │   ├── edgar_statements_repository.py
 │   │   │   ├── idempotency_repository.py
 │   │   │   ├── market_data_repository.py
 │   │   │   └── staging_repository.py
 │   │   └── __init__.py
+│   ├── services
+│   │   └── edgar_normalization.py
 │   ├── validators
 │   │   └── __init__.py
 │   ├── value_objects
@@ -153,10 +190,16 @@ stacklion_api
 │   │   │   ├── idempotency.py
 │   │   │   ├── md.py
 │   │   │   ├── ref.py
+│   │   │   ├── sec.py
 │   │   │   └── staging.py
 │   │   ├── __init__.py
 │   │   └── session.py
 │   ├── external_apis
+│   │   ├── edgar
+│   │   │   ├── __init__.py
+│   │   │   ├── client.py
+│   │   │   ├── settings.py
+│   │   │   └── types.py
 │   │   ├── marketstack
 │   │   │   ├── __init__.py
 │   │   │   ├── client.py
@@ -188,6 +231,7 @@ stacklion_api
 │   ├── observability
 │   │   ├── __init__.py
 │   │   ├── metrics.py
+│   │   ├── metrics_edgar.py
 │   │   ├── metrics_market_data.py
 │   │   ├── otel.py
 │   │   └── tracing.py

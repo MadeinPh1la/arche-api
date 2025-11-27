@@ -1,8 +1,7 @@
 # tests/unit/domain/entities/edgar/test_edgar_statement_version.py
 # Copyright (c) Stacklion.
 # SPDX-License-Identifier: MIT
-"""
-Unit tests for the EdgarStatementVersion domain entity.
+"""Unit tests for the EdgarStatementVersion domain entity.
 
 These tests validate the invariants enforced by the entity constructor and
 __post_init__ logic, keeping behaviour aligned with the E6 modeling endpoints.
@@ -151,7 +150,7 @@ def test_edgar_statement_version_rejects_non_positive_fiscal_year() -> None:
 
 
 def test_edgar_statement_version_rejects_empty_currency() -> None:
-    """currency must be a non-empty, non-whitespace ISO-like code."""
+    """Currency must be a non-empty, non-whitespace ISO-like code."""
     company = _make_company()
     filing = _make_filing(company)
 

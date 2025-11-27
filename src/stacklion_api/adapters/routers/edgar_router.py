@@ -1,7 +1,6 @@
 # Copyright (c)
 # SPDX-License-Identifier: MIT
-"""
-EDGAR Router (v1).
+"""EDGAR Router (v1).
 
 Synopsis:
     HTTP surface for EDGAR filings and normalized statement versions.

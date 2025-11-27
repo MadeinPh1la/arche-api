@@ -1,7 +1,6 @@
 # src/stacklion_api/adapters/schemas/http/envelopes.py
 # Copyright ...
-"""
-HTTP Envelopes (Adapters Layer)
+"""HTTP Envelopes (Adapters Layer).
 
 Purpose:
     Canonical transport-facing HTTP envelopes:
@@ -81,9 +80,13 @@ class ErrorObject(BaseModel):
     http_status: int = Field(..., description="Associated HTTP status.")
     message: str = Field(..., description="Human-readable error description.")
     details: dict[str, Any] | None = Field(
-        default=None, description="Optional structured details safe for clients."
+        default=None,
+        description="Optional structured details safe for clients.",
     )
-    trace_id: str | None = Field(default=None, description="Request correlation identifier.")
+    trace_id: str | None = Field(
+        default=None,
+        description="Request correlation identifier.",
+    )
 
 
 # ---------------------------------------------------------------------------
@@ -92,7 +95,7 @@ class ErrorObject(BaseModel):
 
 
 class ErrorEnvelope(BaseHTTPSchema):
-    """Canonical error envelope: {\"error\": ErrorObject}"""
+    r"""Canonical error envelope: {"error": ErrorObject}."""
 
     model_config = ConfigDict(
         title="ErrorEnvelope",
@@ -103,7 +106,9 @@ class ErrorEnvelope(BaseHTTPSchema):
                     "error": {
                         "code": "IDEMPOTENCY_KEY_IN_PROGRESS",
                         "http_status": 409,
-                        "message": "Another request with the same Idempotency-Key is in progress.",
+                        "message": (
+                            "Another request with the same Idempotency-Key is in progress."
+                        ),
                         "details": {},
                         "trace_id": "req-456",
                     }
@@ -115,13 +120,13 @@ class ErrorEnvelope(BaseHTTPSchema):
     error: ErrorObject = Field(..., description="Structured error details.")
 
 
-# --------------------------------------------------------------------------
+# ---------------------------------------------------------------------------
 # Success Envelope
-# --------------------------------------------------------------------------
+# ---------------------------------------------------------------------------
 
 
 class SuccessEnvelope[T](BaseHTTPSchema):
-    """Success envelope for non-paginated responses: {\"data\": T}"""
+    r"""Success envelope for non-paginated responses: {"data": T}."""
 
     model_config = ConfigDict(
         title="SuccessEnvelope",

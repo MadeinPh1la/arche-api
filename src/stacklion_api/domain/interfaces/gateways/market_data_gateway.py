@@ -1,3 +1,4 @@
+# src/stacklion_api/domain/interfaces/gateways/market_data_gateway.py
 # Copyright (c) Stacklion.
 # SPDX-License-Identifier: MIT
 """Market Data Gateway Protocol.
@@ -10,9 +11,11 @@ Synopsis:
 Design:
     * Keeps the domain/application layers independent of vendor SDKs/HTTP.
     * Covers both:
-        - Latest quotes (A5)
-        - Historical OHLCV bars with pagination (A6)
-    * Avoids importing HTTP or infra types; uses domain/app DTOs only.
+        - Latest quotes (A5).
+        - Historical OHLCV bars with pagination (A6).
+    * Avoids importing HTTP, infrastructure types, or application DTOs.
+      Implementations may use application-level DTOs, but this protocol
+      stays agnostic and relies on structural typing.
 
 Layer:
     domain/interfaces/gateways
@@ -21,9 +24,8 @@ Layer:
 from __future__ import annotations
 
 from collections.abc import Sequence
-from typing import Protocol
+from typing import Any, Protocol
 
-from stacklion_api.application.schemas.dto.quotes import HistoricalBarDTO, HistoricalQueryDTO
 from stacklion_api.domain.entities.quote import Quote
 
 
@@ -41,6 +43,13 @@ class MarketDataGatewayProtocol(Protocol):
         through this interface. Instead, translate to domain exceptions such as:
         `MarketDataUnavailable`, `MarketDataBadRequest`, `MarketDataRateLimited`,
         `MarketDataQuotaExceeded`, `MarketDataValidationError`, `SymbolNotFound`.
+
+        For historical data (A6), concrete implementations typically accept
+        an application-level DTO (e.g. ``HistoricalQueryDTO``) and return
+        DTO-like objects (e.g. ``HistoricalBarDTO``). This protocol does not
+        depend on those types directly to preserve clean layering; it only
+        requires that ``q`` exposes the expected attributes and that returned
+        items are JSON-serializable.
     """
 
     async def get_latest_quotes(self, tickers: Sequence[str]) -> list[Quote]:
@@ -50,8 +59,8 @@ class MarketDataGatewayProtocol(Protocol):
             tickers: Sequence of ticker symbols (uppercase).
 
         Returns:
-            list[Quote]: Latest quotes matching the requested tickers. The list
-            order is unspecified and may differ from the input order.
+            Latest quotes matching the requested tickers. The list order is
+            unspecified and may differ from the input order.
 
         Raises:
             MarketDataUnavailable: Provider unreachable or 5xx conditions.
@@ -63,19 +72,26 @@ class MarketDataGatewayProtocol(Protocol):
         """
         ...
 
-    async def get_historical_bars(
-        self, q: HistoricalQueryDTO
-    ) -> tuple[list[HistoricalBarDTO], int]:
+    async def get_historical_bars(self, q: Any) -> tuple[list[Any], int]:
         """Return historical OHLCV bars (EOD or intraday), with pagination.
 
         Args:
-            q: Historical query parameters (tickers, date/time range, interval,
-               page, page_size).
+            q:
+                Historical query parameters (tickers, date/time range, interval,
+                page, page_size). In practice this is typically an application-
+                level DTO (e.g. ``HistoricalQueryDTO``), but any object with the
+                required attributes is acceptable.
 
         Returns:
-            Tuple[List[HistoricalBarDTO], int]: A pair of (items, total) where
-            `items` is the current page of bars and `total` is the total number
-            of bars available upstream for the query.
+            A pair ``(items, total)`` where:
+
+                * ``items`` is the current page of bars.
+                * ``total`` is the total number of bars available upstream
+                  for the query.
+
+            Implementations commonly return a list of DTOs equivalent to
+            ``HistoricalBarDTO``, but this protocol does not prescribe the
+            concrete type beyond being JSON-serializable.
 
         Raises:
             MarketDataUnavailable: Provider unreachable or 5xx conditions.

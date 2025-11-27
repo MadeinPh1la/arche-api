@@ -1,8 +1,7 @@
 # src/stacklion_api/domain/entities/restatement_delta.py
 # Copyright (c) Stacklion.
 # SPDX-License-Identifier: MIT
-"""
-Restatement delta entity.
+"""Restatement delta entity.
 
 Purpose:
     Represent the differences between two normalized financial statement
@@ -61,6 +60,33 @@ class RestatementDelta:
     statement_date: date
     currency: str
     deltas: Mapping[CanonicalStatementMetric, Decimal]
+
+    def __post_init__(self) -> None:
+        """Enforce basic invariants for canonical restatement deltas."""
+        if not isinstance(self.from_accession_id, str) or not self.from_accession_id.strip():
+            raise ValueError(
+                "RestatementDelta.from_accession_id must be a non-empty string.",
+            )
+        if not isinstance(self.to_accession_id, str) or not self.to_accession_id.strip():
+            raise ValueError(
+                "RestatementDelta.to_accession_id must be a non-empty string.",
+            )
+
+        if not isinstance(self.currency, str) or not self.currency.strip():
+            raise ValueError("RestatementDelta.currency must be a non-empty ISO code.")
+
+        # Shape checks for the deltas mapping.
+        for metric, delta in self.deltas.items():
+            if not isinstance(metric, CanonicalStatementMetric):
+                raise TypeError(
+                    "RestatementDelta.deltas keys must be CanonicalStatementMetric instances; "
+                    f"got {type(metric)!r}.",
+                )
+            if not isinstance(delta, Decimal):
+                raise TypeError(
+                    "RestatementDelta.deltas values must be Decimal instances; "
+                    f"got {type(delta)!r}.",
+                )
 
 
 __all__ = ["RestatementDelta"]

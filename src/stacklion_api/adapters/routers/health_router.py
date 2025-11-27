@@ -99,12 +99,29 @@ class HealthProbe(Protocol):
     """Protocol for minimal, non-destructive dependency checks.
 
     Implementations should keep I/O inexpensive (e.g., `SELECT 1`, `PING`)
-    and return a tuple `(is_ok, detail)` where `detail` is an optional diagnostic
-    string suitable for logs/JSON responses.
+    and return a tuple ``(is_ok, detail)`` where ``detail`` is an optional
+    diagnostic string suitable for logs/JSON responses.
     """
 
-    async def db(self) -> tuple[bool, str | None]: ...
-    async def redis(self) -> tuple[bool, str | None]: ...
+    async def db(self) -> tuple[bool, str | None]:
+        """Probe the primary database dependency.
+
+        Returns:
+            A tuple ``(is_ok, detail)`` where:
+                * ``is_ok`` is True if the probe succeeded.
+                * ``detail`` is an optional diagnostic message.
+        """
+        ...
+
+    async def redis(self) -> tuple[bool, str | None]:
+        """Probe the Redis/cache dependency.
+
+        Returns:
+            A tuple ``(is_ok, detail)`` where:
+                * ``is_ok`` is True if the probe succeeded.
+                * ``detail`` is an optional diagnostic message.
+        """
+        ...
 
 
 class NoopProbe:
@@ -115,9 +132,11 @@ class NoopProbe:
     """
 
     async def db(self) -> tuple[bool, str | None]:
+        """Return a failing result indicating no DB probe is configured."""
         return False, "no db probe configured"
 
     async def redis(self) -> tuple[bool, str | None]:
+        """Return a failing result indicating no Redis probe is configured."""
         return False, "no redis probe configured"
 
 
@@ -131,11 +150,11 @@ class ProbeProvider:
 
     The instance of this class is used as the DI key for readiness endpoints.
     Overriding this instance in tests/app composition is robust because FastAPI
-    matches overrides by identity, and `use_cache=False` honors late overrides.
+    matches overrides by identity, and ``use_cache=False`` honors late overrides.
     """
 
     def __call__(self) -> HealthProbe:
-        """Return the current health probe."""
+        """Return the current health probe implementation."""
         return get_health_probe()
 
 

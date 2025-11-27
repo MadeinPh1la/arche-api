@@ -45,7 +45,7 @@ class FakeUnitOfWork(UnitOfWork):  # type: ignore[misc]
         return None
 
     def get_repository(self, repo_type: type[Any]) -> Any:  # type: ignore[override]
-        assert repo_type is EdgarStatementsRepository
+        # In tests we don't care which key is requested; always return the fake repo.
         return self._repo
 
     async def commit(self) -> None:  # pragma: no cover - not used

@@ -1,8 +1,7 @@
 # src/stacklion_api/config/settings.py
 # Copyright (c) Stacklion.
 # SPDX-License-Identifier: MIT
-"""
-Stacklion Configuration (Pydantic Settings, v2)
+"""Stacklion Configuration (Pydantic Settings, v2)
 
 Summary:
     Typed, validated application configuration for the Stacklion API. This

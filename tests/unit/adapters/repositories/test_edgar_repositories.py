@@ -1,8 +1,7 @@
 # tests/unit/adapters/repositories/test_edgar_repositories.py
 # Copyright (c)
 # SPDX-License-Identifier: MIT
-"""
-Unit tests for EDGAR repositories.
+"""Unit tests for EDGAR repositories.
 
 Covers:
     - EdgarFilingsRepository.upsert_filing + get_filing_by_accession

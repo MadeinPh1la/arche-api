@@ -21,6 +21,7 @@ from __future__ import annotations
 
 from dataclasses import dataclass
 from datetime import UTC, datetime
+from importlib import import_module
 from typing import Any, Protocol
 
 from sqlalchemy.ext.asyncio import AsyncSession
@@ -29,7 +30,17 @@ from sqlalchemy.ext.asyncio import AsyncSession
 class EdgarGateway(Protocol):
     """Protocol for an EDGAR gateway returning recent filings JSON."""
 
-    async def fetch_recent_filings(self, *, cik: str, limit: int = 100) -> dict[str, Any]: ...
+    async def fetch_recent_filings(self, *, cik: str, limit: int = 100) -> dict[str, Any]:
+        """Fetch recent EDGAR filings for a single company.
+
+        Args:
+            cik: Zero-padded CIK for the company.
+            limit: Maximum number of filings to return.
+
+        Returns:
+            Raw JSON mapping as returned by the EDGAR client or gateway.
+        """
+        ...
 
 
 @dataclass(frozen=True)
@@ -60,10 +71,9 @@ class IngestEdgarFilings:
         Returns:
             Number of filings discovered (best effort).
         """
-        from stacklion_api.adapters.repositories.staging_repository import (
-            IngestKey,
-            StagingRepository,
-        )
+        staging_module = import_module("stacklion_api.adapters.repositories.staging_repository")
+        StagingRepository = staging_module.StagingRepository
+        IngestKey = staging_module.IngestKey
 
         staging = StagingRepository(session)
         key = IngestKey(source="edgar", endpoint="recent_filings", key=req.cik)

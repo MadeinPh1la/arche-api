@@ -1,8 +1,7 @@
 # src/stacklion_api/domain/entities/edgar_filing.py
 # Copyright (c) Stacklion.
 # SPDX-License-Identifier: MIT
-"""
-EDGAR filing entity.
+"""EDGAR filing entity.
 
 Purpose:
     Represent a single EDGAR filing (e.g., 10-K, 10-Q, 8-K) in a

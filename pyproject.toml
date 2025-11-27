@@ -110,22 +110,95 @@ extend-exclude = [
   "build",
   "dist",
   "htmlcov",
-    "scripts",
+  "scripts",
 ]
 
 [tool.ruff.lint]
-select = ["E", "F", "I", "UP", "B", "SIM", "ASYNC", "A", "S", "C90"]
-ignore = ["E501"]  # line length handled by Black
+select = [
+  "E",    # pycodestyle errors
+  "F",    # pyflakes
+  "I",    # isort
+  "UP",   # pyupgrade
+  "B",    # bugbear
+  "SIM",  # flake8-simplify
+  "ASYNC",
+  "A",    # builtins
+  "S",    # security
+  "C90",  # mccabe complexity
+  "D",    # docstring style (Google via pydocstyle)
+]
+ignore = [
+  "E501", # line length handled by Black
+
+  # We don't care about module/package-level docstrings.
+  "D100", # missing docstring in public module
+  "D104", # missing docstring in public package
+
+  # Known-incompatible or noisy docstring layout rules.
+  "D203",
+  "D212",
+  "D213",
+]
 
 [tool.ruff.lint.isort]
 known-first-party = ["stacklion_api"]
 force-single-line = false
 
+[tool.ruff.lint.pydocstyle]
+convention = "google"
+
+[tool.ruff.lint.mccabe]
+max-complexity = 10
+
 [tool.ruff.lint.per-file-ignores]
-"tests/**/*.py" = ["S101"]                       # asserts in tests are fine
-"migrations/env.py" = ["E402"]                   # alembic env bootstrap imports can precede code
-"src/stacklion_api/main.py" = ["S104"]           # 0.0.0.0 binding for containerized runs
-"src/stacklion_api/infrastructure/auth/jwt_dependency.py" = ["B008"]  # FastAPI Depends in params
+# Tests: allow asserts and NO docstring enforcement.
+"tests/**/*.py" = [
+  "S101",
+  "D",
+]
+
+# Templates/examples: we don't want docstring rules to block the build here.
+"docs/templates/**/*.py" = [
+  "D",
+]
+
+# Alembic env + migrations: bootstrap / historical, not dev-facing API.
+"migrations/env.py" = [
+  "E402",
+  "D",
+]
+"migrations/versions/**/*.py" = [
+  "D",
+]
+
+# Main entrypoint: keep bind rule, but don't enforce docstrings here.
+"src/stacklion_api/main.py" = [
+  "S104",
+  "D",
+]
+
+# JWT dependency: FastAPI Depends hack + we don't care about docstrings here.
+"src/stacklion_api/infrastructure/auth/jwt_dependency.py" = [
+  "B008",
+  "D",
+]
+
+# Internal infrastructure and glue that are not dev-facing APIs.
+"src/stacklion_api/infrastructure/**/*.py" = [
+  "D",
+]
+"src/stacklion_api/config/**/*.py" = [
+  "D",
+]
+"src/stacklion_api/dependencies/**/*.py" = [
+  "D",
+]
+"src/stacklion_api/mcp/**/*.py" = [
+  "D",
+]
+"src/stacklion_api/utils/**/*.py" = [
+  "D",
+]
 
 # ======================================================================
 # Black (Format)

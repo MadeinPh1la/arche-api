@@ -1,8 +1,7 @@
 # src/stacklion_api/domain/exceptions/edgar.py
 # Copyright (c) Stacklion.
 # SPDX-License-Identifier: MIT
-"""
-EDGAR domain exceptions.
+"""EDGAR domain exceptions.
 
 Purpose:
     Provide EDGAR-specific domain-level error types for ingestion, mapping, and
@@ -27,20 +26,33 @@ from typing import Any
 class EdgarError(Exception):
     """Base class for EDGAR-related domain errors.
 
-    Args:
-        message: Human-readable error message (safe for clients).
-        details: Optional machine-readable diagnostic payload.
+    Attributes:
+        message:
+            Human-readable error message (safe for clients).
+        details:
+            Optional machine-readable diagnostic payload for logs and callers.
     """
 
     def __init__(self, message: str, *, details: dict[str, Any] | None = None) -> None:
+        """Initialize an EDGAR error instance.
+
+        Args:
+            message:
+                Human-readable error message describing the failure.
+            details:
+                Optional structured diagnostic payload; should be safe to log
+                and, when appropriate, surface to API clients.
+
+        """
         super().__init__(message)
         self.message = message
         self.details: dict[str, Any] = details or {}
 
     def __str__(self) -> str:
-        return self.message
-        # details are intentionally not injected into the string representation
+        """Return the human-readable message for this error."""
+        # Details are intentionally not injected into the string representation
         # to avoid leaking internal structure by accident.
+        return self.message
 
 
 class EdgarIngestionError(EdgarError):

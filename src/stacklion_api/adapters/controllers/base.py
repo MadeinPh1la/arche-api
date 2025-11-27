@@ -1,7 +1,6 @@
 # Copyright (c) Stacklion.
 # SPDX-License-Identifier: MIT
-"""
-Base Controller.
+"""Base Controller.
 
 Summary:
     Canonical base for adapter controllers. Controllers are thin coordinators

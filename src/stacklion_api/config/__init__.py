@@ -1,5 +1,4 @@
-"""
-Config package export.
+"""Config package export.
 
 Keeps import sites clean and stable:
     from src.config import get_settings, Settings

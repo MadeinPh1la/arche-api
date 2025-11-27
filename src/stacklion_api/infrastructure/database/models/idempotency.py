@@ -1,8 +1,7 @@
 # src/stacklion_api/infrastructure/database/models/idempotency.py
 # Copyright (c) Stacklion.
 # SPDX-License-Identifier: MIT
-"""
-Idempotency Models.
+"""Idempotency Models.
 
 Purpose:
     Provide SQLAlchemy models for HTTP idempotency dedupe records.

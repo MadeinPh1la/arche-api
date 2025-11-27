@@ -1,8 +1,7 @@
 # src/stacklion_api/application/use_cases/external_apis/edgar/sync_recent_filings.py
 # Copyright (c)
 # SPDX-License-Identifier: MIT
-"""
-Use case: Sync recent EDGAR filings for a company.
+"""Use case: Sync recent EDGAR filings for a company.
 
 Scope:
     * For a given CIK:
@@ -21,13 +20,9 @@ import logging
 from collections.abc import Sequence
 from dataclasses import dataclass
 from datetime import date
+from importlib import import_module
+from typing import Any
 
-from stacklion_api.adapters.repositories.edgar_filings_repository import (
-    EdgarFilingsRepository,
-)
-from stacklion_api.adapters.repositories.edgar_statements_repository import (
-    EdgarStatementsRepository,
-)
 from stacklion_api.application.uow import UnitOfWork
 from stacklion_api.domain.entities.edgar_company import EdgarCompanyIdentity
 from stacklion_api.domain.entities.edgar_filing import EdgarFiling
@@ -54,13 +49,37 @@ class SyncRecentFilingsRequest:
 
 
 class SyncRecentFilingsUseCase:
-    """Sync recent EDGAR filings for a company into persistent storage."""
+    """Sync recent EDGAR filings for a company into persistent storage.
+
+    The use case queries the EDGAR gateway for recent filings, filters out
+    accessions that already exist in the repository, and ingests only the new
+    ones.
+
+    Args:
+        gateway: EDGAR ingestion gateway used to discover recent filings and
+            drive per-filing ingestion.
+        uow: Unit-of-work used to read/write EDGAR filings and statements.
+
+    Returns:
+        int: The number of newly ingested statement versions.
+
+    Raises:
+        EdgarIngestionError: If the gateway fails or persistence encounters
+            an unrecoverable error.
+    """
 
     def __init__(
         self,
+        *,
         gateway: EdgarIngestionGateway,
         uow: UnitOfWork,
     ) -> None:
+        """Initialize the use case.
+
+        Args:
+            gateway: EDGAR ingestion gateway.
+            uow: Unit-of-work coordinating repository access.
+        """
         self._gateway = gateway
         self._uow = uow
 
@@ -109,10 +128,8 @@ class SyncRecentFilingsUseCase:
             return 0
 
         async with self._uow as tx:
-            filings_repo: EdgarFilingsRepository = tx.get_repository(EdgarFilingsRepository)
-            statements_repo: EdgarStatementsRepository = tx.get_repository(
-                EdgarStatementsRepository,
-            )
+            filings_repo = _get_edgar_filings_repository(tx)
+            statements_repo = _get_edgar_statements_repository(tx)
 
             existing_rows = await filings_repo.list_filings_for_company(
                 company=company,
@@ -178,6 +195,7 @@ class SyncRecentFilingsUseCase:
         from_date: date | None,
         to_date: date | None,
     ) -> tuple[date, date]:
+        """Normalize an optional (from_date, to_date) into concrete bounds."""
         today = date.today()
         lower = from_date or date(1994, 1, 1)
         upper = to_date or today
@@ -199,3 +217,32 @@ class SyncRecentFilingsUseCase:
                 "EDGAR company identity CIK mismatch for sync_recent_filings.",
                 details={"requested_cik": expected_cik, "resolved_cik": company.cik},
             )
+
+
+def _get_edgar_filings_repository(tx: Any) -> Any:
+    """Resolve the EDGAR filings repository via the UnitOfWork.
+
+    Test doubles may expose `filings_repo` instead of a full registry.
+    """
+    if hasattr(tx, "filings_repo"):
+        return tx.filings_repo
+
+    module = import_module("stacklion_api.adapters.repositories.edgar_filings_repository")
+    repo_cls = module.EdgarFilingsRepository
+    return tx.get_repository(repo_cls)
+
+
+def _get_edgar_statements_repository(tx: Any) -> Any:
+    """Resolve the EDGAR statements repository via the UnitOfWork.
+
+    Test doubles may expose `repo` or `statements_repo` attributes instead of
+    a full repository registry. Prefer those when present to keep tests simple.
+    """
+    if hasattr(tx, "repo"):
+        return tx.repo
+    if hasattr(tx, "statements_repo"):
+        return tx.statements_repo
+
+    module = import_module("stacklion_api.adapters.repositories.edgar_statements_repository")
+    repo_cls = module.EdgarStatementsRepository
+    return tx.get_repository(repo_cls)

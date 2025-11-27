@@ -1,8 +1,6 @@
-# src/stacklion_api/domain/entities/edgar_fundamentals_timeseries.py
 # Copyright (c) Stacklion.
 # SPDX-License-Identifier: MIT
-"""
-EDGAR fundamentals time-series domain entities and helpers.
+"""EDGAR fundamentals time-series domain entities and helpers.
 
 Purpose:
     Provide a stable, panel-friendly representation of normalized EDGAR
@@ -38,19 +36,22 @@ class FundamentalsTimeSeriesPoint:
     """Single time-series point for normalized EDGAR fundamentals.
 
     Attributes:
-        cik: Central Index Key for the entity.
+        cik: Central Index Key for the entity (non-empty string).
         statement_type: Statement type (income, balance sheet, cash flow, etc.).
         accounting_standard: Accounting standard (e.g., US_GAAP, IFRS).
         statement_date: Reporting period end date.
-        fiscal_year: Fiscal year associated with the statement.
+        fiscal_year: Fiscal year associated with the statement (must be > 0).
         fiscal_period: Fiscal period within the year (e.g., Q1, Q2, FY).
-        currency: ISO 4217 currency code.
+        currency:
+            ISO 4217 currency code (non-empty, already normalized by upstream
+            mappers).
         metrics:
             Mapping from canonical metrics to their values for this period.
             Only metrics actually present in the source payload are included.
         normalized_payload_version_sequence:
             Source version sequence of the underlying canonical payload. This
-            allows callers to reason about restatements over time.
+            allows callers to reason about restatements over time and must be
+            a positive integer.
     """
 
     cik: str
@@ -62,6 +63,41 @@ class FundamentalsTimeSeriesPoint:
     currency: str
     metrics: Mapping[CanonicalStatementMetric, Decimal]
     normalized_payload_version_sequence: int
+
+    def __post_init__(self) -> None:
+        """Enforce core invariants for fundamentals time-series points."""
+        if not isinstance(self.cik, str) or not self.cik.strip():
+            raise ValueError("FundamentalsTimeSeriesPoint.cik must be a non-empty string.")
+
+        if self.fiscal_year <= 0:
+            raise ValueError(
+                "FundamentalsTimeSeriesPoint.fiscal_year must be a positive integer.",
+            )
+
+        if not isinstance(self.currency, str) or not self.currency.strip():
+            raise ValueError(
+                "FundamentalsTimeSeriesPoint.currency must be a non-empty ISO code.",
+            )
+
+        if self.normalized_payload_version_sequence <= 0:
+            raise ValueError(
+                "FundamentalsTimeSeriesPoint.normalized_payload_version_sequence "
+                "must be a positive integer.",
+            )
+
+        # Basic shape checks for metrics. We deliberately keep this light-weight
+        # and defensive to avoid surprising callers.
+        for metric, value in self.metrics.items():
+            if not isinstance(metric, CanonicalStatementMetric):
+                raise TypeError(
+                    "FundamentalsTimeSeriesPoint.metrics keys must be CanonicalStatementMetric "
+                    f"instances; got {type(metric)!r}.",
+                )
+            if not isinstance(value, Decimal):
+                raise TypeError(
+                    "FundamentalsTimeSeriesPoint.metrics values must be Decimal instances; "
+                    f"got {type(value)!r}.",
+                )
 
 
 def build_fundamentals_timeseries(

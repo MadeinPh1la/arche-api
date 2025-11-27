@@ -25,7 +25,7 @@ from stacklion_api.application.schemas.dto.quotes import QuotesBatchDTO
 
 
 class QuotesPresenter:
-    """Presenter for `/v2/quotes` (latest quotes)."""
+    """Presenter for `/v1/quotes` (latest quotes)."""
 
     def _compute_etag(self, body: Mapping[str, Any]) -> str:
         """Strong ETag from canonical JSON (sorted, compact, safe)."""
@@ -59,7 +59,6 @@ class QuotesPresenter:
         Returns:
             PresentResult containing envelope + headers.
         """
-
         payload = QuotesBatch(
             items=[
                 QuoteItem(

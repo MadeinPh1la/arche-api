@@ -400,8 +400,7 @@ async def test_observe_call_network_error(
 async def test_observe_call_json_parse_failure(
     monkeypatch: pytest.MonkeyPatch,
 ) -> None:
-    """
-    JSON parse failure -> MarketDataValidationError.
+    """JSON parse failure -> MarketDataValidationError.
 
     Your implementation wraps JSON parse errors as a ValidationError with
     details['error']; we don't over-specify the internal code.

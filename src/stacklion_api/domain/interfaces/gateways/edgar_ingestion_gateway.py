@@ -1,8 +1,7 @@
 # src/stacklion_api/domain/interfaces/gateways/edgar_ingestion_gateway.py
 # Copyright (c) Stacklion.
 # SPDX-License-Identifier: MIT
-"""
-EDGAR ingestion gateway interface.
+"""EDGAR ingestion gateway interface.
 
 Purpose:
 - Define a provider-agnostic interface for fetching and normalizing EDGAR filings

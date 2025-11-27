@@ -1,8 +1,7 @@
 # src/stacklion_api/infrastructure/middleware/access_log.py
 # Copyright (c) Stacklion.
 # SPDX-License-Identifier: MIT
-"""
-Access Log Middleware.
+"""Access Log Middleware.
 
 Summary:
     Emits a structured access log entry for every request/response pair with a

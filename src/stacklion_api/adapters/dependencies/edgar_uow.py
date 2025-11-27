@@ -1,8 +1,7 @@
 # src/stacklion_api/adapters/dependencies/edgar_uow.py
 # Copyright (c)
 # SPDX-License-Identifier: MIT
-"""
-EDGAR UnitOfWork dependency wiring.
+"""EDGAR UnitOfWork dependency wiring.
 
 Purpose:
     Provide a concrete, SQLAlchemy-backed UnitOfWork instance for EDGAR

@@ -1,8 +1,7 @@
 # src/stacklion_api/application/uow.py
 # Copyright (c) Stacklion.
 # SPDX-License-Identifier: MIT
-"""
-Unit of Work (Application Layer)
+"""Unit of Work (Application Layer).
 
 Purpose:
     Define the abstract Unit-of-Work boundary used by application-layer
@@ -37,6 +36,7 @@ class UnitOfWork(Protocol, AbstractAsyncContextManager["UnitOfWork"]):
 
     async def __aenter__(self) -> UnitOfWork:
         """Enter the transactional scope and return the active UoW."""
+        raise NotImplementedError
 
     async def __aexit__(
         self,
@@ -45,12 +45,15 @@ class UnitOfWork(Protocol, AbstractAsyncContextManager["UnitOfWork"]):
         tb: TracebackType | None,
     ) -> bool | None:
         """Exit the transactional scope."""
+        raise NotImplementedError
 
     async def commit(self) -> None:
         """Commit all pending changes for this UnitOfWork."""
+        raise NotImplementedError
 
     async def rollback(self) -> None:
         """Roll back any pending changes for this UnitOfWork."""
+        raise NotImplementedError
 
     def get_repository(self, repo_type: type[Any]) -> Any:
         """Return a repository instance for the given key/type.
@@ -61,13 +64,31 @@ class UnitOfWork(Protocol, AbstractAsyncContextManager["UnitOfWork"]):
                 typically a concrete repository class or a protocol/interface
                 type, but the UnitOfWork is free to interpret it as needed.
         """
+        raise NotImplementedError
 
 
 async def run_in_uow(  # noqa: UP047
     uow: UnitOfWork,
     fn: Callable[[UnitOfWork], Awaitable[TResult]],
 ) -> TResult:
-    """Execute a coroutine against a UnitOfWork with commit/rollback semantics."""
+    """Execute a coroutine against a UnitOfWork with commit/rollback semantics.
+
+    The helper guarantees that:
+
+        * On success: the transaction is committed.
+        * On exception: the transaction is rolled back and the exception is
+          re-raised.
+
+    Args:
+        uow: UnitOfWork instance providing transactional boundaries.
+        fn: Callable that receives the active UnitOfWork and returns a result.
+
+    Returns:
+        TResult: The result of the callable.
+
+    Raises:
+        Exception: Any exception raised by ``fn`` is propagated after rollback.
+    """
     async with uow as tx:
         try:
             result = await fn(tx)

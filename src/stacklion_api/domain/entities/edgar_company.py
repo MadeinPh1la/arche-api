@@ -1,8 +1,7 @@
 # src/stacklion_api/domain/entities/edgar_company.py
 # Copyright (c) Stacklion.
 # SPDX-License-Identifier: MIT
-"""
-EDGAR company identity entity.
+"""EDGAR company identity entity.
 
 Purpose:
     Represent a provider-agnostic company identity for EDGAR filings, capturing

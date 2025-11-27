@@ -1,7 +1,6 @@
 # Copyright (c) Stacklion.
 # SPDX-License-Identifier: MIT
-"""
-EDGAR Types.
+"""EDGAR Types.
 
 Purpose:
     Provide typed response fragments for EDGAR endpoints that this service

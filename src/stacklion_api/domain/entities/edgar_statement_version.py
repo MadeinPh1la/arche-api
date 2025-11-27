@@ -1,8 +1,7 @@
 # src/stacklion_api/domain/entities/edgar_statement_version.py
 # Copyright (c) Stacklion.
 # SPDX-License-Identifier: MIT
-"""
-EDGAR statement version domain entity.
+"""EDGAR statement version domain entity.
 
 Purpose:
     Represent a single version of a financial statement derived from an EDGAR

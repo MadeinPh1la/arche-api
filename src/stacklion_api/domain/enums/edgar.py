@@ -1,8 +1,7 @@
 # src/stacklion_api/domain/enums/edgar.py
 # Copyright (c) Stacklion.
 # SPDX-License-Identifier: MIT
-"""
-EDGAR-specific enumerations.
+"""EDGAR-specific enumerations.
 
 Purpose:
     Provide provider-agnostic enums for EDGAR filings and financial statements.

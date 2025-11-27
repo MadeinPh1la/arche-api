@@ -1,8 +1,6 @@
-# src/stacklion_api/domain/entities/edgar_restatement_delta.py
 # Copyright (c) Stacklion.
 # SPDX-License-Identifier: MIT
-"""
-EDGAR restatement delta domain entities and helpers.
+"""EDGAR restatement delta domain entities and helpers.
 
 Purpose:
     Provide a deterministic, analytics-grade representation of version-over-
@@ -40,16 +38,36 @@ class RestatementMetricDelta:
     """Delta for a single canonical metric between two statement versions.
 
     Attributes:
-        metric: Canonical metric identifier.
-        old: Value in the "from" version (before restatement).
-        new: Value in the "to" version (after restatement).
-        diff: new - old, or None if either side is missing.
+        metric:
+            Canonical metric identifier for the value being compared.
+        old:
+            Value in the "from" version (before restatement). May be None when
+            the metric is newly introduced in the "to" version.
+        new:
+            Value in the "to" version (after restatement). May be None when
+            the metric was removed in the "to" version.
+        diff:
+            ``new - old`` when both sides are present, or None if either side
+            is missing or the caller chose not to materialize the difference.
     """
 
     metric: CanonicalStatementMetric
     old: Decimal | None
     new: Decimal | None
     diff: Decimal | None
+
+    def __post_init__(self) -> None:
+        """Validate internal consistency of the per-metric delta."""
+        # If all three pieces are present, ensure they line up arithmetically.
+        if (
+            self.old is not None
+            and self.new is not None
+            and self.diff is not None
+            and self.diff != self.new - self.old
+        ):
+            raise ValueError(
+                "RestatementMetricDelta.diff must equal new - old when all values are present.",
+            )
 
 
 @dataclass(frozen=True)
@@ -61,19 +79,19 @@ class RestatementDelta:
     identity tuple.
 
     Attributes:
-        cik: Central Index Key for the filer.
+        cik: Central Index Key for the filer (non-empty string).
         statement_type: Statement type (income, balance sheet, cash flow, etc.).
         accounting_standard: Accounting standard (e.g., US_GAAP, IFRS).
         statement_date: Reporting period end date.
-        fiscal_year: Fiscal year associated with the statement.
+        fiscal_year: Fiscal year associated with the statement (must be > 0).
         fiscal_period: Fiscal period (e.g., FY, Q1, Q2).
-        currency: ISO 4217 currency code for all monetary values.
+        currency: ISO 4217 currency code for all monetary values (non-empty).
         from_version_sequence:
             Source version sequence for the "from" payload. Typically the
-            earlier (pre-restatement) version.
+            earlier (pre-restatement) version; must be a positive integer.
         to_version_sequence:
             Source version sequence for the "to" payload. Typically the later
-            (post-restatement) version.
+            (post-restatement) version; must be a positive integer.
         metrics:
             Mapping of canonical metrics to their per-metric deltas. Only
             metrics present in both payloads are included by default.
@@ -89,6 +107,39 @@ class RestatementDelta:
     from_version_sequence: int
     to_version_sequence: int
     metrics: Mapping[CanonicalStatementMetric, RestatementMetricDelta]
+
+    def __post_init__(self) -> None:
+        """Enforce core invariants for restatement deltas."""
+        if not isinstance(self.cik, str) or not self.cik.strip():
+            raise ValueError("RestatementDelta.cik must be a non-empty string.")
+
+        if self.fiscal_year <= 0:
+            raise ValueError("RestatementDelta.fiscal_year must be a positive integer.")
+
+        if not isinstance(self.currency, str) or not self.currency.strip():
+            raise ValueError("RestatementDelta.currency must be a non-empty ISO code.")
+
+        if self.from_version_sequence <= 0:
+            raise ValueError(
+                "RestatementDelta.from_version_sequence must be a positive integer.",
+            )
+        if self.to_version_sequence <= 0:
+            raise ValueError(
+                "RestatementDelta.to_version_sequence must be a positive integer.",
+            )
+
+        # Basic type safety for the metrics mapping.
+        for metric, delta in self.metrics.items():
+            if not isinstance(metric, CanonicalStatementMetric):
+                raise TypeError(
+                    "RestatementDelta.metrics keys must be CanonicalStatementMetric instances; "
+                    f"got {type(metric)!r}.",
+                )
+            if not isinstance(delta, RestatementMetricDelta):
+                raise TypeError(
+                    "RestatementDelta.metrics values must be RestatementMetricDelta instances; "
+                    f"got {type(delta)!r}.",
+                )
 
 
 def compute_restatement_delta(
@@ -140,9 +191,6 @@ def compute_restatement_delta(
     if metrics is not None:
         candidate_metrics = list(metrics)
     else:
-        # Restrict to metrics that appear in both payloads; we do not try to
-        # infer semantics for "added" or "removed" metrics here. Those can be
-        # derived by comparing the individual payloads if needed.
         candidate_metrics = sorted(
             set(from_core.keys()) & set(to_core.keys()),
             key=lambda m: m.value,
@@ -224,8 +272,6 @@ def _ensure_payload_identity_match(
         mismatches["currency"] = (from_payload.currency, to_payload.currency)
 
     if mismatches:
-        # We keep the error surface simple and deterministic; callers that need
-        # more detail can inspect the "details" mapping.
         raise EdgarMappingError(
             "CanonicalStatementPayload identity mismatch for restatement delta.",
             details={k: {"from": v[0], "to": v[1]} for k, v in mismatches.items()},

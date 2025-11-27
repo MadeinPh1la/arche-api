@@ -24,7 +24,7 @@ from stacklion_api.domain.entities.base import BaseEntity
 class BarInterval(str, Enum):
     """Supported bar intervals.
 
-    Values:
+    Attributes:
         I1M:  1-minute bars (canonical short name).
         I1MIN: 1-minute bars (compat alias, same value as I1M).
         I5M:  5-minute bars.
@@ -43,6 +43,7 @@ class BarInterval(str, Enum):
     I1D = "1d"
 
     def __str__(self) -> str:  # pragma: no cover - trivial
+        """Return the canonical string representation for this interval."""
         return self.value
 
 
@@ -51,14 +52,22 @@ class HistoricalBar(BaseEntity):
     """A single OHLCV bar for a ticker at a given timestamp.
 
     Attributes:
-        ticker: Uppercase ticker symbol.
-        timestamp: UTC timestamp at bar close.
-        open: Open price.
-        high: High price.
-        low: Low price.
-        close: Close price.
-        volume: Traded volume for the interval (may be None).
-        interval: Interval used to aggregate this bar.
+        ticker:
+            Uppercase ticker symbol (non-empty).
+        timestamp:
+            Datetime at bar close (UTC or timezone-aware as enforced upstream).
+        open:
+            Open price for the interval (must be >= 0).
+        high:
+            High price for the interval (must be >= 0).
+        low:
+            Low price for the interval (must be >= 0 and <= high).
+        close:
+            Close price for the interval (must be >= 0).
+        volume:
+            Traded volume for the interval (may be None, otherwise >= 0).
+        interval:
+            Interval used to aggregate this bar.
     """
 
     ticker: str
@@ -69,3 +78,23 @@ class HistoricalBar(BaseEntity):
     close: Decimal
     volume: Decimal | None
     interval: BarInterval
+
+    def __post_init__(self) -> None:
+        """Enforce core invariants for historical bars."""
+        super().__post_init__()
+
+        if not isinstance(self.ticker, str) or not self.ticker.strip():
+            raise ValueError("HistoricalBar.ticker must be a non-empty string.")
+        if self.ticker != self.ticker.upper():
+            raise ValueError("HistoricalBar.ticker must be upper-case.")
+
+        for field_name in ("open", "high", "low", "close"):
+            value = getattr(self, field_name)
+            if value < 0:
+                raise ValueError(f"HistoricalBar.{field_name} must be >= 0.")
+
+        if self.low > self.high:
+            raise ValueError("HistoricalBar.low must be <= HistoricalBar.high.")
+
+        if self.volume is not None and self.volume < 0:
+            raise ValueError("HistoricalBar.volume must be >= 0 when provided.")

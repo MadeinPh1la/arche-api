@@ -1,8 +1,7 @@
 # src/stacklion_api/adapters/repositories/idempotency_repository.py
 # Copyright (c) Stacklion.
 # SPDX-License-Identifier: MIT
-"""
-Idempotency Repository (SQLAlchemy).
+"""Idempotency Repository (SQLAlchemy).
 
 Purpose:
     Provide a concrete SQLAlchemy implementation of the idempotency repository

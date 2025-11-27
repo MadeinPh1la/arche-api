@@ -60,6 +60,11 @@ class MarketDataRepository:
     _MODEL_NAME = "md_intraday_bars"
 
     def __init__(self, session: AsyncSession) -> None:
+        """Initialize the repository with an AsyncSession.
+
+        Args:
+            session: SQLAlchemy async session bound to the market data database.
+        """
         self._session = session
 
     # --------------------------------------------------------------------------
@@ -67,6 +72,15 @@ class MarketDataRepository:
     # --------------------------------------------------------------------------
 
     async def upsert_intraday_bars(self, rows: Sequence[IntradayBarRow]) -> int:
+        """Upsert a batch of intraday bars into the backing table.
+
+        Args:
+            rows: Sequence of IntradayBarRow records to persist.
+
+        Returns:
+            The number of input rows processed (including duplicates that were
+            collapsed during last-write-wins deduplication).
+        """
         if not rows:
             return 0
 
@@ -139,6 +153,15 @@ class MarketDataRepository:
     # --------------------------------------------------------------------------
 
     async def get_latest_intraday_bar(self, symbol_id: UUID) -> IntradayBar | None:
+        """Fetch the latest intraday bar for a symbol, normalizing decimals.
+
+        Args:
+            symbol_id: Primary key of the symbol in the market data schema.
+
+        Returns:
+            The most recent IntradayBar instance for the symbol, or None if no
+            bars exist.
+        """
         hist = get_db_operation_duration_seconds()
         err_counter = get_db_errors_total()
 

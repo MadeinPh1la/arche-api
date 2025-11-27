@@ -1,8 +1,7 @@
 # src/stacklion_api/domain/interfaces/repositories/idempotency_repository.py
 # Copyright (c) Stacklion.
 # SPDX-License-Identifier: MIT
-"""
-Idempotency Repository Interfaces.
+"""Idempotency Repository Interfaces.
 
 Purpose:
     Define domain-level contracts for idempotency dedupe storage and retrieval.

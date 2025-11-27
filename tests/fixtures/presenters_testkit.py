@@ -1,5 +1,4 @@
-"""
-Presenter Test Kit (Unit fixtures & helpers)
+"""Presenter Test Kit (Unit fixtures & helpers)
 
 Purpose:
     Utilities to test adapter presenters in isolation (no FastAPI required).

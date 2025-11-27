@@ -1,7 +1,6 @@
 # Copyright (c) Stacklion.
 # SPDX-License-Identifier: MIT
-"""
-EDGAR transport client settings.
+"""EDGAR transport client settings.
 
 Purpose:
     Provide Pydantic-based configuration for the EDGAR HTTP client, including

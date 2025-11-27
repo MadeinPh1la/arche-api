@@ -1,8 +1,7 @@
 # src/stacklion_api/domain/entities/canonical_statement_payload.py
 # Copyright (c) Stacklion.
 # SPDX-License-Identifier: MIT
-"""
-Canonical normalized statement payload.
+"""Canonical normalized statement payload.
 
 Purpose:
     Define a provider-agnostic, modeling-ready representation of financial
@@ -61,7 +60,7 @@ class CanonicalStatementPayload:
             ISO currency code for reported values (e.g., "USD").
         unit_multiplier:
             Scaling factor applied to the reported amounts. For normalized
-            payloads produced by the E6-F engine, this MUST be 0, meaning
+            payloads produced by the E6-F engine, this SHOULD be 0, meaning
             all values are in full reporting units.
         core_metrics:
             Mapping of canonical metrics that are part of the core modeling
@@ -103,6 +102,73 @@ class CanonicalStatementPayload:
     source_accession_id: str
     source_taxonomy: str
     source_version_sequence: int
+
+    def __post_init__(self) -> None:
+        """Enforce basic invariants for canonical statement payloads."""
+        self._validate_identity()
+        self._validate_source()
+        self._validate_core_metrics()
+        self._validate_extra_metrics()
+
+    # --------------------------------------------------------------------- #
+    # Validation helpers                                                    #
+    # --------------------------------------------------------------------- #
+
+    def _validate_identity(self) -> None:
+        """Validate CIK, fiscal metadata, and currency fields."""
+        if not isinstance(self.cik, str) or not self.cik.strip():
+            raise ValueError("CanonicalStatementPayload.cik must be a non-empty string.")
+
+        if self.fiscal_year <= 0:
+            raise ValueError("CanonicalStatementPayload.fiscal_year must be a positive integer.")
+
+        if not isinstance(self.currency, str) or not self.currency.strip():
+            raise ValueError("CanonicalStatementPayload.currency must be a non-empty ISO code.")
+
+    def _validate_source(self) -> None:
+        """Validate source linkage (accession, taxonomy, version sequence)."""
+        if self.source_version_sequence <= 0:
+            raise ValueError(
+                "CanonicalStatementPayload.source_version_sequence must be a positive integer.",
+            )
+
+        if not isinstance(self.source_accession_id, str) or not self.source_accession_id.strip():
+            raise ValueError(
+                "CanonicalStatementPayload.source_accession_id must be a non-empty string.",
+            )
+
+        if not isinstance(self.source_taxonomy, str) or not self.source_taxonomy.strip():
+            raise ValueError(
+                "CanonicalStatementPayload.source_taxonomy must be a non-empty string.",
+            )
+
+    def _validate_core_metrics(self) -> None:
+        """Validate the typing and shape of core_metrics."""
+        for metric, value in self.core_metrics.items():
+            if not isinstance(metric, CanonicalStatementMetric):
+                raise TypeError(
+                    "CanonicalStatementPayload.core_metrics keys must be "
+                    f"CanonicalStatementMetric instances; got {type(metric)!r}.",
+                )
+            if not isinstance(value, Decimal):
+                raise TypeError(
+                    "CanonicalStatementPayload.core_metrics values must be Decimal instances; "
+                    f"got {type(value)!r}.",
+                )
+
+    def _validate_extra_metrics(self) -> None:
+        """Validate the typing and shape of extra_metrics."""
+        for key, value in self.extra_metrics.items():
+            if not isinstance(key, str):
+                raise TypeError(
+                    "CanonicalStatementPayload.extra_metrics keys must be strings; "
+                    f"got {type(key)!r}.",
+                )
+            if not isinstance(value, Decimal):
+                raise TypeError(
+                    "CanonicalStatementPayload.extra_metrics values must be Decimal instances; "
+                    f"got {type(value)!r}.",
+                )
 
 
 __all__ = ["CanonicalStatementPayload"]

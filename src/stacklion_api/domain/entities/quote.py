@@ -1,13 +1,15 @@
+# src/stacklion_api/domain/entities/quote.py
 # Copyright (c) Stacklion.
 # SPDX-License-Identifier: MIT
-"""
-Quote Entity
+"""Quote Entity.
 
 Purpose:
     Immutable domain representation of a latest market quote (no I/O).
 
-Layer: domain/entities
+Layer:
+    domain/entities
 """
+
 from __future__ import annotations
 
 from dataclasses import dataclass
@@ -21,15 +23,22 @@ from stacklion_api.domain.entities.base import BaseEntity
 class Quote(BaseEntity):
     """Latest quote entity.
 
-    Args:
-        ticker: Canonical, upper-case ticker symbol.
-        price: Last traded price (non-negative).
-        currency: ISO 4217 code (e.g., 'USD').
-        as_of: UTC timestamp for observation (timezone-aware).
-        volume: Optional last-known traded volume (non-negative).
+    Attributes:
+        ticker:
+            Canonical, upper-case ticker symbol.
+        price:
+            Last traded price (non-negative).
+        currency:
+            ISO 4217 currency code (e.g., ``"USD"``).
+        as_of:
+            UTC timestamp for the observation (timezone-aware; naive datetimes
+            are normalized to UTC inside :meth:`__post_init__`.
+        volume:
+            Optional last-known traded volume (non-negative when provided).
 
     Raises:
-        ValueError: If invariants are violated (e.g., negative price).
+        ValueError:
+            If invariants are violated (e.g., negative price, lowercase ticker).
     """
 
     ticker: str
@@ -39,6 +48,10 @@ class Quote(BaseEntity):
     volume: int | None = None
 
     def __post_init__(self) -> None:
+        """Validate invariants for the Quote entity."""
+        # NOTE: We intentionally do NOT call super().__post_init__() here; the
+        # base entity does not participate in dataclass invariant hooks, and
+        # tests expect only the invariants below.
         if not self.ticker or self.ticker != self.ticker.upper():
             raise ValueError("ticker must be upper-case non-empty")
         if self.price < 0:

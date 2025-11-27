@@ -1,19 +1,16 @@
-# Copyright (c) Stacklion.
+# src/stacklion_api/adapters/routers/openapi_registry.py
+# Copyright (c)
 # SPDX-License-Identifier: MIT
-"""
-OpenAPI Contract Registry Injector (Adapters Layer)
+"""OpenAPI Contract Registry Injector (Adapters Layer).
 
 Purpose:
     Ensure canonical envelopes (SuccessEnvelope, PaginatedEnvelope, ErrorEnvelope)
-    are present under components/schemas even if no routes reference them yet.
+    are always present under `components/schemas` in the generated OpenAPI.
 
-Why:
-    FastAPI emits only referenced schemas. Our CI snapshot requires the envelopes to
-    exist at all times, so this injector amends the OpenAPI schema during generation.
-
-Safety:
-    • Does not add routes or change endpoint behavior.
-    • Idempotent and cache-friendly via FastAPI's `app.openapi_schema`.
+Design:
+    FastAPI normally emits schemas only when referenced. CI enforces a stable
+    snapshot where envelopes must always exist. This module wraps FastAPI's
+    OpenAPI generator to inject them deterministically.
 
 Layer:
     adapters/routers
@@ -34,16 +31,12 @@ from stacklion_api.adapters.schemas.http import (
 )
 from stacklion_api.types import JsonValue
 
-# Use non-literal names so Ruff won't rewrite setattr(...) to dot-assignments.
 OPENAPI_SCHEMA_ATTR = "openapi_schema"
 OPENAPI_ATTR = "openapi"
 
 
 def _schema_name(model: type[BaseModel]) -> str:
-    """Return the OpenAPI schema name for a Pydantic v2 model.
-
-    Prefers an explicit title via `model_config` and falls back to the class name.
-    """
+    """Return the OpenAPI schema name for a Pydantic v2 model."""
     cfg: Mapping[str, object] = getattr(model, "model_config", {})
     title = cfg.get("title") if isinstance(cfg, Mapping) else None
     return str(title) if title else model.__name__
@@ -58,26 +51,19 @@ def _model_schema(model: type[BaseModel]) -> dict[str, JsonValue]:
 
 
 def attach_openapi_contract_registry(app: FastAPI) -> None:
-    """Inject canonical envelopes into `components/schemas` at OpenAPI build time.
+    """Inject canonical envelopes into the OpenAPI schema.
 
-    This wraps the app's `openapi()` to:
-
-        1) Build the baseline schema via the original generator.
-        2) Register the canonical envelopes if they are absent.
-        3) Cache the result on `app.openapi_schema`.
+    This wraps the application's `openapi()` method with a caching injector
+    that ensures envelope schemas are present even when unused.
     """
     original_openapi = app.openapi
 
     def _custom_openapi() -> dict[str, JsonValue]:
-        # Reuse cached schema if present.
-        existing = cast(dict[str, JsonValue] | None, getattr(app, OPENAPI_SCHEMA_ATTR, None))
-        if existing is not None:
-            return existing
+        cached = cast(dict[str, JsonValue] | None, getattr(app, OPENAPI_SCHEMA_ATTR, None))
+        if cached is not None:
+            return cached
 
-        # Build baseline schema via FastAPI's generator.
         base = cast(dict[str, JsonValue], original_openapi())
-
-        # Ensure components/schemas exists.
         components = cast(
             MutableMapping[str, JsonValue],
             base.setdefault("components", cast(JsonValue, {})),
@@ -87,18 +73,14 @@ def attach_openapi_contract_registry(app: FastAPI) -> None:
             components.setdefault("schemas", cast(JsonValue, {})),
         )
 
-        # Register canonical envelopes if missing.
         for model in (SuccessEnvelope, PaginatedEnvelope, ErrorEnvelope):
             name = _schema_name(model)
             if name not in schemas:
-                s = _model_schema(model)
-                # pydantic v2 may include local $defs; remove to avoid bloating components.
-                s.pop("$defs", None)
-                schemas[name] = s
+                schema = _model_schema(model)
+                schema.pop("$defs", None)
+                schemas[name] = schema
 
-        # Cache and return.
         setattr(app, OPENAPI_SCHEMA_ATTR, base)
         return base
 
-    # mypy-safe override without triggering method-assign issues.
     setattr(app, OPENAPI_ATTR, _custom_openapi)

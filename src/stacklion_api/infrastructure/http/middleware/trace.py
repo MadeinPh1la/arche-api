@@ -1,8 +1,7 @@
 # src/stacklion_api/infrastructure/http/middleware/trace.py
 # Copyright (c) Stacklion.
 # SPDX-License-Identifier: MIT
-"""
-Trace ID Middleware.
+"""Trace ID Middleware.
 
 Summary:
     Starlette/FastAPI middleware that guarantees every request has a stable

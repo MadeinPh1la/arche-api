@@ -245,14 +245,12 @@ class EdgarStatementsRepository(BaseRepository[StatementVersion]):
                 )
             )
 
-            # Explicitly treat the result as Any so mypy does not complain
-            # about SQLAlchemy's Result.rowcount attribute.
+            # Treat result as Any so mypy does not complain about rowcount.
             result: Any = await self._session.execute(stmt)
             affected = getattr(result, "rowcount", None)
 
             # If the backend reports a concrete 0 rowcount, treat this as a
-            # hard error; if it reports None (unknown), we allow it and rely
-            # on downstream reads to surface inconsistencies.
+            # hard error; if it reports None (unknown), we allow it.
             if affected == 0:
                 raise EdgarIngestionError(
                     "No sec.statement_versions row matched for normalized payload update.",
@@ -284,7 +282,169 @@ class EdgarStatementsRepository(BaseRepository[StatementVersion]):
                 ).observe(duration)
 
     # ------------------------------------------------------------------
-    # QUERIES
+    # QUERIES – legacy interface (date-window based)
+    # ------------------------------------------------------------------
+
+    async def get_latest_statement_version(
+        self,
+        company: EdgarCompanyIdentity,
+        statement_type: StatementType,
+        statement_date: date,
+    ) -> EdgarStatementVersion:
+        """Legacy API: return the latest statement version for a given date.
+
+        This satisfies the older domain interface used in some callers.
+
+        Raises:
+            EdgarIngestionError: If no matching statement version exists.
+        """
+        start = time.perf_counter()
+        outcome = "success"
+
+        try:
+            company_row = await self._get_company_by_cik(company.cik)
+            if company_row is None:
+                raise EdgarIngestionError(
+                    "ref.company row not found for get_latest_statement_version.",
+                    details={"cik": company.cik},
+                )
+
+            sv = aliased(StatementVersion)
+            f = aliased(Filing)
+
+            stmt: Select[Any] = (
+                select(sv, f)
+                .join(f, sv.filing_id == f.filing_id)
+                .where(
+                    sv.company_id == company_row.company_id,
+                    sv.statement_type == statement_type.value,
+                    sv.statement_date == statement_date,
+                )
+                .order_by(sv.version_sequence.desc(), sv.statement_version_id.asc())
+                .limit(1)
+            )
+
+            res = await self._session.execute(stmt)
+            row = res.first()
+            if row is None:
+                raise EdgarIngestionError(
+                    "No statement version found for company/date.",
+                    details={
+                        "cik": company.cik,
+                        "statement_type": statement_type.value,
+                        "statement_date": statement_date.isoformat(),
+                    },
+                )
+
+            sv_row, filing_row = cast(tuple[StatementVersion, Filing], row)
+            return self._map_to_domain(company_row, filing_row, sv_row)
+
+        except Exception as exc:  # noqa: BLE001
+            outcome = "error"
+            with suppress(Exception):
+                self._metrics_err.labels(
+                    operation="get_latest_statement_version",
+                    model=self._MODEL_NAME,
+                    reason=type(exc).__name__,
+                ).inc()
+            raise
+
+        finally:
+            with suppress(Exception):
+                duration = time.perf_counter() - start
+                self._metrics_hist.labels(
+                    operation="get_latest_statement_version",
+                    model=self._MODEL_NAME,
+                    outcome=outcome,
+                ).observe(duration)
+
+    async def list_statement_versions(
+        self,
+        company: EdgarCompanyIdentity,
+        statement_type: StatementType,
+        from_date: date,
+        to_date: date,
+        include_restated: bool = False,
+    ) -> Sequence[EdgarStatementVersion]:
+        """Legacy API: list statement versions over a date range.
+
+        See the domain interface for semantics.
+        """
+        start = time.perf_counter()
+        outcome = "success"
+
+        try:
+            company_row = await self._get_company_by_cik(company.cik)
+            if company_row is None:
+                return []
+
+            sv = aliased(StatementVersion)
+            f = aliased(Filing)
+
+            stmt: Select[Any] = (
+                select(sv, f)
+                .join(f, sv.filing_id == f.filing_id)
+                .where(
+                    sv.company_id == company_row.company_id,
+                    sv.statement_type == statement_type.value,
+                    sv.statement_date >= from_date,
+                    sv.statement_date <= to_date,
+                )
+                .order_by(
+                    sv.statement_date.asc(),
+                    sv.version_sequence.asc(),
+                    sv.statement_version_id.asc(),
+                )
+            )
+
+            res = await self._session.execute(stmt)
+            rows = cast(list[tuple[StatementVersion, Filing]], res.all())
+
+            versions = [
+                self._map_to_domain(company_row, filing_row, sv_row) for sv_row, filing_row in rows
+            ]
+
+            if include_restated:
+                return versions
+
+            # Filter down to latest non-restated per statement_date.
+            by_date: dict[date, EdgarStatementVersion] = {}
+            for v in versions:
+                key = v.statement_date
+                current = by_date.get(key)
+                if v.is_restated:
+                    # Skip restated rows when include_restated=False.
+                    continue
+                if current is None or v.version_sequence > current.version_sequence:
+                    by_date[key] = v
+
+            # Deterministic ordering: statement_date asc, version_sequence asc.
+            return sorted(
+                by_date.values(),
+                key=lambda v: (v.statement_date, v.version_sequence),
+            )
+
+        except Exception as exc:  # noqa: BLE001
+            outcome = "error"
+            with suppress(Exception):
+                self._metrics_err.labels(
+                    operation="list_statement_versions",
+                    model=self._MODEL_NAME,
+                    reason=type(exc).__name__,
+                ).inc()
+            raise
+
+        finally:
+            with suppress(Exception):
+                duration = time.perf_counter() - start
+                self._metrics_hist.labels(
+                    operation="list_statement_versions",
+                    model=self._MODEL_NAME,
+                    outcome=outcome,
+                ).observe(duration)
+
+    # ------------------------------------------------------------------
+    # QUERIES – identity-based APIs used by new use cases
     # ------------------------------------------------------------------
 
     async def latest_statement_version_for_company(

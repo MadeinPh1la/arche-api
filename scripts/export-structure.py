@@ -23,8 +23,8 @@ def generate_tree(
 
 # Run it
 project_dir = Path("src/stacklion_api/")
-with open("project_structure1.txt", "w", encoding="utf-8") as f:
+with open("project_structure2.txt", "w", encoding="utf-8") as f:
     print(project_dir.name, file=f)
     generate_tree(project_dir, output_file=f)
 
-print("Project structure exported to project_structure1.txt")
+print("Project structure exported to project_structure2.txt")

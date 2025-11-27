@@ -1,7 +1,6 @@
 # Copyright (c) Stacklion.
 # SPDX-License-Identifier: MIT
-"""
-Security Headers Middleware (API-safe defaults)
+"""Security Headers Middleware (API-safe defaults)
 
 Summary:
     Lightweight middleware that attaches a minimal, API-appropriate set of

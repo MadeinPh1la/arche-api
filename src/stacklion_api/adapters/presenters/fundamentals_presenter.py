@@ -1,8 +1,7 @@
 # src/stacklion_api/adapters/presenters/fundamentals_presenter.py
 # Copyright (c)
 # SPDX-License-Identifier: MIT
-"""
-Fundamentals and restatement HTTP presenter.
+"""Fundamentals and restatement HTTP presenter.
 
 Purpose:
     Convert domain and application-layer modeling DTOs into HTTP-facing

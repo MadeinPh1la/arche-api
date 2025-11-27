@@ -1,8 +1,7 @@
 # src/stacklion_api/adapters/uow/__init__.py
 # Copyright (c) Stacklion.
 # SPDX-License-Identifier: MIT
-"""
-Unit of Work implementations (Adapters Layer)
+"""Unit of Work implementations (Adapters Layer).
 
 Purpose:
     Provide concrete UnitOfWork implementations backed by infrastructure

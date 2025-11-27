@@ -43,7 +43,22 @@ class ListFilingsUseCase(Protocol):
         include_amendments: bool,
         page: int,
         page_size: int,
-    ) -> tuple[list[EdgarFilingDTO], int]: ...
+    ) -> tuple[list[EdgarFilingDTO], int]:
+        """Execute the list-filings use case.
+
+        Args:
+            cik: Company CIK string, typically a zero-padded identifier.
+            filing_types: Optional filter for specific filing types.
+            from_date: Optional lower bound on filing date (inclusive).
+            to_date: Optional upper bound on filing date (inclusive).
+            include_amendments: Whether to include amended filings.
+            page: 1-based page index for pagination.
+            page_size: Number of items per page.
+
+        Returns:
+            A tuple of (filings, total_count) for the given criteria.
+        """
+        ...
 
 
 class GetFilingUseCase(Protocol):
@@ -54,7 +69,20 @@ class GetFilingUseCase(Protocol):
         *,
         cik: str,
         accession_id: str,
-    ) -> EdgarFilingDTO: ...
+    ) -> EdgarFilingDTO:
+        """Execute the get-filing use case.
+
+        Args:
+            cik: Company CIK string.
+            accession_id: Filing accession identifier.
+
+        Returns:
+            The matching filing DTO.
+
+        Raises:
+            Domain-level exceptions if the filing cannot be resolved.
+        """
+        ...
 
 
 class ListStatementVersionsUseCase(Protocol):
@@ -70,7 +98,22 @@ class ListStatementVersionsUseCase(Protocol):
         include_restated: bool,
         page: int,
         page_size: int,
-    ) -> tuple[list[EdgarStatementVersionDTO], int]: ...
+    ) -> tuple[list[EdgarStatementVersionDTO], int]:
+        """Execute the list-statement-versions use case.
+
+        Args:
+            cik: Company CIK string.
+            statement_type: Type of financial statement to filter on.
+            from_date: Optional lower bound on statement_date (inclusive).
+            to_date: Optional upper bound on statement_date (inclusive).
+            include_restated: Whether restated versions should be included.
+            page: 1-based page index.
+            page_size: Number of items per page.
+
+        Returns:
+            A tuple of (statement_versions, total_count).
+        """
+        ...
 
 
 class GetStatementVersionsForFilingUseCase(Protocol):
@@ -84,7 +127,20 @@ class GetStatementVersionsForFilingUseCase(Protocol):
         statement_type: StatementType | None,
         include_restated: bool,
         include_normalized: bool,
-    ) -> tuple[EdgarFilingDTO, list[EdgarStatementVersionDTO]]: ...
+    ) -> tuple[EdgarFilingDTO, list[EdgarStatementVersionDTO]]:
+        """Execute the get-statement-versions-for-filing use case.
+
+        Args:
+            cik: Company CIK string.
+            accession_id: Filing accession identifier.
+            statement_type: Optional filter for statement type.
+            include_restated: Whether to include restated statement versions.
+            include_normalized: Whether normalized payloads should be requested.
+
+        Returns:
+            A tuple of (filing_dto, statement_versions) for the filing.
+        """
+        ...
 
 
 class EdgarController(BaseController):

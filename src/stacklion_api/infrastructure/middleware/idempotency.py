@@ -1,8 +1,7 @@
 # src/stacklion_api/infrastructure/middleware/idempotency.py
 # Copyright (c) Stacklion.
 # SPDX-License-Identifier: MIT
-"""
-HTTP Idempotency Middleware.
+"""HTTP Idempotency Middleware.
 
 Purpose:
     Provide reusable HTTP idempotency for write operations (POST/PUT/PATCH/DELETE)

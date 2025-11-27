@@ -45,7 +45,6 @@ class StagingRepository(Protocol):
         Returns:
             Run UUID (new or existing).
         """
-
         raise NotImplementedError
 
     async def finish_run(self, run_id: UUID, result: str, error_reason: str | None = None) -> None:
@@ -56,7 +55,6 @@ class StagingRepository(Protocol):
             result: Result code (e.g. ``"SUCCESS"`` | ``"NOOP"`` | ``"ERROR"``).
             error_reason: Optional error reason for failed runs.
         """
-
         raise NotImplementedError
 
     async def save_raw_payload(
@@ -86,5 +84,4 @@ class StagingRepository(Protocol):
         Returns:
             The new payload UUID.
         """
-
         raise NotImplementedError

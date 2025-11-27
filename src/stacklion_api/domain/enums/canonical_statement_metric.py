@@ -1,8 +1,7 @@
 # src/stacklion_api/domain/enums/canonical_statement_metric.py
 # Copyright (c) Stacklion.
 # SPDX-License-Identifier: MIT
-"""
-Canonical statement metrics enumeration.
+"""Canonical statement metrics enumeration.
 
 Purpose:
     Define a stable, provider-agnostic set of canonical financial statement

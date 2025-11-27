@@ -1,8 +1,7 @@
 # src/stacklion_api/application/use_cases/statements/get_normalized_statement.py
 # Copyright (c)
 # SPDX-License-Identifier: MIT
-"""
-Use case: Retrieve the latest normalized EDGAR statement version.
+"""Use case: Retrieve the latest normalized EDGAR statement version.
 
 Purpose:
     Provide a deterministic, modeling-ready view of the latest statement
@@ -17,7 +16,7 @@ Notes:
     - This use case is read-only and does not perform any writes.
     - It depends on the EDGAR statements repository via the application
       UnitOfWork abstraction.
-    - Routers/ presenters are responsible for shaping the response into HTTP
+    - Routers/presenters are responsible for shaping the response into HTTP
       envelopes or MCP payloads.
 """
 
@@ -26,14 +25,15 @@ from __future__ import annotations
 import logging
 from collections.abc import Sequence
 from dataclasses import dataclass
+from typing import Any, cast
 
-from stacklion_api.adapters.repositories.edgar_statements_repository import (
-    EdgarStatementsRepository,
-)
 from stacklion_api.application.uow import UnitOfWork
 from stacklion_api.domain.entities.edgar_statement_version import EdgarStatementVersion
 from stacklion_api.domain.enums.edgar import FiscalPeriod, StatementType
 from stacklion_api.domain.exceptions.edgar import EdgarIngestionError, EdgarMappingError
+from stacklion_api.domain.interfaces.repositories.edgar_statements_repository import (
+    EdgarStatementsRepository as EdgarStatementsRepositoryProtocol,
+)
 
 logger = logging.getLogger(__name__)
 
@@ -78,7 +78,19 @@ class NormalizedStatementResult:
 
 
 class GetNormalizedStatementUseCase:
-    """Retrieve the latest normalized EDGAR statement version for a company."""
+    """Fetch the latest normalized statement plus optional version history.
+
+    Args:
+        uow: Unit-of-work used to access the EDGAR statements repository.
+
+    Returns:
+        GetNormalizedStatementResponse: Object containing the latest normalized
+        payload and, optionally, the version history for the requested period.
+
+    Raises:
+        EdgarIngestionError: If no versions exist for the requested period or
+            the latest version lacks a normalized payload.
+    """
 
     def __init__(self, uow: UnitOfWork) -> None:
         """Initialize the use case.
@@ -129,9 +141,7 @@ class GetNormalizedStatementUseCase:
         )
 
         async with self._uow as tx:
-            statements_repo: EdgarStatementsRepository = tx.get_repository(
-                EdgarStatementsRepository,
-            )
+            statements_repo = _get_edgar_statements_repository(tx)
 
             latest = await statements_repo.latest_statement_version_for_company(
                 cik=cik,
@@ -182,7 +192,7 @@ class GetNormalizedStatementUseCase:
                     },
                 )
 
-            version_history: list[EdgarStatementVersion] = []
+            version_history: Sequence[EdgarStatementVersion] = ()
             if req.include_version_history:
                 version_history = await statements_repo.list_statement_versions_for_company(
                     cik=cik,
@@ -207,3 +217,23 @@ class GetNormalizedStatementUseCase:
             latest_version=latest,
             version_history=version_history,
         )
+
+
+def _get_edgar_statements_repository(tx: Any) -> EdgarStatementsRepositoryProtocol:
+    """Resolve the EDGAR statements repository via the UnitOfWork.
+
+    Test doubles may expose `repo`, `statements_repo`, or `_repo` attributes
+    instead of a full repository registry. Prefer those when present to keep
+    tests and fakes simple.
+    """
+    if hasattr(tx, "repo"):
+        return cast(EdgarStatementsRepositoryProtocol, tx.repo)
+    if hasattr(tx, "statements_repo"):
+        return cast(EdgarStatementsRepositoryProtocol, tx.statements_repo)
+    if hasattr(tx, "_repo"):
+        return cast(EdgarStatementsRepositoryProtocol, tx._repo)
+
+    return cast(
+        EdgarStatementsRepositoryProtocol,
+        tx.get_repository(EdgarStatementsRepositoryProtocol),
+    )

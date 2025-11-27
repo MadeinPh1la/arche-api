@@ -1,8 +1,7 @@
 # src/stacklion_api/adapters/routers/base_router.py
 # Copyright (c) Stacklion.
 # SPDX-License-Identifier: MIT
-"""
-Base Router (Adapters Layer)
+"""Base Router (Adapters Layer).
 
 Purpose:
     Provide a canonical APIRouter wrapper and shared utilities for Stacklion HTTP endpoints:
@@ -50,10 +49,12 @@ class PageParams:
 
     @property
     def offset(self) -> int:
+        """Return the zero-based row offset for this page."""
         return (self.page - 1) * self.page_size
 
     @property
     def limit(self) -> int:
+        """Return the maximum number of rows to fetch for this page."""
         return self.page_size
 
 
@@ -139,6 +140,16 @@ class BaseRouter(APIRouter):
         dependencies: Sequence[Any] | None = None,
         **kwargs: Any,
     ) -> None:
+        """Initialize the router with a versioned prefix and common settings.
+
+        Args:
+            version: API version segment (e.g., "v1").
+            resource: Resource segment (e.g., "companies").
+            prefix: Optional explicit prefix; defaults to f"/{version}/{resource}".
+            tags: Optional default tags for the router's endpoints.
+            dependencies: Optional dependencies applied to all routes.
+            **kwargs: Additional keyword arguments forwarded to APIRouter.
+        """
         computed_prefix = prefix or f"/{version}/{resource}"
 
         super().__init__(
@@ -162,6 +173,16 @@ class BaseRouter(APIRouter):
         response: _ResponseLike | None,
         result: PresentResult[Any],
     ) -> BaseHTTPSchema | dict[str, JsonValue]:
+        """Apply presenter headers and return a plain body for FastAPI.
+
+        Args:
+            response: Optional HTTP response-like object to mutate with headers.
+            result: Presenter result containing headers and a structured body.
+
+        Returns:
+            A mapping suitable for FastAPI's response_model handling. If the
+            presenter body is None, an empty dict is returned.
+        """
         if response is not None:
             try:
                 response.headers.update(dict(result.headers))
@@ -189,6 +210,17 @@ class BaseRouter(APIRouter):
         page_size: int | None = Query(default=None, description="Items per page (bounded).", ge=1),
         per_page: int | None = Query(default=None, description="Deprecated alias.", ge=1),
     ) -> PageParams:
+        """Normalize and validate pagination query parameters.
+
+        Args:
+            page: 1-indexed page number; defaults to MIN_PAGE when omitted.
+            page_size: Desired page size; defaults to DEFAULT_PAGE_SIZE.
+            per_page: Deprecated alias for page_size, used only when page_size
+                is not explicitly provided.
+
+        Returns:
+            PageParams with resolved page, page_size, offset, and limit.
+        """
         p = page if page is not None else cls.MIN_PAGE
         ps = page_size if page_size is not None else cls.DEFAULT_PAGE_SIZE
 

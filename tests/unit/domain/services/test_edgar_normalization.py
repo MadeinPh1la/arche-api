@@ -1,8 +1,7 @@
 # tests/unit/domain/services/test_edgar_normalization.py
 # Copyright (c) Stacklion.
 # SPDX-License-Identifier: MIT
-"""
-Unit tests for the EDGAR canonical statement normalization engine.
+"""Unit tests for the EDGAR canonical statement normalization engine.
 
 Covers:
     - NormalizationContext validation invariants.

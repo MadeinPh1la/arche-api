@@ -1,8 +1,7 @@
 # src/stacklion_api/main.py
 # Copyright (c) Stacklion.
 # SPDX-License-Identifier: MIT
-"""
-Application Entry (Adapters Bootstrap)
+"""Application Entry (Adapters Bootstrap)
 
 Synopsis:
     FastAPI bootstrap that wires middleware, the OpenAPI Contract Registry, and all

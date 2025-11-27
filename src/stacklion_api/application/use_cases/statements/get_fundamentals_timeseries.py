@@ -1,8 +1,7 @@
 # src/stacklion_api/application/use_cases/statements/get_fundamentals_timeseries.py
 # Copyright (c)
 # SPDX-License-Identifier: MIT
-"""
-Use case: Fundamentals time series from normalized EDGAR statements.
+"""Use case: Fundamentals time series from normalized EDGAR statements.
 
 Purpose:
     Build an analytics-grade fundamentals time series for one or more
@@ -26,10 +25,8 @@ import logging
 from collections.abc import Iterable, Sequence
 from dataclasses import dataclass
 from datetime import date
+from typing import Any, cast
 
-from stacklion_api.adapters.repositories.edgar_statements_repository import (
-    EdgarStatementsRepository,
-)
 from stacklion_api.application.uow import UnitOfWork
 from stacklion_api.domain.entities.canonical_statement_payload import (
     CanonicalStatementPayload,
@@ -41,6 +38,9 @@ from stacklion_api.domain.entities.edgar_fundamentals_timeseries import (
 from stacklion_api.domain.enums.canonical_statement_metric import CanonicalStatementMetric
 from stacklion_api.domain.enums.edgar import FiscalPeriod, StatementType
 from stacklion_api.domain.exceptions.edgar import EdgarMappingError
+from stacklion_api.domain.interfaces.repositories.edgar_statements_repository import (
+    EdgarStatementsRepository as EdgarStatementsRepositoryProtocol,
+)
 
 logger = logging.getLogger(__name__)
 
@@ -81,7 +81,19 @@ class GetFundamentalsTimeSeriesRequest:
 
 
 class GetFundamentalsTimeSeriesUseCase:
-    """Build a fundamentals time series from normalized EDGAR statements."""
+    """Build a fundamentals time series from normalized EDGAR statements.
+
+    Args:
+        uow: Unit-of-work used to access the EDGAR statements repository.
+
+    Returns:
+        EdgarFundamentalsTimeSeries: Domain object representing a panel-style
+        time series suitable for downstream modeling.
+
+    Raises:
+        EdgarIngestionError: If required data is missing or cannot be
+            retrieved.
+    """
 
     def __init__(self, uow: UnitOfWork) -> None:
         """Initialize the use case.
@@ -147,9 +159,7 @@ class GetFundamentalsTimeSeriesUseCase:
         )
 
         async with self._uow as tx:
-            statements_repo: EdgarStatementsRepository = tx.get_repository(
-                EdgarStatementsRepository,
-            )
+            statements_repo = _get_edgar_statements_repository(tx)
 
             all_payloads: list[CanonicalStatementPayload] = []
 
@@ -228,7 +238,7 @@ class GetFundamentalsTimeSeriesUseCase:
     async def _collect_company_payloads(
         self,
         *,
-        statements_repo: EdgarStatementsRepository,
+        statements_repo: EdgarStatementsRepositoryProtocol,
         cik: str,
         statement_type: StatementType,
         allowed_periods: set[FiscalPeriod],
@@ -282,17 +292,45 @@ class GetFundamentalsTimeSeriesUseCase:
                 continue
 
             # For each (statement_date, fiscal_period) identity, keep only
-            # the latest version_sequence.
+            # the latest version_sequence and its payload.
             by_key: dict[tuple[date, FiscalPeriod], CanonicalStatementPayload] = {}
             by_seq: dict[tuple[date, FiscalPeriod], int] = {}
 
             for v in candidates:
                 key = (v.statement_date, v.fiscal_period)
                 current_seq = by_seq.get(key)
+
+                # Defensive narrowing for mypy: we already filtered on
+                # normalized_payload is not None, but we narrow again here
+                # to keep the type checker satisfied.
+                payload = v.normalized_payload
+                if payload is None:  # pragma: no cover - defensive guard
+                    continue
+
                 if current_seq is None or v.version_sequence > current_seq:
                     by_seq[key] = v.version_sequence
-                    by_key[key] = v.normalized_payload  # type: ignore[assignment]
+                    by_key[key] = payload
 
             payloads.extend(by_key.values())
 
         return payloads
+
+
+def _get_edgar_statements_repository(tx: Any) -> EdgarStatementsRepositoryProtocol:
+    """Resolve the EDGAR statements repository via the UnitOfWork.
+
+    Test doubles may expose `repo`, `statements_repo`, or `_repo` attributes
+    instead of a full repository registry. Prefer those when present to keep
+    tests and fakes simple.
+    """
+    if hasattr(tx, "repo"):
+        return cast(EdgarStatementsRepositoryProtocol, tx.repo)
+    if hasattr(tx, "statements_repo"):
+        return cast(EdgarStatementsRepositoryProtocol, tx.statements_repo)
+    if hasattr(tx, "_repo"):
+        return cast(EdgarStatementsRepositoryProtocol, tx._repo)
+
+    return cast(
+        EdgarStatementsRepositoryProtocol,
+        tx.get_repository(EdgarStatementsRepositoryProtocol),
+    )

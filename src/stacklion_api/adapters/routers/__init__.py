@@ -1,5 +1,4 @@
-"""
-Routers Package Export (Adapters Layer)
+"""Routers Package Export (Adapters Layer).
 
 Purpose:
     Provide stable, explicit exports for the application router aggregator (`api_router`)

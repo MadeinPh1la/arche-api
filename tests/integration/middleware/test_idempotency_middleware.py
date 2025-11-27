@@ -1,8 +1,7 @@
 # tests/integration/middleware/test_idempotency_middleware.py
 # Copyright (c) Stacklion.
 # SPDX-License-Identifier: MIT
-"""
-Integration tests for IdempotencyMiddleware.
+"""Integration tests for IdempotencyMiddleware.
 
 These tests exercise the end-to-end HTTP path:
 

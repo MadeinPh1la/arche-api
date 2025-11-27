@@ -1,5 +1,4 @@
-"""
-Principal Value Object (Domain Layer)
+"""Principal Value Object (Domain Layer).
 
 Purpose:
     Represent the authenticated actor (human or service) in a transport-agnostic,
@@ -40,22 +39,6 @@ class Principal(BaseModel):
         subject: Stable external identifier for the actor (e.g., user or service ID).
         email: Optional email address of the actor, if known and applicable.
         roles: Normalized, duplicate-free list of role names (strings).
-
-    Examples:
-        Basic construction:
-
-         Principal(subject="user_123", email="alice@example.com", roles=["ADMIN", "TRADER"])
-
-        From typical IdP claims:
-
-         claims = {"sub": "user_123", "email": "alice@example.com", "roles": ["ADMIN", "ADMIN", "TRADER"]}
-         Principal.from_claims(claims).roles
-        ['ADMIN', 'TRADER']
-
-        Check authentication presence:
-
-         Principal(subject=None).is_authenticated
-        False
     """
 
     model_config = ConfigDict(
@@ -65,7 +48,9 @@ class Principal(BaseModel):
         populate_by_name=True,
         str_strip_whitespace=True,
         json_schema_extra={
-            "description": "Authenticated actor (human or service) represented as a domain value object.",
+            "description": (
+                "Authenticated actor (human or service) represented as a " "domain value object."
+            ),
             "examples": [
                 {
                     "subject": "user_2a9f3c",
@@ -119,7 +104,7 @@ class Principal(BaseModel):
 
         try:
             dedup: list[str] = []
-            seen = set()
+            seen: set[str] = set()
             for item in v:
                 s = str(item)
                 if s not in seen:

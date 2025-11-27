@@ -1,7 +1,6 @@
 # Copyright (c) Stacklion.
 # SPDX-License-Identifier: MIT
-"""
-Quotes Controller.
+"""Quotes Controller.
 
 Summary:
     Thin adapter coordinating the GetQuotes use-case.

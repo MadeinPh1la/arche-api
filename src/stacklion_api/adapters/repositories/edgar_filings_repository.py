@@ -150,8 +150,7 @@ class EdgarFilingsRepository(BaseRepository[Filing]):
                     tzinfo=UTC,
                 )
 
-                # Stable deterministic UUID for idempotency; keeps DB happy
-                # and avoids relying on server-side defaults.
+                # Stable deterministic UUID for idempotency.
                 filing_uuid = uuid5(_EDGAR_FILING_NAMESPACE, acc)
 
                 payload.append(
@@ -182,8 +181,7 @@ class EdgarFilingsRepository(BaseRepository[Filing]):
                     "form_type": stmt.excluded.form_type,
                     "filed_at": stmt.excluded.filed_at,
                     "period_of_report": stmt.excluded.period_of_report,
-                    # We skip metadata updates for now; keeps the SQL simple and avoids
-                    # ORM/MetaData name collisions.
+                    # We skip metadata updates for now.
                     "is_amendment": stmt.excluded.is_amendment,
                     "amendment_sequence": stmt.excluded.amendment_sequence,
                     "primary_document": stmt.excluded.primary_document,
@@ -374,7 +372,6 @@ class EdgarFilingsRepository(BaseRepository[Filing]):
             )
 
         filing_type = FilingType(filing_row.form_type)
-
         filing_date = filing_row.filed_at.date()
 
         return EdgarFiling(

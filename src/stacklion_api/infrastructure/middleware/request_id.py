@@ -1,8 +1,7 @@
 # src/stacklion_api/infrastructure/middleware/request_id.py
 # Copyright (c) Stacklion.
 # SPDX-License-Identifier: MIT
-"""
-Request ID Middleware.
+"""Request ID Middleware.
 
 Summary:
     Assigns a stable request correlation ID to each request and propagates it in

@@ -1,8 +1,7 @@
 # tests/integration/repositories/test_idempotency_repository.py
 # Copyright (c) Stacklion.
 # SPDX-License-Identifier: MIT
-"""
-Integration tests for the SQLAlchemy IdempotencyRepository implementation.
+"""Integration tests for the SQLAlchemy IdempotencyRepository implementation.
 
 These tests operate directly against the database using the IdempotencyKey ORM
 model and the concrete repository to verify TTL and result persistence.

@@ -1,8 +1,7 @@
 # src/stacklion_api/application/schemas/dto/edgar.py
 # Copyright (c) Stacklion.
 # SPDX-License-Identifier: MIT
-"""
-Application DTOs for EDGAR filings and statement versions.
+"""Application DTOs for EDGAR filings and statement versions.
 
 Purpose:
     Provide strict Pydantic DTOs used by application-layer use cases and

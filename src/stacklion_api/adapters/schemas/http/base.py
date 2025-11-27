@@ -1,7 +1,6 @@
 # Copyright (c) Stacklion.
 # SPDX-License-Identifier: MIT
-"""
-Base HTTP Schema (Adapters Layer)
+"""Base HTTP Schema (Adapters Layer).
 
 Purpose:
     Canonical Pydantic base for all adapter-layer HTTP schemas.

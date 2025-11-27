@@ -1,8 +1,7 @@
 # src/stacklion_api/application/use_cases/external_apis/edgar/ingest_edgar_filing.py
 # Copyright (c)
 # SPDX-License-Identifier: MIT
-"""
-Use case: Ingest a single EDGAR filing and its statement versions.
+"""Use case: Ingest a single EDGAR filing and its statement versions.
 
 Scope:
     * Given a CIK and accession_id:
@@ -16,8 +15,9 @@ Notes:
     * This is an application-layer use case that depends on:
         - Domain-facing EDGAR ingestion gateway.
         - Application UnitOfWork abstraction.
-    * Repositories are resolved via the UoW and keyed by concrete repository
-      classes from the adapters layer.
+    * Concrete repositories live in the adapters layer and are resolved
+      indirectly via the UnitOfWork. This module avoids direct imports
+      from adapters to preserve clean architecture layering.
 """
 
 from __future__ import annotations
@@ -26,13 +26,9 @@ import logging
 from collections.abc import Sequence
 from dataclasses import dataclass
 from datetime import date
+from importlib import import_module
+from typing import Any
 
-from stacklion_api.adapters.repositories.edgar_filings_repository import (
-    EdgarFilingsRepository,
-)
-from stacklion_api.adapters.repositories.edgar_statements_repository import (
-    EdgarStatementsRepository,
-)
 from stacklion_api.application.uow import UnitOfWork
 from stacklion_api.domain.entities.edgar_company import EdgarCompanyIdentity
 from stacklion_api.domain.entities.edgar_filing import EdgarFiling
@@ -55,13 +51,38 @@ class IngestEdgarFilingRequest:
 
 
 class IngestEdgarFilingUseCase:
-    """Ingest a single EDGAR filing and its statement versions."""
+    """Ingest a single EDGAR filing and its statement versions.
+
+    This use case orchestrates fetching a single filing (header plus one or more
+    statement versions) from the EDGAR ingestion gateway and persisting it via
+    the unit of work.
+
+    Args:
+        gateway: EDGAR ingestion gateway used to fetch filing metadata and
+            statement payloads.
+        uow: Application unit-of-work responsible for persisting filings and
+            statement versions.
+
+    Returns:
+        int: The number of statement versions that were successfully ingested.
+
+    Raises:
+        EdgarIngestionError: If the filing cannot be fetched, is invalid,
+            or cannot be persisted.
+    """
 
     def __init__(
         self,
+        *,
         gateway: EdgarIngestionGateway,
         uow: UnitOfWork,
     ) -> None:
+        """Initialize the use case.
+
+        Args:
+            gateway: EDGAR ingestion gateway used to fetch filing and statements.
+            uow: Unit-of-work used to manage the ingestion transaction.
+        """
         self._gateway = gateway
         self._uow = uow
 
@@ -101,10 +122,8 @@ class IngestEdgarFilingUseCase:
         )
 
         async with self._uow as tx:
-            filings_repo: EdgarFilingsRepository = tx.get_repository(EdgarFilingsRepository)
-            statements_repo: EdgarStatementsRepository = tx.get_repository(
-                EdgarStatementsRepository,
-            )
+            filings_repo = _get_edgar_filings_repository(tx)
+            statements_repo = _get_edgar_statements_repository(tx)
 
             await filings_repo.upsert_filings([filing])
             if versions:
@@ -173,3 +192,29 @@ class IngestEdgarFilingUseCase:
             "Requested EDGAR filing not found in EDGAR submissions.",
             details={"cik": company.cik, "accession_id": accession_id},
         )
+
+
+def _get_edgar_filings_repository(tx: Any) -> Any:
+    """Resolve the EDGAR filings repository via the UnitOfWork.
+
+    Test doubles may expose `filings_repo` instead of a full registry.
+    """
+    if hasattr(tx, "filings_repo"):
+        return tx.filings_repo
+
+    module = import_module("stacklion_api.adapters.repositories.edgar_filings_repository")
+    repo_cls = module.EdgarFilingsRepository
+    return tx.get_repository(repo_cls)
+
+
+def _get_edgar_statements_repository(tx: Any) -> Any:
+    """Resolve the EDGAR statements repository via the UnitOfWork.
+
+    Test doubles may expose `statements_repo` instead of a full registry.
+    """
+    if hasattr(tx, "statements_repo"):
+        return tx.statements_repo
+
+    module = import_module("stacklion_api.adapters.repositories.edgar_statements_repository")
+    repo_cls = module.EdgarStatementsRepository
+    return tx.get_repository(repo_cls)

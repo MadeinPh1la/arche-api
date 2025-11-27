@@ -1,7 +1,6 @@
 # Copyright (c) Stacklion.
 # SPDX-License-Identifier: MIT
-"""
-In-memory Rate Limit Middleware (token bucket, dev/local only)
+"""In-memory Rate Limit Middleware (token bucket, dev/local only)
 
 Summary:
     A lightweight token-bucket limiter suitable for development and CI. It

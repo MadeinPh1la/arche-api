@@ -39,8 +39,7 @@ class _BadOtelHistogram:
 def test_request_latency_prometheus_error_does_not_break_request(
     monkeypatch: pytest.MonkeyPatch,
 ) -> None:
-    """
-    If the Prometheus histogram labels/observe call fails, the request
+    """If the Prometheus histogram labels/observe call fails, the request
     still succeeds and the error path is logged (branch coverage).
     """
     # Force RequestLatencyMiddleware to use a histogram that throws.
@@ -60,8 +59,7 @@ def test_request_latency_prometheus_error_does_not_break_request(
 def test_request_latency_otel_error_does_not_break_request(
     monkeypatch: pytest.MonkeyPatch,
 ) -> None:
-    """
-    If OTEL histogram.record fails, the request still succeeds and the
+    """If OTEL histogram.record fails, the request still succeeds and the
     otel.histogram_record_failed branch is covered.
     """
     # Patch the module-level _otel_hist() helper to return a broken histogram.

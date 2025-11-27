@@ -1,8 +1,7 @@
 # src/stacklion_api/adapters/routers/api_router.py
 # Copyright (c)
 # SPDX-License-Identifier: MIT
-"""
-API Router Aggregator (Adapters Layer)
+"""API Router Aggregator (Adapters Layer).
 
 Purpose:
     Compose and expose the top-level `router` that includes all feature routers.

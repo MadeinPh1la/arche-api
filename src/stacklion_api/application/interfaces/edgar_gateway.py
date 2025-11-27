@@ -1,8 +1,7 @@
 # src/stacklion_api/application/interfaces/edgar_gateway.py
 # Copyright (c) Stacklion.
 # SPDX-License-Identifier: MIT
-"""
-Application-level EDGAR gateway interface.
+"""Application-level EDGAR gateway interface.
 
 Purpose:
     Provide a high-level, use-case-friendly interface for EDGAR ingestion and

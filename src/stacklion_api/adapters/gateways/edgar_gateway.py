@@ -1,7 +1,6 @@
 # Copyright (c) Stacklion.
 # SPDX-License-Identifier: MIT
-"""
-Adapter Gateway: EDGAR → domain ingestion.
+"""Adapter Gateway: EDGAR → domain ingestion.
 
 Purpose:
     Implement the domain-level EDGAR ingestion gateway interface on top of the

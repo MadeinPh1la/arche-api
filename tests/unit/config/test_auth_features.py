@@ -62,9 +62,7 @@ def test_auth_settings_fallback_to_application_settings(monkeypatch: pytest.Monk
 
 @pytest.fixture
 def _auth_env_isolated(monkeypatch: pytest.MonkeyPatch) -> None:
-    """
-    Ensure AUTH_* env is cleaned up between tests to avoid cross-test bleed.
-    """
+    """Ensure AUTH_* env is cleaned up between tests to avoid cross-test bleed."""
     original_enabled = os.getenv("AUTH_ENABLED")
     original_secret = os.getenv("AUTH_HS256_SECRET")
 

@@ -1,8 +1,7 @@
 # src/stacklion_api/adapters/routers/mcp_router.py
 # Copyright (c) Stacklion.
 # SPDX-License-Identifier: MIT
-"""
-MCP HTTP Router (Adapters Layer)
+"""MCP HTTP Router (Adapters Layer).
 
 Purpose:
     Expose the Stacklion MCP server over HTTP as a simple, typed endpoint:

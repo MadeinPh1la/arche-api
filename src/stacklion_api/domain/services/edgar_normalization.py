@@ -1,8 +1,7 @@
 # src/stacklion_api/domain/services/edgar_normalization.py
 # Copyright (c) Stacklion.
 # SPDX-License-Identifier: MIT
-"""
-EDGAR canonical statement normalization engine.
+"""EDGAR canonical statement normalization engine.
 
 Purpose:
     Provide a deterministic, provider-agnostic normalization engine that turns

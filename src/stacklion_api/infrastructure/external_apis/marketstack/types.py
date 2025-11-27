@@ -1,7 +1,6 @@
 # Copyright (c) Stacklion.
 # SPDX-License-Identifier: MIT
-"""
-Marketstack Types.
+"""Marketstack Types.
 
 Summary:
     Typed response structures for Marketstack endpoints.

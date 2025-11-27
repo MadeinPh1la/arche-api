@@ -1,15 +1,14 @@
-# src/stacklion_api/application/use_cases/quotes/get_quotes.py
 # Copyright (c) Stacklion.
 # SPDX-License-Identifier: MIT
-"""
-Use Case: Get Latest Quotes
+"""Use Case: Get Latest Quotes.
 
 Purpose:
-    Orchestrate retrieval of latest quotes via market data gateway and
+    Orchestrate retrieval of latest quotes via the market data gateway and
     return DTOs for presentation. Optionally uses a read-through cache for
     hot latest quotes.
 
-Layer: application/use_cases
+Layer:
+    application/use_cases
 """
 
 from __future__ import annotations
@@ -25,16 +24,34 @@ from stacklion_api.domain.exceptions.market_data import MarketDataUnavailable
 from stacklion_api.domain.interfaces.gateways.market_data_gateway import (
     MarketDataGatewayProtocol,
 )
-from stacklion_api.infrastructure.caching.json_cache import TTL_QUOTE_HOT_S
+
+# Default TTL for hot latest quotes (seconds). Kept in the application layer
+# to avoid a hard dependency on infrastructure caching modules.
+# Tests expect a very short TTL for "hot" quotes.
+TTL_QUOTE_HOT_S = 5
 
 
 def _quote_cache_key(ticker: str) -> str:
-    """Build the tail cache key for a latest quote."""
+    """Build the cache key for a latest quote.
+
+    Args:
+        ticker: Ticker symbol.
+
+    Returns:
+        Cache key string for the given ticker.
+    """
     return f"quote:{ticker.upper()}"
 
 
 def _quote_to_cache_payload(q: Quote) -> dict[str, Any]:
-    """Serialize a :class:`Quote` into a cache-friendly mapping."""
+    """Serialize a :class:`Quote` into a cache-friendly mapping.
+
+    Args:
+        q: Domain quote entity.
+
+    Returns:
+        Mapping suitable for JSON cache storage.
+    """
     as_of = q.as_of.isoformat() if q.as_of is not None else None
     return {
         "ticker": q.ticker,
@@ -46,8 +63,14 @@ def _quote_to_cache_payload(q: Quote) -> dict[str, Any]:
 
 
 def _payload_to_quote_dto(payload: dict[str, Any]) -> QuoteDTO:
-    """Reconstitute a QuoteDTO from cached payload."""
-    # Import here to avoid circulars if DTO module grows.
+    """Reconstitute a QuoteDTO from cached payload.
+
+    Args:
+        payload: Mapping previously produced by `_quote_to_cache_payload`.
+
+    Returns:
+        Reconstructed QuoteDTO.
+    """
     from datetime import datetime
 
     as_of_raw = payload.get("as_of")
@@ -63,14 +86,16 @@ def _payload_to_quote_dto(payload: dict[str, Any]) -> QuoteDTO:
 
 
 class GetQuotes:
-    """Use case to fetch latest quotes.
+    """Use case to fetch latest quotes with optional read-through caching.
 
     Args:
-        gateway: Market data gateway implementation.
-        cache: Optional cache implementation for hot latest quotes.
+        gateway: Market data gateway implementation that can return latest quotes
+            for a collection of symbols.
+        cache: Optional cache port used to store and retrieve hot latest quotes.
 
     Raises:
-        MarketDataUnavailable: If provider is down or improperly configured.
+        MarketDataUnavailable: If the gateway does not expose any compatible
+            latest-quotes method or the provider is effectively unavailable.
     """
 
     def __init__(
@@ -78,17 +103,24 @@ class GetQuotes:
         gateway: MarketDataGatewayProtocol,
         cache: CachePort | None = None,
     ) -> None:
+        """Initialize the GetQuotes use case.
+
+        Args:
+            gateway: Market data gateway implementation.
+            cache: Optional cache implementation for hot latest quotes.
+        """
         self._gateway = gateway
         self._cache = cache
 
     async def execute(self, tickers: Sequence[str]) -> QuotesBatchDTO:
-        """Fetch latest quotes.
+        """Fetch latest quotes for the given tickers.
 
         Args:
-            tickers: Sequence of ticker symbols.
+            tickers: Sequence of ticker symbols (case-insensitive).
 
         Returns:
-            QuotesBatchDTO: Quotes in deterministic order of input.
+            QuotesBatchDTO containing quotes in the deterministic order of the
+            input `tickers` sequence.
         """
         normalized = [t.upper() for t in tickers]
 
@@ -124,7 +156,11 @@ class GetQuotes:
                 symbol = dto.ticker.upper()
                 fresh_dtos[symbol] = dto
                 key = _quote_cache_key(symbol)
-                await cache.set_json(key, _quote_to_cache_payload(q), ttl=TTL_QUOTE_HOT_S)
+                await cache.set_json(
+                    key,
+                    _quote_to_cache_payload(q),
+                    ttl=TTL_QUOTE_HOT_S,
+                )
 
         # 3. Merge cached + fresh, respecting input order.
         result_items: list[QuoteDTO] = []
@@ -140,6 +176,16 @@ class GetQuotes:
         """Call the underlying gateway using the best-available method.
 
         This shields the use case from concrete gateway method naming drift.
+
+        Args:
+            symbols: Sequence of ticker symbols to fetch.
+
+        Returns:
+            List of domain `Quote` entities.
+
+        Raises:
+            MarketDataUnavailable: If the gateway does not expose a usable
+                latest-quotes method.
         """
         gw = self._gateway
 
@@ -159,12 +205,20 @@ class GetQuotes:
 
         # If we get here, the gateway wiring is simply wrong for this UC.
         raise MarketDataUnavailable(
-            "Market data gateway does not implement a latest-quotes method compatible with GetQuotes.",
+            "Market data gateway does not implement a latest-quotes method "
+            "compatible with GetQuotes.",
         )
 
     @staticmethod
     def _to_dto(q: Quote) -> QuoteDTO:
-        """Map a domain Quote to a DTO."""
+        """Map a domain Quote to a DTO.
+
+        Args:
+            q: Domain quote entity.
+
+        Returns:
+            QuoteDTO containing the projected fields.
+        """
         return QuoteDTO(
             ticker=q.ticker,
             price=Decimal(str(q.price)),

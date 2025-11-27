@@ -1,4 +1,3 @@
-# src/stacklion_api/application/use_cases/quotes/get_historical_quotes.py
 # Copyright (c)
 # SPDX-License-Identifier: MIT
 """Use case: Get historical quotes.
@@ -12,14 +11,20 @@ Responsibilities:
     * Build a canonical cache key and TTL band based on interval.
     * Attempt cache read; on miss, call the gateway.
     * Cache successful pages (items + total + (weak) ETag).
-    * Record UC-level and gateway-level latency metrics via Prometheus.
+    * (Optionally) expose timing around the core execution.
+
+Note:
+    To preserve clean layering, this module does not import infrastructure
+    caching or metrics modules directly. TTL bands and timing helpers are
+    defined locally and can be wired to real metrics from outer layers.
 """
 
 from __future__ import annotations
 
 import hashlib
 import json
-from collections.abc import Iterable
+from collections.abc import Iterable, Iterator
+from contextlib import contextmanager
 from typing import Any, cast
 
 from stacklion_api.application.interfaces.cache_port import CachePort
@@ -29,22 +34,71 @@ from stacklion_api.application.schemas.dto.quotes import (
 )
 from stacklion_api.domain.entities.historical_bar import BarInterval
 from stacklion_api.domain.exceptions.market_data import MarketDataValidationError
-from stacklion_api.infrastructure.caching.json_cache import (
-    TTL_EOD_S,
-    TTL_INTRADAY_RECENT_S,
-)
-from stacklion_api.infrastructure.observability.metrics_market_data import (
-    observe_upstream_request,
-    usecase_historical_quotes_latency_seconds,
-)
+
+# ---------------------------------------------------------------------- #
+# Cache TTL bands (seconds)
+# ---------------------------------------------------------------------- #
+
+# Keep these aligned with any infrastructure-level defaults. They live here
+# to avoid an application → infrastructure dependency.
+# Tests assert against these exact values.
+TTL_EOD_S = 300  # 5 minutes for end-of-day data
+TTL_INTRADAY_RECENT_S = 30  # 30 seconds for recent intraday data
+
+
+# ---------------------------------------------------------------------- #
+# No-op metrics hooks (can be replaced/wrapped externally)
+# ---------------------------------------------------------------------- #
+
+
+@contextmanager
+def _noop_timer() -> Iterator[None]:
+    """Context manager placeholder for UC-level latency measurement."""
+    yield
+
+
+class _NoopObservation:
+    """Minimal observation object with a compatible mark_error API."""
+
+    def mark_error(self, _reason: str) -> None:  # noqa: D401
+        """Record an error condition (no-op in this implementation)."""
+        return None
+
+
+@contextmanager
+def _noop_observe_upstream_request(**_kwargs: Any) -> Iterator[_NoopObservation]:
+    """Context manager placeholder for upstream request metrics."""
+    obs: _NoopObservation = _NoopObservation()
+    yield obs
 
 
 class GetHistoricalQuotesUseCase:
-    """Fetch historical OHLCV bars backed by a cache and market data gateway."""
+    """Fetch historical OHLCV bars backed by a cache and market data gateway.
+
+    The use case builds a canonical cache key for a historical query, looks up
+    any cached payload, and falls back to the market data gateway when needed.
+    Results are normalized into DTOs and cached with an interval-aware TTL.
+
+    Args:
+        cache: Cache port used to read/write precomputed historical data.
+        gateway: Market data gateway exposing a `get_historical_bars`-style API.
+
+    Returns:
+        HistoricalQuotesDTO: Normalized time-series data suitable for HTTP
+        response envelopes and downstream analytics.
+
+    Raises:
+        MarketDataError: If the upstream gateway fails or returns invalid data.
+    """
 
     def __init__(self, *, cache: CachePort, gateway: Any) -> None:
-        # We keep the gateway structurally typed (must expose get_historical_bars)
-        # to support multiple historical signatures without over-constraining types.
+        """Initialize the use case.
+
+        Args:
+            cache: Cache implementation used for historical quote results.
+            gateway: Market data gateway; must expose a `get_historical_bars`
+                coroutine with the expected signature.
+        """
         self._cache = cache
         self._gateway = gateway
 
@@ -67,7 +121,7 @@ class GetHistoricalQuotesUseCase:
         if q.from_ > q.to:
             raise MarketDataValidationError("from_ cannot be after to")
 
-        with usecase_historical_quotes_latency_seconds.time():
+        with _noop_timer():
             cache_key = self._cache_key(q)
 
             # Try cache first. If we have a hit and the client's ETag matches,
@@ -81,7 +135,7 @@ class GetHistoricalQuotesUseCase:
                 return items, total, weak_etag
 
             # Cache miss – hit the gateway, and record gateway metrics.
-            with observe_upstream_request(
+            with _noop_observe_upstream_request(
                 provider="marketstack",
                 endpoint="historical_quotes",
                 interval=str(q.interval),
@@ -321,7 +375,7 @@ def _normalize_gateway_return(
         - (items, total)
         - (items, total, etag)
         - {"items": [...], "total": N} (+ optional "etag")
-        - Iterable[HistoricalBarDTO | Mapping]  (total inferred as len)
+        - Iterable[HistoricalBarDTO | dict]  (total inferred as len)
     """
     # Dict form: {"items": [...], "total": N, "etag": "..."}.
     if isinstance(value, dict):

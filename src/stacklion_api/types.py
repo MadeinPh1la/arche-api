@@ -1,5 +1,4 @@
-"""
-Project-wide JSON typing helpers.
+"""Project-wide JSON typing helpers.
 
 These aliases model JSON-serializable values and are safe to use in public
 envelopes and presenter signatures.

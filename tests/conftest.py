@@ -43,7 +43,7 @@ def _bootstrap_test_db_schema(event_loop: asyncio.AbstractEventLoop) -> None:
         - staging.ingest_runs
         - staging.raw_payloads
 
-    IMPORTANT:
+    Important:
         This fixture is *best-effort* locally. If the test database is not
         reachable (e.g. Docker Postgres not running or port not mapped),
         we log a warning and continue so non-DB tests can still run.
@@ -154,11 +154,10 @@ async def _make_client() -> AsyncIterator[httpx.AsyncClient]:
 
 @pytest.fixture
 def http_client_factory() -> Callable[[], AbstractAsyncContextManager[httpx.AsyncClient]]:
-    """
-    Factory fixture for tests that set env inside the test:
+    """Factory fixture for tests that set env inside the test:
 
-        async with http_client_factory() as c:
-            r = await c.get("/healthz")
+    async with http_client_factory() as c:
+        r = await c.get("/healthz")
     """
     return _make_client
 

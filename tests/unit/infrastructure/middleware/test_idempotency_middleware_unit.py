@@ -1,8 +1,7 @@
 # tests/unit/infrastructure/test_idempotency_middleware_unit.py
 # Copyright (c) Stacklion.
 # SPDX-License-Identifier: MIT
-"""
-Unit tests for IdempotencyMiddleware control flow.
+"""Unit tests for IdempotencyMiddleware control flow.
 
 These tests avoid the database entirely by monkeypatching the repository and
 hashing logic to force specific branches (e.g., IN_PROGRESS).
