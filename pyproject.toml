@@ -276,6 +276,10 @@ module = [
 disable_error_code = ["misc", "import-untyped", "no-any-return"]
 
 [[tool.mypy.overrides]]
+module = "stacklion_api.tasks.cli"
+disable_error_code = ["untyped-decorator"]
+
+[[tool.mypy.overrides]]
 module = ["tests.*"]
 ignore_errors = true
 
