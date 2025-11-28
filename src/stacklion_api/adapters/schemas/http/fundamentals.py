@@ -228,7 +228,7 @@ class RestatementDeltaHTTP(BaseHTTPSchema):
     )
     fiscal_period: FiscalPeriod = Field(
         ...,
-        description="Fiscal period within the year (e.g., Q1, Q2, FY).",
+        description="Fiscal period within the year (e.g., FY, Q1, Q2).",
     )
     currency: str = Field(
         ...,

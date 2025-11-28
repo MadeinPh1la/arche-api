@@ -15,7 +15,8 @@ Purpose:
         - Are read-only.
         - Use canonical envelopes (SuccessEnvelope / PaginatedEnvelope).
         - Rely on application-layer use cases for domain behavior.
-        - Defer error mapping to the global HTTP error handler.
+        - Map domain/application exceptions into structured ErrorEnvelope
+          responses consistent with API_STANDARDS.
 
 Layer:
     adapters/routers
@@ -23,21 +24,32 @@ Layer:
 Notes:
     - This router uses BaseRouter so that versioning and resource prefixing
       (/v1/fundamentals) are consistent with the rest of the API.
+    - UnitOfWork is obtained via a dedicated dependency function. For now
+      this uses a no-op UnitOfWork suitable for validation / error-path
+      tests; EDGAR wiring can later replace this with a real SQLAlchemy UoW.
 """
 
 from __future__ import annotations
 
 from datetime import date
-from typing import Annotated
+from types import TracebackType
+from typing import Annotated, Any, cast
 
-from fastapi import Depends, Query
+from fastapi import Depends, HTTPException, Query, Request, Response, status
+from fastapi.responses import JSONResponse
 
 from stacklion_api.adapters.presenters.fundamentals_presenter import (
     present_fundamentals_time_series,
+    present_normalized_statement,
     present_restatement_delta,
 )
 from stacklion_api.adapters.routers.base_router import BaseRouter
-from stacklion_api.adapters.schemas.http.envelopes import PaginatedEnvelope, SuccessEnvelope
+from stacklion_api.adapters.schemas.http.envelopes import (
+    ErrorEnvelope,
+    ErrorObject,
+    PaginatedEnvelope,
+    SuccessEnvelope,
+)
 from stacklion_api.adapters.schemas.http.fundamentals import (
     FundamentalsTimeSeriesPointHTTP,
     NormalizedStatementViewHTTP,
@@ -58,27 +70,120 @@ from stacklion_api.application.use_cases.statements.get_normalized_statement imp
 )
 from stacklion_api.domain.enums.canonical_statement_metric import CanonicalStatementMetric
 from stacklion_api.domain.enums.edgar import FiscalPeriod, StatementType
+from stacklion_api.domain.exceptions.edgar import (
+    EdgarIngestionError,
+    EdgarMappingError,
+    EdgarNotFound,
+)
+from stacklion_api.infrastructure.logging.logger import get_json_logger
 
-# --------------------------------------------------------------------------- #
-# Temporary UoW dependency wiring                                             #
-# --------------------------------------------------------------------------- #
-
-
-def get_uow() -> UnitOfWork:  # pragma: no cover - wiring placeholder
-    """Return a UnitOfWork for fundamentals endpoints.
-
-    This placeholder exists so that the router can be imported and the test
-    suite can run. The actual implementation should be provided by the
-    application bootstrap once the modeling layer is fully integrated.
-    """
-    raise RuntimeError(
-        "get_uow dependency for fundamentals_router is not wired yet. "
-        "Wire this to the real UnitOfWork factory in the application bootstrap."
-    )
-
+logger = get_json_logger(__name__)
 
 # v1 Fundamentals router: /v1/fundamentals/...
 router = BaseRouter(version="v1", resource="fundamentals", tags=["Fundamentals"])
+
+
+# --------------------------------------------------------------------------- #
+# UoW dependency – temporary no-op wiring                                     #
+# --------------------------------------------------------------------------- #
+
+
+class _NoopUnitOfWork(UnitOfWork):
+    """Minimal UnitOfWork implementation for fundamentals endpoints.
+
+    This exists so that FastAPI can resolve the dependency and mypy is happy.
+    For the current E6 tests we only hit validation paths that never enter
+    the use cases' `async with uow` blocks, so no repositories are required.
+
+    A proper SQLAlchemy-backed UoW can later replace this wiring once EDGAR
+    modeling endpoints are fully seeded.
+    """
+
+    async def __aenter__(self) -> _NoopUnitOfWork:
+        return self
+
+    async def __aexit__(
+        self,
+        exc_type: type[BaseException] | None,
+        exc: BaseException | None,
+        tb: TracebackType | None,
+    ) -> None:
+        return None
+
+    def get_repository(self, repo_type: type[Any]) -> Any:
+        raise RuntimeError(
+            "Fundamentals router UnitOfWork has no repositories wired yet. "
+            "This is expected for validation/error-path tests. "
+            "Wire a real UoW before enabling happy-path fundamentals endpoints.",
+        )
+
+    async def commit(self) -> None:  # pragma: no cover - not used in tests
+        return None
+
+    async def rollback(self) -> None:  # pragma: no cover - not used in tests
+        return None
+
+
+def get_uow() -> UnitOfWork:
+    """FastAPI dependency that yields a UnitOfWork instance.
+
+    For now this returns a no-op UnitOfWork sufficient for E6 HTTP tests that
+    exercise only validation / error behavior. EDGAR infra can later override
+    this with a real UnitOfWork via dependency_overrides or by changing this
+    function to construct the concrete UoW.
+    """
+    return _NoopUnitOfWork()
+
+
+# --------------------------------------------------------------------------- #
+# Helpers                                                                     #
+# --------------------------------------------------------------------------- #
+
+
+def _normalize_cik(raw: str) -> str:
+    """Normalize and validate a CIK string.
+
+    Rules:
+        - Must be non-empty after trimming.
+        - Must contain only digits.
+    """
+    cik = raw.strip()
+    if not cik:
+        raise HTTPException(
+            status_code=status.HTTP_400_BAD_REQUEST,
+            detail="CIK must not be empty",
+        )
+    if not cik.isdigit():
+        raise HTTPException(
+            status_code=status.HTTP_400_BAD_REQUEST,
+            detail="CIK must contain only digits",
+        )
+    return cik
+
+
+def _error_envelope(
+    *,
+    http_status: int,
+    code: str,
+    message: str,
+    trace_id: str | None,
+    details: dict[str, Any] | None = None,
+) -> ErrorEnvelope:
+    """Construct an ErrorEnvelope with canonical fields."""
+    return ErrorEnvelope(
+        error=ErrorObject(
+            code=code,
+            http_status=http_status,
+            message=message,
+            details=details or {},
+            trace_id=trace_id,
+        ),
+    )
+
+
+# --------------------------------------------------------------------------- #
+# Routes: Fundamentals time series                                            #
+# --------------------------------------------------------------------------- #
 
 
 @router.get(
@@ -92,8 +197,11 @@ router = BaseRouter(version="v1", resource="fundamentals", tags=["Fundamentals"]
     ),
     # Governance requires a generic PaginatedEnvelope schema name in OpenAPI.
     response_model=PaginatedEnvelope,
+    responses=cast("dict[int | str, dict[str, Any]]", BaseRouter.std_error_responses()),
 )
 async def get_fundamentals_time_series(
+    request: Request,
+    response: Response,
     uow: Annotated[UnitOfWork, Depends(get_uow)],
     ciks: Annotated[
         list[str],
@@ -166,26 +274,125 @@ async def get_fundamentals_time_series(
             description="Maximum number of items to return per page (1–200).",
         ),
     ] = 50,
-) -> PaginatedEnvelope[FundamentalsTimeSeriesPointHTTP]:
+) -> PaginatedEnvelope[FundamentalsTimeSeriesPointHTTP] | JSONResponse:
     """HTTP handler for /v1/fundamentals/time-series."""
+    del request  # reserved for future auth/feature flags
+    trace_id = response.headers.get("X-Request-ID")
+
+    normalized_ciks = [_normalize_cik(cik) for cik in ciks]
+
+    # HTTP-level date-window validation to satisfy E6 tests.
+    if from_date and to_date and from_date > to_date:
+        error = _error_envelope(
+            http_status=400,
+            code="VALIDATION_ERROR",
+            message="from date must be <= to date.",
+            trace_id=trace_id,
+            details={
+                "from": from_date.isoformat(),
+                "to": to_date.isoformat(),
+            },
+        )
+        return JSONResponse(status_code=400, content=error.model_dump(mode="json"))
+
+    logger.info(
+        "fundamentals.api.time_series.start",
+        extra={
+            "ciks": normalized_ciks,
+            "statement_type": statement_type.value,
+            "metrics": [m.value for m in metrics] if metrics is not None else None,
+            "frequency": frequency,
+            "from_date": from_date.isoformat() if from_date else None,
+            "to_date": to_date.isoformat() if to_date else None,
+            "page": page,
+            "page_size": page_size,
+            "trace_id": trace_id,
+        },
+    )
+
     use_case = GetFundamentalsTimeSeriesUseCase(uow=uow)
 
-    req = GetFundamentalsTimeSeriesRequest(
-        ciks=ciks,
-        statement_type=statement_type,
-        metrics=tuple(metrics) if metrics is not None else None,
-        frequency=frequency,
-        from_date=from_date,
-        to_date=to_date,
-    )
+    try:
+        req = GetFundamentalsTimeSeriesRequest(
+            ciks=normalized_ciks,
+            statement_type=statement_type,
+            metrics=tuple(metrics) if metrics is not None else None,
+            frequency=frequency,
+            from_date=from_date,
+            to_date=to_date,
+        )
 
-    series = await use_case.execute(req)
+        series = await use_case.execute(req)
 
-    return present_fundamentals_time_series(
-        points=series,
-        page=page,
-        page_size=page_size,
-    )
+        envelope = present_fundamentals_time_series(
+            points=series,
+            page=page,
+            page_size=page_size,
+        )
+
+        logger.info(
+            "fundamentals.api.time_series.success",
+            extra={
+                "ciks": normalized_ciks,
+                "statement_type": statement_type.value,
+                "frequency": frequency,
+                "count": len(envelope.items),
+                "total": envelope.total,
+                "page": envelope.page,
+                "page_size": envelope.page_size,
+                "trace_id": trace_id,
+            },
+        )
+        return envelope
+
+    except EdgarNotFound as exc:
+        error = _error_envelope(
+            http_status=404,
+            code="FUNDAMENTALS_NOT_FOUND",
+            message=str(exc),
+            trace_id=trace_id,
+        )
+        return JSONResponse(status_code=404, content=error.model_dump(mode="json"))
+
+    except EdgarMappingError as exc:
+        error = _error_envelope(
+            http_status=400,
+            code="EDGAR_MAPPING_ERROR",
+            message=str(exc),
+            trace_id=trace_id,
+            details=getattr(exc, "details", None),
+        )
+        return JSONResponse(status_code=400, content=error.model_dump(mode="json"))
+
+    except EdgarIngestionError as exc:
+        # Upstream ingestion/availability problem – surface as 502.
+        error = _error_envelope(
+            http_status=502,
+            code="EDGAR_UPSTREAM_ERROR",
+            message=str(exc),
+            trace_id=trace_id,
+            details=getattr(exc, "details", None),
+        )
+        return JSONResponse(status_code=502, content=error.model_dump(mode="json"))
+
+    except Exception as exc:  # pragma: no cover - defensive
+        logger.exception(
+            "fundamentals.api.time_series.unhandled",
+            extra={"trace_id": trace_id},
+        )
+        error = _error_envelope(
+            http_status=500,
+            code="INTERNAL_ERROR",
+            message="Fundamentals time series endpoint failed unexpectedly.",
+            trace_id=trace_id,
+            details={"reason": type(exc).__name__},
+        )
+        return JSONResponse(status_code=500, content=error.model_dump(mode="json"))
+
+
+# --------------------------------------------------------------------------- #
+# Routes: Restatement delta                                                   #
+# --------------------------------------------------------------------------- #
 
 
 @router.get(
@@ -196,9 +403,12 @@ async def get_fundamentals_time_series(
         "normalized EDGAR statement, returning per-metric changes between "
         "two version sequences."
     ),
-    response_model=SuccessEnvelope[RestatementDeltaHTTP],
+    response_model=SuccessEnvelope[RestatementDeltaHTTP] | ErrorEnvelope,
+    responses=cast("dict[int | str, dict[str, Any]]", BaseRouter.std_error_responses()),
 )
 async def get_restatement_delta(
+    request: Request,
+    response: Response,
     uow: Annotated[UnitOfWork, Depends(get_uow)],
     cik: Annotated[
         str,
@@ -255,23 +465,118 @@ async def get_restatement_delta(
             ),
         ),
     ] = None,
-) -> SuccessEnvelope[RestatementDeltaHTTP]:
+) -> SuccessEnvelope[RestatementDeltaHTTP] | ErrorEnvelope | JSONResponse:
     """HTTP handler for /v1/fundamentals/restatement-delta."""
-    use_case = ComputeRestatementDeltaUseCase(uow=uow)
+    del request  # reserved for future auth
+    trace_id = response.headers.get("X-Request-ID")
+    normalized_cik = _normalize_cik(cik)
 
-    req = ComputeRestatementDeltaRequest(
-        cik=cik,
-        statement_type=statement_type,
-        fiscal_year=fiscal_year,
-        fiscal_period=fiscal_period,
-        from_version_sequence=from_version_sequence,
-        to_version_sequence=to_version_sequence,
-        metrics=tuple(metrics) if metrics is not None else None,
+    if from_version_sequence >= to_version_sequence:
+        error = _error_envelope(
+            http_status=400,
+            code="VALIDATION_ERROR",
+            message="from_version_sequence must be < to_version_sequence.",
+            trace_id=trace_id,
+            details={
+                "from_version_sequence": from_version_sequence,
+                "to_version_sequence": to_version_sequence,
+            },
+        )
+        return JSONResponse(status_code=400, content=error.model_dump(mode="json"))
+
+    logger.info(
+        "fundamentals.api.restatement_delta.start",
+        extra={
+            "cik": normalized_cik,
+            "statement_type": statement_type.value,
+            "fiscal_year": fiscal_year,
+            "fiscal_period": fiscal_period.value,
+            "from_version_sequence": from_version_sequence,
+            "to_version_sequence": to_version_sequence,
+            "metrics": [m.value for m in metrics] if metrics is not None else None,
+            "trace_id": trace_id,
+        },
     )
 
-    result = await use_case.execute(req)
+    use_case = ComputeRestatementDeltaUseCase(uow=uow)
 
-    return present_restatement_delta(result=result)
+    try:
+        req = ComputeRestatementDeltaRequest(
+            cik=normalized_cik,
+            statement_type=statement_type,
+            fiscal_year=fiscal_year,
+            fiscal_period=fiscal_period,
+            from_version_sequence=from_version_sequence,
+            to_version_sequence=to_version_sequence,
+            metrics=tuple(metrics) if metrics is not None else None,
+        )
+
+        result = await use_case.execute(req)
+
+        envelope = present_restatement_delta(result=result)
+
+        logger.info(
+            "fundamentals.api.restatement_delta.success",
+            extra={
+                "cik": normalized_cik,
+                "statement_type": statement_type.value,
+                "fiscal_year": fiscal_year,
+                "fiscal_period": fiscal_period.value,
+                "from_version_sequence": from_version_sequence,
+                "to_version_sequence": to_version_sequence,
+                "metrics_count": len(envelope.data.metrics),
+                "trace_id": trace_id,
+            },
+        )
+        return envelope
+
+    except EdgarNotFound as exc:
+        error = _error_envelope(
+            http_status=404,
+            code="EDGAR_STATEMENT_NOT_FOUND",
+            message=str(exc),
+            trace_id=trace_id,
+        )
+        return JSONResponse(status_code=404, content=error.model_dump(mode="json"))
+
+    except EdgarMappingError as exc:
+        error = _error_envelope(
+            http_status=400,
+            code="EDGAR_MAPPING_ERROR",
+            message=str(exc),
+            trace_id=trace_id,
+            details=getattr(exc, "details", None),
+        )
+        return JSONResponse(status_code=400, content=error.model_dump(mode="json"))
+
+    except EdgarIngestionError as exc:
+        error = _error_envelope(
+            http_status=502,
+            code="EDGAR_UPSTREAM_ERROR",
+            message=str(exc),
+            trace_id=trace_id,
+            details=getattr(exc, "details", None),
+        )
+        return JSONResponse(status_code=502, content=error.model_dump(mode="json"))
+
+    except Exception as exc:  # pragma: no cover
+        logger.exception(
+            "fundamentals.api.restatement_delta.unhandled",
+            extra={"cik": normalized_cik, "trace_id": trace_id},
+        )
+        error = _error_envelope(
+            http_status=500,
+            code="INTERNAL_ERROR",
+            message="Restatement delta endpoint failed unexpectedly.",
+            trace_id=trace_id,
+            details={"reason": type(exc).__name__},
+        )
+        return JSONResponse(status_code=500, content=error.model_dump(mode="json"))
+
+
+# --------------------------------------------------------------------------- #
+# Routes: Normalized statement with version history                           #
+# --------------------------------------------------------------------------- #
 
 
 @router.get(
@@ -282,9 +587,12 @@ async def get_restatement_delta(
         "(CIK, statement_type, fiscal_year, fiscal_period) identity tuple, "
         "optionally including its version history."
     ),
-    response_model=SuccessEnvelope[NormalizedStatementViewHTTP],
+    response_model=SuccessEnvelope[NormalizedStatementViewHTTP] | ErrorEnvelope,
+    responses=cast("dict[int | str, dict[str, Any]]", BaseRouter.std_error_responses()),
 )
 async def get_normalized_statement(
+    request: Request,
+    response: Response,
     uow: Annotated[UnitOfWork, Depends(get_uow)],
     cik: Annotated[
         str,
@@ -321,22 +629,93 @@ async def get_normalized_statement(
             description="Whether to include full version history in the response.",
         ),
     ] = True,
-) -> SuccessEnvelope[NormalizedStatementViewHTTP]:
+) -> SuccessEnvelope[NormalizedStatementViewHTTP] | ErrorEnvelope | JSONResponse:
     """HTTP handler for /v1/fundamentals/normalized-statements."""
+    del request
+    trace_id = response.headers.get("X-Request-ID")
+    normalized_cik = _normalize_cik(cik)
+
+    logger.info(
+        "fundamentals.api.normalized_statement.start",
+        extra={
+            "cik": normalized_cik,
+            "statement_type": statement_type.value,
+            "fiscal_year": fiscal_year,
+            "fiscal_period": fiscal_period.value,
+            "include_version_history": include_version_history,
+            "trace_id": trace_id,
+        },
+    )
+
     use_case = GetNormalizedStatementUseCase(uow=uow)
 
-    req = GetNormalizedStatementRequest(
-        cik=cik,
-        statement_type=statement_type,
-        fiscal_year=fiscal_year,
-        fiscal_period=fiscal_period,
-        include_version_history=include_version_history,
-    )
+    try:
+        req = GetNormalizedStatementRequest(
+            cik=normalized_cik,
+            statement_type=statement_type,
+            fiscal_year=fiscal_year,
+            fiscal_period=fiscal_period,
+            include_version_history=include_version_history,
+        )
 
-    result = await use_case.execute(req)
+        result = await use_case.execute(req)
 
-    view = NormalizedStatementViewHTTP(
-        latest=result.latest_version,
-        version_history=list(result.version_history),
-    )
-    return SuccessEnvelope[NormalizedStatementViewHTTP](data=view)
+        envelope = present_normalized_statement(result=result)
+
+        logger.info(
+            "fundamentals.api.normalized_statement.success",
+            extra={
+                "cik": normalized_cik,
+                "statement_type": statement_type.value,
+                "fiscal_year": fiscal_year,
+                "fiscal_period": fiscal_period.value,
+                "include_version_history": include_version_history,
+                "has_history": bool(envelope.data.version_history),
+                "trace_id": trace_id,
+            },
+        )
+
+        return envelope
+
+    except EdgarNotFound as exc:
+        error = _error_envelope(
+            http_status=404,
+            code="EDGAR_STATEMENT_NOT_FOUND",
+            message=str(exc),
+            trace_id=trace_id,
+        )
+        return JSONResponse(status_code=404, content=error.model_dump(mode="json"))
+
+    except EdgarMappingError as exc:
+        error = _error_envelope(
+            http_status=400,
+            code="EDGAR_MAPPING_ERROR",
+            message=str(exc),
+            trace_id=trace_id,
+            details=getattr(exc, "details", None),
+        )
+        return JSONResponse(status_code=400, content=error.model_dump(mode="json"))
+
+    except EdgarIngestionError as exc:
+        error = _error_envelope(
+            http_status=502,
+            code="EDGAR_UPSTREAM_ERROR",
+            message=str(exc),
+            trace_id=trace_id,
+            details=getattr(exc, "details", None),
+        )
+        return JSONResponse(status_code=502, content=error.model_dump(mode="json"))
+
+    except Exception as exc:  # pragma: no cover
+        logger.exception(
+            "fundamentals.api.normalized_statement.unhandled",
+            extra={"cik": normalized_cik, "trace_id": trace_id},
+        )
+        error = _error_envelope(
+            http_status=500,
+            code="INTERNAL_ERROR",
+            message="Normalized statement endpoint failed unexpectedly.",
+            trace_id=trace_id,
+            details={"reason": type(exc).__name__},
+        )
+        return JSONResponse(status_code=500, content=error.model_dump(mode="json"))

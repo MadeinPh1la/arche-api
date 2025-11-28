@@ -168,10 +168,106 @@ class EdgarStatementVersionListDTO(BaseDTO):
     items: list[EdgarStatementVersionDTO]
 
 
+class GetNormalizedStatementResultDTO(BaseDTO):
+    """Result DTO for a normalized EDGAR statement lookup.
+
+    This is the application-layer result for the "get normalized statement"
+    use case. It represents the latest statement version for a given
+    (cik, statement_type, fiscal_year, fiscal_period) tuple, along with an
+    ordered version history for the same key.
+
+    Attributes:
+        cik: Company CIK.
+        statement_type: Statement type requested.
+        fiscal_year: Fiscal year requested.
+        fiscal_period: Fiscal period requested.
+        latest_version: Latest statement version matching the criteria.
+        version_history: Ordered list of historical versions for the same key.
+            Implementations SHOULD ensure this is sorted by version_sequence.
+    """
+
+    model_config = ConfigDict(extra="forbid")
+
+    cik: str
+    statement_type: StatementType
+    fiscal_year: int
+    fiscal_period: FiscalPeriod
+    latest_version: EdgarStatementVersionDTO
+    version_history: list[EdgarStatementVersionDTO]
+
+
+class RestatementMetricDeltaDTO(BaseDTO):
+    """DTO representing the restatement delta for a single metric.
+
+    Attributes:
+        metric: Canonical metric identifier.
+        old_value: Stringified numeric value from the `from` version, or None
+            if the metric did not exist in that version.
+        new_value: Stringified numeric value from the `to` version, or None if
+            the metric is no longer present.
+        diff: Stringified numeric difference (new - old), or None if the
+            difference is not computable.
+    """
+
+    model_config = ConfigDict(extra="forbid")
+
+    metric: str
+    old_value: str | None
+    new_value: str | None
+    diff: str | None
+
+
+class RestatementSummaryDTO(BaseDTO):
+    """High-level summary DTO for a restatement delta computation.
+
+    Attributes:
+        total_metrics_compared: Total number of metrics considered.
+        total_metrics_changed: Number of metrics whose value changed.
+        has_material_change: Whether the restatement is considered material
+            according to application-defined thresholds.
+    """
+
+    model_config = ConfigDict(extra="forbid")
+
+    total_metrics_compared: int
+    total_metrics_changed: int
+    has_material_change: bool
+
+
+class ComputeRestatementDeltaResultDTO(BaseDTO):
+    """Result DTO for EDGAR restatement delta computations.
+
+    Attributes:
+        cik: Company CIK.
+        statement_type: Statement type.
+        fiscal_year: Fiscal year.
+        fiscal_period: Fiscal period.
+        from_version_sequence: Lower-bound version sequence (inclusive).
+        to_version_sequence: Upper-bound version sequence (inclusive).
+        summary: High-level summary for the restatement.
+        deltas: Per-metric restatement deltas.
+    """
+
+    model_config = ConfigDict(extra="forbid")
+
+    cik: str
+    statement_type: StatementType
+    fiscal_year: int
+    fiscal_period: FiscalPeriod
+    from_version_sequence: int
+    to_version_sequence: int
+    summary: RestatementSummaryDTO
+    deltas: list[RestatementMetricDeltaDTO]
+
+
 __all__ = [
     "EdgarFilingDTO",
     "EdgarFilingListDTO",
     "NormalizedStatementPayloadDTO",
     "EdgarStatementVersionDTO",
     "EdgarStatementVersionListDTO",
+    "GetNormalizedStatementResultDTO",
+    "RestatementMetricDeltaDTO",
+    "RestatementSummaryDTO",
+    "ComputeRestatementDeltaResultDTO",
 ]

@@ -202,10 +202,6 @@ def present_normalized_statement(
     # instances prior to calling this function, or use a thin mapper around
     # this presenter.
 
-    # In this modeling layer we assume that:
-    #   - `latest_version` and each entry in `version_history` will be mapped
-    #     by a dedicated EDGAR presenter. As such, we expose a "view" schema
-    #     which is a container for those HTTP models.
     view = NormalizedStatementViewHTTP(
         latest=result.latest_version,
         version_history=list(result.version_history),

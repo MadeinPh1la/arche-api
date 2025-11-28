@@ -533,6 +533,321 @@ stmt = (
     .order_by(Model.statement_date.desc(), Model.id.asc())
 )
 ```
+Below is a **drop-in replacement section** for your `ENGINEERING_GUIDE.md`.
+It is written as production-grade internal documentation, uses formal headings, includes cross-links, and **exactly codifies the “may/may not” rules** the architecture tests now enforce.
+
+You can paste it directly under a heading like:
+
+```
+## Architecture, Boundaries & Layering Rules
+```
+
+or make it its own section. Up to you.
+
+---
+
+# **Architecture Boundary & Layering Contract**
+
+*(Enforced by Architecture Tests — See: `tests/architecture/`)*
+
+This section defines the **authorized interactions**, **forbidden dependencies**, and **mandatory patterns** for every layer of the Stacklion system. The rules in this section are **actively enforced** by the architecture test suite in `tests/architecture/`. Any violation will fail CI.
+
+This is the canonical contract for how code may and may not interact across:
+
+* `domain/`
+* `application/`
+* `adapters/`
+* `infrastructure/`
+
+These rules are not aspirational. They are executable.
+
+---
+
+## **1. Domain Layer Rules**
+
+### **You MAY**
+
+* Define:
+
+  * Entities
+  * Value objects
+  * Domain enums
+  * Domain exceptions
+  * Domain services
+  * Domain interfaces (repository/gateway protocols)
+* Use:
+
+  * Standard library facilities
+  * Pure functions and deterministic transformations
+* Raise domain exceptions only.
+
+### **You MAY NOT**
+
+* Import *anything* from:
+
+  * `application/`
+  * `adapters/`
+  * `infrastructure/`
+* Depend on:
+
+  * Databases
+  * HTTP clients
+  * SQLAlchemy types
+  * FastAPI types
+  * Any I/O mechanism
+* Perform:
+
+  * Logging
+  * DB queries
+  * Network calls
+* Reference:
+
+  * Concrete repositories
+  * Concrete gateways
+  * Settings/config objects
+
+### **Architecture tests enforce**
+
+* No file under `domain/` imports a symbol from outside `domain/`.
+* Domain interfaces are pure `Protocol`-based abstractions.
+
+*(See: `tests/architecture/test_domain_isolation.py`)*
+
+---
+
+## **2. Application Layer Rules**
+
+### **You MAY**
+
+* Implement:
+
+  * Use cases (orchestrations)
+  * DTO types for request/response shapes
+* Depend on:
+
+  * Domain entities
+  * Domain interfaces
+  * `UnitOfWork` abstraction
+* Perform:
+
+  * Validation
+  * Logging
+  * Pure orchestration across repositories/gateways exposed by the UoW
+
+### **You MAY NOT**
+
+* Import from:
+
+  * `adapters.repositories`
+  * `adapters.gateways`
+  * `infrastructure.*`
+* Type-depend directly on:
+
+  * SQLAlchemy models
+  * Concrete repo classes
+  * Concrete gateway implementations
+
+### **Resolution rules**
+
+* All repository access must go through:
+  `tx.get_repository(ConcreteRepoClass)`
+* Allowed pattern at use-case boundary:
+
+```python
+module = import_module("stacklion_api.adapters.repositories.edgar_statements_repository")
+repo_cls = module.EdgarStatementsRepository
+statements_repo = tx.get_repository(repo_cls)
+```
+
+### **Architecture tests enforce**
+
+* No application file imports any adapter/infrastructure module.
+* Only domain types + UoW may appear in use cases.
+* Repository resolution must go through the UoW boundary.
+
+*(See: `tests/architecture/test_application_layer.py`)*
+
+---
+
+## **3. Adapters Layer Rules**
+
+*(repositories, gateways, routers, presenters)*
+
+### **You MAY**
+
+* Implement concrete:
+
+  * Repositories
+  * Gateways
+  * Presenters
+  * Routers
+* Translate:
+
+  * DB rows/HTTP payloads → domain entities
+  * domain entities → transport envelopes
+* Use:
+
+  * SQLAlchemy
+  * httpx
+  * Pydantic / FastAPI
+  * Infrastructure helpers (logging, metrics, retry, circuit breaker)
+
+### **You MAY NOT**
+
+* Import from `application/` except for:
+
+  * DTOs used explicitly by entrypoint-level routers/controllers
+* Call use cases directly from repository or gateway code.
+* Introduce new cross-adapter coupling (e.g., repo → router).
+
+### **Architecture tests enforce**
+
+* Adapters may only point *inward* (to `domain/` and certain trusted infrastructure).
+* No adapter imports application-level modules unless in router/controller scope.
+
+*(See: `tests/architecture/test_adapters_dependencies.py`)*
+
+---
+
+## **4. Infrastructure Layer Rules**
+
+### **You MAY**
+
+* Implement:
+
+  * DB models
+  * Settings
+  * HTTP clients
+  * Resilience primitives
+  * Observability pipeline (logs, metrics, traces)
+  * Caching + background jobs
+
+### **You MAY NOT**
+
+* Import:
+
+  * `application/`
+  * `adapters/routers`
+  * Anything that depends on FastAPI or I/O entrypoints
+* Leakage of infra types into domain or application.
+
+### **Architecture tests enforce**
+
+* Infrastructure depends on nothing above it.
+* No infrastructure type appears in domain/application import graphs.
+
+*(See: `tests/architecture/test_infrastructure_isolation.py`)*
+
+---
+
+## **5. Entry Points (HTTP, MCP, CLI)**
+
+### **You MAY**
+
+* Import:
+
+  * Application use cases
+  * Application DTOs
+  * Presenters
+* Construct runtime dependencies:
+
+  * UnitOfWork impls
+  * Concrete repositories
+  * Concrete gateways
+  * Config & middleware
+
+### **You MAY NOT**
+
+* Put business logic in routers.
+* Touch infrastructure internals directly in router/controller code.
+
+### **Architecture tests enforce**
+
+* Routers must match versioning conventions except explicitly exempted modules.
+* All public routes must have a versioned prefix (`/v1`, `/v2`, etc.) unless added to the exempt list.
+
+*(See: `tests/architecture/test_router_conventions.py`)*
+
+---
+
+## **6. Unit of Work Contract**
+
+### **Rules**
+
+* All write operations must occur inside `async with uow`.
+* A use case may only acquire repositories via:
+
+  * `tx.get_repository(ConcreteRepositoryClass)`
+* UoW implementations must register repositories consistently.
+
+### **Architecture tests enforce**
+
+* Use cases may not instantiate repo classes directly.
+* Only the UoW is allowed to construct adapter-layer repositories.
+
+*(See: `tests/architecture/test_uow_boundaries.py`)*
+
+---
+
+## **7. Allowed Dependency Directions**
+
+```
+domain  ←  application  ←  adapters  ←  infrastructure
+(domain has no deps)    (app is orchestration)   (infra is bottom)
+```
+
+### **You MAY NOT**
+
+* Create cycles.
+* Have upward imports.
+* Allow infra types to leak upward.
+* Allow application to depend on adapters directly.
+
+### **Architecture tests enforce**
+
+* Static import graph validation.
+* Forbidden import patterns.
+* Layer boundary integrity.
+
+*(See: `tests/architecture/test_import_graph.py`)*
+
+---
+
+## **8. Repository Resolution (Mandatory Pattern)**
+
+**Correct:**
+
+```python
+module = import_module("stacklion_api.adapters.repositories.edgar_statements_repository")
+repo_cls = module.EdgarStatementsRepository
+repo = tx.get_repository(repo_cls)
+```
+
+**Incorrect / Forbidden:**
+
+```python
+from stacklion_api.adapters.repositories.edgar_statements_repository import EdgarStatementsRepository
+repo = EdgarStatementsRepository(...)        # ❌ forbidden
+repo = SomeConcreteRepo(session)            # ❌ bypasses UoW
+```
+
+Tests will reject direct imports or constructions of adapter repositories within the application layer.
+
+---
+
+## **9. What the Architecture Tests Guarantee**
+
+When the architecture suite is green:
+
+* Domain is purely isolated and dependency-free.
+* Application is adapter-agnostic and infra-agnostic.
+* Adapters are the only layer that touches DB/HTTP.
+* Infrastructure does not leak upward.
+* UoW controls repository wiring exclusively.
+* Entry points remain thin and correctly versioned.
+* Every "may/may not" rule is enforced in CI by executable tests.
+
+This is what keeps Stacklion **best-in-class, forward-compatible, replaceable, testable, and resistant to entropy**.
 
 ---
 
