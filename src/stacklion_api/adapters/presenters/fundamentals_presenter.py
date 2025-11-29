@@ -26,6 +26,7 @@ from math import ceil
 
 from stacklion_api.adapters.schemas.http.envelopes import PaginatedEnvelope, SuccessEnvelope
 from stacklion_api.adapters.schemas.http.fundamentals import (
+    DerivedMetricsTimeSeriesPointHTTP,
     FundamentalsTimeSeriesPointHTTP,
     NormalizedStatementViewHTTP,
     RestatementDeltaHTTP,
@@ -36,6 +37,9 @@ from stacklion_api.application.use_cases.statements.compute_restatement_delta im
 )
 from stacklion_api.application.use_cases.statements.get_normalized_statement import (
     NormalizedStatementResult,
+)
+from stacklion_api.domain.entities.edgar_derived_timeseries import (
+    DerivedMetricsTimeSeriesPoint,
 )
 from stacklion_api.domain.entities.edgar_fundamentals_timeseries import (
     FundamentalsTimeSeriesPoint,
@@ -64,6 +68,25 @@ def _map_fundamentals_point(point: FundamentalsTimeSeriesPoint) -> FundamentalsT
     }
 
     return FundamentalsTimeSeriesPointHTTP(
+        cik=point.cik,
+        statement_type=point.statement_type,
+        accounting_standard=point.accounting_standard,
+        statement_date=point.statement_date,
+        fiscal_year=point.fiscal_year,
+        fiscal_period=point.fiscal_period,
+        currency=point.currency,
+        metrics=metrics_http,
+        normalized_payload_version_sequence=point.normalized_payload_version_sequence,
+    )
+
+
+def _map_derived_point(point: DerivedMetricsTimeSeriesPoint) -> DerivedMetricsTimeSeriesPointHTTP:
+    """Convert a domain DerivedMetricsTimeSeriesPoint into its HTTP schema."""
+    metrics_http: dict[str, str] = {
+        metric.value: _decimal_to_str(amount) or "0" for metric, amount in point.metrics.items()
+    }
+
+    return DerivedMetricsTimeSeriesPointHTTP(
         cik=point.cik,
         statement_type=point.statement_type,
         accounting_standard=point.accounting_standard,
@@ -131,6 +154,54 @@ def present_fundamentals_time_series(
     _ = ceil(total / page_size) if page_size else 0
 
     return PaginatedEnvelope[FundamentalsTimeSeriesPointHTTP](
+        page=page,
+        page_size=page_size,
+        total=total,
+        items=http_items,
+    )
+
+
+def present_derived_time_series(
+    *,
+    points: Iterable[DerivedMetricsTimeSeriesPoint],
+    page: int,
+    page_size: int,
+) -> PaginatedEnvelope[DerivedMetricsTimeSeriesPointHTTP]:
+    """Present a derived metrics time series as a paginated envelope.
+
+    Pagination is applied in-memory over the already-deterministic list of
+    points produced by the application layer. This presenter is responsible
+    only for slicing and mapping; the ordering is determined by the domain
+    helper.
+
+    Args:
+        points:
+            Iterable of domain derived-metrics points, already sorted.
+        page:
+            1-based page index.
+        page_size:
+            Page size (number of items per page).
+
+    Returns:
+        PaginatedEnvelope containing DerivedMetricsTimeSeriesPointHTTP items.
+    """
+    items = list(points)
+    total = len(items)
+
+    if page < 1:
+        page = 1
+    if page_size < 1:
+        page_size = 1
+
+    start = (page - 1) * page_size
+    end = start + page_size
+    sliced = items[start:end]
+
+    http_items = [_map_derived_point(point) for point in sliced]
+
+    _ = ceil(total / page_size) if page_size else 0
+
+    return PaginatedEnvelope[DerivedMetricsTimeSeriesPointHTTP](
         page=page,
         page_size=page_size,
         total=total,

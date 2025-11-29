@@ -1,14 +1,17 @@
-# Copyright (c) Stacklion.
+# src/stacklion_api/infrastructure/observability/metrics_edgar.py
+# Copyright (c)
 # SPDX-License-Identifier: MIT
 """EDGAR metrics.
 
 Purpose:
-    Provide Prometheus-style metrics for EDGAR external API calls:
+    Provide Prometheus-style metrics for EDGAR external API calls and
+    derived-metrics computations:
       * Latency histograms.
       * Error counters by reason.
       * HTTP status distribution.
       * Response size histograms.
       * Retry and circuit-breaker event counters.
+      * Derived-metric computation latency and failures.
 
 Design:
     - If prometheus_client is unavailable, exposes no-op counters/histograms.
@@ -49,6 +52,8 @@ _edgar_response_bytes: Any | None = None
 _edgar_retries_total: Any | None = None
 _edgar_304_total: Any | None = None
 _edgar_breaker_events_total: Any | None = None
+_edgar_derived_metric_failures_total: Any | None = None
+_edgar_derived_metrics_latency_seconds: Any | None = None
 
 
 def get_edgar_gateway_latency_seconds() -> Any:
@@ -133,3 +138,39 @@ def get_edgar_breaker_events_total() -> Any:
             ["provider", "endpoint", "state"],
         )
     return _edgar_breaker_events_total
+
+
+def get_edgar_derived_metric_failures_total() -> Any:
+    """Return (and lazily create) the derived-metric failure counter.
+
+    Labels:
+        metric: Derived metric code (e.g., 'GROSS_MARGIN').
+        reason: Failure reason (e.g., 'MISSING_INPUT').
+        statement_type: Source statement type.
+        accounting_standard: Accounting standard (e.g., 'US_GAAP').
+    """
+    global _edgar_derived_metric_failures_total
+    if _edgar_derived_metric_failures_total is None:
+        _edgar_derived_metric_failures_total = Counter(
+            "edgar_derived_metric_failures_total",
+            "Total number of EDGAR derived metric computation failures.",
+            ["metric", "reason", "statement_type", "accounting_standard"],
+        )
+    return _edgar_derived_metric_failures_total
+
+
+def get_edgar_derived_metrics_latency_seconds() -> Any:
+    """Return (and lazily create) the derived-metrics latency histogram.
+
+    Labels:
+        statement_type: Source statement type.
+        window: Time window / frequency label (e.g., 'annual', 'quarterly').
+    """
+    global _edgar_derived_metrics_latency_seconds
+    if _edgar_derived_metrics_latency_seconds is None:
+        _edgar_derived_metrics_latency_seconds = Histogram(
+            "edgar_derived_metrics_latency_seconds",
+            "Latency of EDGAR derived metrics computations in seconds.",
+            ["statement_type", "window"],
+        )
+    return _edgar_derived_metrics_latency_seconds

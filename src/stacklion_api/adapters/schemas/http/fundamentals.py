@@ -7,6 +7,7 @@ Purpose:
     Define HTTP-facing schemas for:
         * Fundamentals time-series points, suitable for panel-friendly
           analytics and backtests.
+        * Derived metrics time-series points (margins, growth, returns, etc.).
         * Restatement deltas computed from normalized EDGAR payloads.
         * A normalized-statement view combining the latest version and its
           version history.
@@ -18,6 +19,7 @@ Design:
     * These schemas are transport-facing projections of application/domain
       DTOs and entities:
         - FundamentalsTimeSeriesPoint (domain)
+        - DerivedMetricsTimeSeriesPoint (domain)
         - RestatementDelta (domain)
         - NormalizedStatementResult (application)
 
@@ -131,6 +133,85 @@ class FundamentalsTimeSeriesPointHTTP(BaseHTTPSchema):
         description=(
             "Version sequence of the underlying canonical normalized payload "
             "used to derive this time-series point."
+        ),
+    )
+
+
+class DerivedMetricsTimeSeriesPointHTTP(BaseHTTPSchema):
+    """HTTP schema for a single derived metrics time-series point.
+
+    This schema represents a modeling-friendly view of derived analytics
+    (margins, growth rates, cash-flow measures, returns) computed from
+    canonical normalized EDGAR payloads.
+
+    Attributes:
+        cik:
+            Central Index Key for the filer.
+        statement_type:
+            Statement type that served as the primary source (e.g., income
+            statement, balance sheet).
+        accounting_standard:
+            Accounting standard (e.g., US_GAAP, IFRS).
+        statement_date:
+            Reporting period end date.
+        fiscal_year:
+            Fiscal year associated with the statement (>= 1).
+        fiscal_period:
+            Fiscal period within the year (e.g., FY, Q1, Q2).
+        currency:
+            ISO 4217 currency code (e.g., "USD").
+        metrics:
+            Mapping from derived metric codes (e.g., "GROSS_MARGIN") to
+            decimal string values.
+        normalized_payload_version_sequence:
+            Version sequence of the canonical normalized payload used as the
+            basis for the derived metrics.
+    """
+
+    model_config = ConfigDict(
+        title="DerivedMetricsTimeSeriesPointHTTP",
+        extra="forbid",
+    )
+
+    cik: str = Field(..., description="Central Index Key for the filer.")
+    statement_type: StatementType = Field(
+        ...,
+        description="Primary statement type used for derived metrics.",
+    )
+    accounting_standard: AccountingStandard = Field(
+        ...,
+        description="Accounting standard (e.g., US_GAAP, IFRS).",
+    )
+    statement_date: date = Field(
+        ...,
+        description="Reporting period end date for this derived-metrics point.",
+    )
+    fiscal_year: int = Field(
+        ...,
+        ge=1,
+        description="Fiscal year associated with the underlying statement (e.g., 2024).",
+    )
+    fiscal_period: FiscalPeriod = Field(
+        ...,
+        description="Fiscal period within the year (e.g., Q1, Q2, FY).",
+    )
+    currency: str = Field(
+        ...,
+        description="ISO 4217 currency code for derived monetary metrics (e.g., USD).",
+    )
+    metrics: Mapping[str, str] = Field(
+        default_factory=dict,
+        description=(
+            "Mapping of derived metric codes (e.g., GROSS_MARGIN) to decimal "
+            "string values. Only successfully computed metrics are included."
+        ),
+    )
+    normalized_payload_version_sequence: int = Field(
+        ...,
+        ge=1,
+        description=(
+            "Version sequence of the canonical normalized payload used to "
+            "compute this derived metrics point."
         ),
     )
 
@@ -290,6 +371,7 @@ class NormalizedStatementViewHTTP(BaseHTTPSchema):
 
 __all__ = [
     "FundamentalsTimeSeriesPointHTTP",
+    "DerivedMetricsTimeSeriesPointHTTP",
     "RestatementMetricDeltaHTTP",
     "RestatementDeltaHTTP",
     "NormalizedStatementViewHTTP",

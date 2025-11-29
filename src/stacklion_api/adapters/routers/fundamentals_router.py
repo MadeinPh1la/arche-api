@@ -8,6 +8,7 @@ Purpose:
     statement payloads:
 
         * GET /v1/fundamentals/time-series
+        * GET /v1/fundamentals/derived/time-series
         * GET /v1/fundamentals/restatement-delta
         * GET /v1/fundamentals/normalized-statements
 
@@ -39,6 +40,7 @@ from fastapi import Depends, HTTPException, Query, Request, Response, status
 from fastapi.responses import JSONResponse
 
 from stacklion_api.adapters.presenters.fundamentals_presenter import (
+    present_derived_time_series,
     present_fundamentals_time_series,
     present_normalized_statement,
     present_restatement_delta,
@@ -51,6 +53,7 @@ from stacklion_api.adapters.schemas.http.envelopes import (
     SuccessEnvelope,
 )
 from stacklion_api.adapters.schemas.http.fundamentals import (
+    DerivedMetricsTimeSeriesPointHTTP,
     FundamentalsTimeSeriesPointHTTP,
     NormalizedStatementViewHTTP,
     RestatementDeltaHTTP,
@@ -59,6 +62,10 @@ from stacklion_api.application.uow import UnitOfWork
 from stacklion_api.application.use_cases.statements.compute_restatement_delta import (
     ComputeRestatementDeltaRequest,
     ComputeRestatementDeltaUseCase,
+)
+from stacklion_api.application.use_cases.statements.get_derived_metrics_timeseries import (
+    GetDerivedMetricsTimeSeriesRequest,
+    GetDerivedMetricsTimeSeriesUseCase,
 )
 from stacklion_api.application.use_cases.statements.get_fundamentals_timeseries import (
     GetFundamentalsTimeSeriesRequest,
@@ -69,6 +76,7 @@ from stacklion_api.application.use_cases.statements.get_normalized_statement imp
     GetNormalizedStatementUseCase,
 )
 from stacklion_api.domain.enums.canonical_statement_metric import CanonicalStatementMetric
+from stacklion_api.domain.enums.derived_metric import DerivedMetric
 from stacklion_api.domain.enums.edgar import FiscalPeriod, StatementType
 from stacklion_api.domain.exceptions.edgar import (
     EdgarIngestionError,
@@ -92,7 +100,7 @@ class _NoopUnitOfWork(UnitOfWork):
     """Minimal UnitOfWork implementation for fundamentals endpoints.
 
     This exists so that FastAPI can resolve the dependency and mypy is happy.
-    For the current E6 tests we only hit validation paths that never enter
+    For the current E6/E7 tests we only hit validation paths that never enter
     the use cases' `async with uow` blocks, so no repositories are required.
 
     A proper SQLAlchemy-backed UoW can later replace this wiring once EDGAR
@@ -127,10 +135,10 @@ class _NoopUnitOfWork(UnitOfWork):
 def get_uow() -> UnitOfWork:
     """FastAPI dependency that yields a UnitOfWork instance.
 
-    For now this returns a no-op UnitOfWork sufficient for E6 HTTP tests that
-    exercise only validation / error behavior. EDGAR infra can later override
-    this with a real UnitOfWork via dependency_overrides or by changing this
-    function to construct the concrete UoW.
+    For now this returns a no-op UnitOfWork sufficient for E6/E7 HTTP tests
+    that exercise only validation / error behavior. EDGAR infra can later
+    override this with a real UnitOfWork via dependency_overrides or by
+    changing this function to construct the concrete UoW.
     """
     return _NoopUnitOfWork()
 
@@ -384,6 +392,214 @@ async def get_fundamentals_time_series(
             http_status=500,
             code="INTERNAL_ERROR",
             message="Fundamentals time series endpoint failed unexpectedly.",
+            trace_id=trace_id,
+            details={"reason": type(exc).__name__},
+        )
+        return JSONResponse(status_code=500, content=error.model_dump(mode="json"))
+
+
+# --------------------------------------------------------------------------- #
+# Routes: Derived metrics time series                                         #
+# --------------------------------------------------------------------------- #
+
+
+@router.get(
+    "/derived/time-series",
+    summary="Derived metrics time series",
+    description=(
+        "Return a panel-friendly derived metrics time series (margins, growth, "
+        "cash flows, returns) computed from normalized EDGAR statement "
+        "payloads. The endpoint supports a CIK universe, derived metric "
+        "selection, annual/quarterly frequency, and a deterministic time window."
+    ),
+    response_model=PaginatedEnvelope,
+    responses=cast("dict[int | str, dict[str, Any]]", BaseRouter.std_error_responses()),
+)
+async def get_derived_metrics_time_series(
+    request: Request,
+    response: Response,
+    uow: Annotated[UnitOfWork, Depends(get_uow)],
+    ciks: Annotated[
+        list[str],
+        Query(
+            ...,
+            description=(
+                "Universe of companies expressed as CIKs. Multiple CIKs can be "
+                "provided via repeated query parameters (e.g., "
+                "`?ciks=0000320193&ciks=0000789019`)."
+            ),
+        ),
+    ],
+    statement_type: Annotated[
+        StatementType,
+        Query(
+            ...,
+            description=(
+                "Statement type to use as the primary source for fundamentals "
+                "(e.g., INCOME_STATEMENT, BALANCE_SHEET)."
+            ),
+        ),
+    ],
+    metrics: Annotated[
+        list[DerivedMetric] | None,
+        Query(
+            description=(
+                "Optional subset of derived metrics to include (e.g., "
+                "GROSS_MARGIN, ROE). When omitted, all E7 metrics are "
+                "attempted and only successfully computed metrics are "
+                "returned per point."
+            ),
+        ),
+    ] = None,
+    frequency: Annotated[
+        str,
+        Query(
+            description="Requested frequency: 'annual' (FY) or 'quarterly' (Q1–Q4).",
+        ),
+    ] = "annual",
+    from_date: Annotated[
+        date | None,
+        Query(
+            alias="from",
+            description=(
+                "Inclusive lower bound for statement_date (YYYY-MM-DD). When "
+                "omitted, defaults to 1994-01-01."
+            ),
+        ),
+    ] = None,
+    to_date: Annotated[
+        date | None,
+        Query(
+            alias="to",
+            description=(
+                "Inclusive upper bound for statement_date (YYYY-MM-DD). When "
+                "omitted, defaults to today's date."
+            ),
+        ),
+    ] = None,
+    page: Annotated[
+        int,
+        Query(
+            ge=1,
+            description="1-based page index for pagination.",
+        ),
+    ] = 1,
+    page_size: Annotated[
+        int,
+        Query(
+            ge=1,
+            le=200,
+            description="Maximum number of items to return per page (1–200).",
+        ),
+    ] = 50,
+) -> PaginatedEnvelope[DerivedMetricsTimeSeriesPointHTTP] | JSONResponse:
+    """HTTP handler for /v1/fundamentals/derived/time-series."""
+    del request  # reserved for future auth/feature flags
+    trace_id = response.headers.get("X-Request-ID")
+
+    normalized_ciks = [_normalize_cik(cik) for cik in ciks]
+
+    if from_date and to_date and from_date > to_date:
+        error = _error_envelope(
+            http_status=400,
+            code="VALIDATION_ERROR",
+            message="from date must be <= to date.",
+            trace_id=trace_id,
+            details={
+                "from": from_date.isoformat(),
+                "to": to_date.isoformat(),
+            },
+        )
+        return JSONResponse(status_code=400, content=error.model_dump(mode="json"))
+
+    logger.info(
+        "fundamentals.api.derived_time_series.start",
+        extra={
+            "ciks": normalized_ciks,
+            "statement_type": statement_type.value,
+            "metrics": [m.value for m in metrics] if metrics is not None else None,
+            "frequency": frequency,
+            "from_date": from_date.isoformat() if from_date else None,
+            "to_date": to_date.isoformat() if to_date else None,
+            "page": page,
+            "page_size": page_size,
+            "trace_id": trace_id,
+        },
+    )
+
+    use_case = GetDerivedMetricsTimeSeriesUseCase(uow=uow)
+
+    try:
+        req = GetDerivedMetricsTimeSeriesRequest(
+            ciks=normalized_ciks,
+            statement_type=statement_type,
+            metrics=tuple(metrics) if metrics is not None else None,
+            frequency=frequency,
+            from_date=from_date,
+            to_date=to_date,
+        )
+
+        series = await use_case.execute(req)
+
+        envelope = present_derived_time_series(
+            points=series,
+            page=page,
+            page_size=page_size,
+        )
+
+        logger.info(
+            "fundamentals.api.derived_time_series.success",
+            extra={
+                "ciks": normalized_ciks,
+                "statement_type": statement_type.value,
+                "frequency": frequency,
+                "count": len(envelope.items),
+                "total": envelope.total,
+                "page": envelope.page,
+                "page_size": envelope.page_size,
+                "trace_id": trace_id,
+            },
+        )
+        return envelope
+
+    except EdgarNotFound as exc:
+        error = _error_envelope(
+            http_status=404,
+            code="FUNDAMENTALS_NOT_FOUND",
+            message=str(exc),
+            trace_id=trace_id,
+        )
+        return JSONResponse(status_code=404, content=error.model_dump(mode="json"))
+
+    except EdgarMappingError as exc:
+        error = _error_envelope(
+            http_status=400,
+            code="EDGAR_MAPPING_ERROR",
+            message=str(exc),
+            trace_id=trace_id,
+            details=getattr(exc, "details", None),
+        )
+        return JSONResponse(status_code=400, content=error.model_dump(mode="json"))
+
+    except EdgarIngestionError as exc:
+        error = _error_envelope(
+            http_status=502,
+            code="EDGAR_UPSTREAM_ERROR",
+            message=str(exc),
+            trace_id=trace_id,
+            details=getattr(exc, "details", None),
+        )
+        return JSONResponse(status_code=502, content=error.model_dump(mode="json"))
+
+    except Exception as exc:  # pragma: no cover - defensive
+        logger.exception(
+            "fundamentals.api.derived_time_series.unhandled",
+            extra={"trace_id": trace_id},
+        )
+        error = _error_envelope(
+            http_status=500,
+            code="INTERNAL_ERROR",
+            message="Derived metrics time series endpoint failed unexpectedly.",
             trace_id=trace_id,
             details={"reason": type(exc).__name__},
         )

@@ -273,11 +273,11 @@ module = [
   "stacklion_api.main",
   "migrations.env",
 ]
-disable_error_code = ["misc", "import-untyped", "no-any-return"]
+disable_error_code = ["misc", "import-untyped", "no-any-return",]
 
 [[tool.mypy.overrides]]
 module = "stacklion_api.tasks.cli"
-disable_error_code = ["untyped-decorator"]
+disable_error_code = ["misc",]
 
 [[tool.mypy.overrides]]
 module = ["tests.*"]
