@@ -749,6 +749,21 @@ async def get_statement_versions_for_filing(
         "fiscal_period) using the derived-metrics engine."
     ),
 )
+@router.get(
+    "/derived-metrics/time-series",
+    response_model=SuccessEnvelope[EdgarDerivedMetricsTimeSeriesHTTP] | ErrorEnvelope,
+    status_code=status.HTTP_200_OK,
+    responses=cast("dict[int | str, dict[str, Any]]", BaseRouter.std_error_responses()),
+    summary="Get derived metrics time series",
+    description=(
+        "Return a derived metrics time series for one or more companies, "
+        "built on top of normalized EDGAR statement payloads.\n\n"
+        "This endpoint exposes a panel-friendly structure suitable for "
+        "modeling workflows. Metrics are requested by code (e.g., "
+        "GROSS_MARGIN, ROE) and are computed per (cik, statement_date, "
+        "fiscal_period) using the derived-metrics engine."
+    ),
+)
 async def get_derived_metrics_timeseries(
     request: Request,
     response: Response,
@@ -799,14 +814,13 @@ async def get_derived_metrics_timeseries(
         ),
     ] = None,
 ) -> SuccessEnvelope[EdgarDerivedMetricsTimeSeriesHTTP] | ErrorEnvelope | JSONResponse:
-    """Get a derived metrics time series (contract defined, implementation stubbed).
+    """Get a derived metrics time series.
 
-    This route validates and normalizes basic parameters, then returns a
-    501 ErrorEnvelope for now. The presenter and HTTP schemas are fully
-    defined so a subsequent change can wire this handler into the backing
-    use case without breaking the public contract.
+    This route validates and normalizes parameters, delegates to the EDGAR
+    controller, and presents a canonical Bloomberg-class time-series
+    surface for derived metrics.
     """
-    del request, controller  # reserved for future wiring
+    del request
     trace_id = response.headers.get("X-Request-ID")
 
     # Normalize and validate CIKs.
@@ -858,7 +872,7 @@ async def get_derived_metrics_timeseries(
         )
 
     logger.info(
-        "edgar.api.get_derived_metrics_timeseries.unimplemented",
+        "edgar.api.get_derived_metrics_timeseries.start",
         extra={
             "ciks": normalized_ciks,
             "statement_type": typed_statement_type.value,
@@ -870,19 +884,73 @@ async def get_derived_metrics_timeseries(
         },
     )
 
-    # Stubbed response until wired to the actual use case.
-    response.status_code = status.HTTP_501_NOT_IMPLEMENTED
-    return _error_envelope(
-        http_status=501,
-        code="DERIVED_METRICS_NOT_IMPLEMENTED",
-        message=(
-            "Derived metrics time-series endpoint is defined but not yet wired "
-            "to the underlying use case."
-        ),
-        trace_id=trace_id,
-        details={
-            "ciks": normalized_ciks,
-            "statement_type": typed_statement_type.value,
-            "frequency": normalized_frequency,
-        },
-    )
+    try:
+        dtos = await controller.get_derived_metrics_timeseries(
+            ciks=normalized_ciks,
+            statement_type=typed_statement_type,
+            metrics=metrics,
+            frequency=normalized_frequency,
+            from_date=from_date,
+            to_date=to_date,
+        )
+
+        result = presenter.present_derived_timeseries(
+            dtos=dtos,
+            ciks=normalized_ciks,
+            statement_type=typed_statement_type,
+            frequency=normalized_frequency,
+            from_date=from_date,
+            to_date=to_date,
+            trace_id=trace_id,
+        )
+        body = _apply_present_result(response, result)
+
+        logger.info(
+            "edgar.api.get_derived_metrics_timeseries.success",
+            extra={
+                "ciks": normalized_ciks,
+                "statement_type": typed_statement_type.value,
+                "metrics": [m.value for m in (metrics or [])],
+                "frequency": normalized_frequency,
+                "from_date": from_date.isoformat() if from_date else None,
+                "to_date": to_date.isoformat() if to_date else None,
+                "points": len(dtos),
+                "trace_id": trace_id,
+            },
+        )
+
+        return cast(SuccessEnvelope[EdgarDerivedMetricsTimeSeriesHTTP], body)
+
+    except EdgarMappingError as exc:
+        envelope = _error_envelope(
+            http_status=500,
+            code="EDGAR_MAPPING_ERROR",
+            message=str(exc),
+            trace_id=trace_id,
+            details=getattr(exc, "details", None),
+        )
+        return JSONResponse(status_code=500, content=envelope.model_dump(mode="json"))
+
+    except EdgarIngestionError as exc:
+        envelope = _error_envelope(
+            http_status=502,
+            code="EDGAR_UPSTREAM_ERROR",
+            message=str(exc),
+            trace_id=trace_id,
+            details=getattr(exc, "details", None),
+        )
+        return JSONResponse(status_code=502, content=envelope.model_dump(mode="json"))
+
+    except Exception as exc:  # pragma: no cover - defensive
+        logger.exception(
+            "edgar.api.get_derived_metrics_timeseries.unhandled",
+            extra={"ciks": normalized_ciks, "trace_id": trace_id},
+        )
+        envelope = _error_envelope(
+            http_status=503,
+            code="EDGAR_UNAVAILABLE",
+            message="EDGAR service is temporarily unavailable.",
+            trace_id=trace_id,
+            details={"reason": type(exc).__name__},
+        )
+        return JSONResponse(status_code=503, content=envelope.model_dump(mode="json"))

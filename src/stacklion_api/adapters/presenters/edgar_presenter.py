@@ -373,11 +373,11 @@ class EdgarPresenter(BasePresenter[SuccessEnvelope[Any]]):
         self,
         *,
         dtos: list[EdgarDerivedMetricsPointDTO],
-        ciks: list[str],
-        statement_type: StatementType,
-        frequency: str,
-        from_date: date,
-        to_date: date,
+        ciks: list[str] | None = None,
+        statement_type: StatementType | None = None,
+        frequency: str | None = None,
+        from_date: date | None = None,
+        to_date: date | None = None,
         trace_id: str | None = None,
     ) -> PresentResult[SuccessEnvelope[EdgarDerivedMetricsTimeSeriesHTTP]]:
         """Present a derived metrics time series.
@@ -390,17 +390,31 @@ class EdgarPresenter(BasePresenter[SuccessEnvelope[Any]]):
             * normalized_payload_version_sequence (ascending)
 
         Args:
-            dtos: Derived metrics DTOs to present.
-            ciks: Universe of requested CIKs (raw values).
-            statement_type: Statement type used as the base for derived metrics.
-            frequency: Time-series frequency ("annual" or "quarterly").
-            from_date: Inclusive lower bound on statement_date.
-            to_date: Inclusive upper bound on statement_date.
-            trace_id: Optional request correlation identifier.
+            dtos:
+                Derived metrics DTOs to present.
+            ciks:
+                Optional explicit universe of requested CIKs. When omitted, the
+                universe is inferred from the DTOs.
+            statement_type:
+                Statement type used as the base for derived metrics. When
+                omitted, inferred from the first DTO (if any).
+            frequency:
+                Time-series frequency ("annual" or "quarterly"). When omitted,
+                defaults to "annual".
+            from_date:
+                Inclusive lower bound on statement_date. When omitted, inferred
+                as the minimum statement_date across DTOs (or today if empty).
+            to_date:
+                Inclusive upper bound on statement_date. When omitted, inferred
+                as the maximum statement_date across DTOs (or equal to
+                from_date if empty).
+            trace_id:
+                Optional request correlation identifier.
 
         Returns:
             PresentResult containing SuccessEnvelope[EdgarDerivedMetricsTimeSeriesHTTP].
         """
+        # Deterministic ordering of individual points.
         sorted_dtos = sorted(
             dtos,
             key=lambda p: (
@@ -412,14 +426,45 @@ class EdgarPresenter(BasePresenter[SuccessEnvelope[Any]]):
         )
         points = [self._map_derived_point_dto(dto) for dto in sorted_dtos]
 
-        normalized_ciks = sorted({c.strip() for c in ciks if c.strip()})
+        # Resolve CIK universe.
+        if ciks is not None:
+            normalized_ciks = sorted({c.strip() for c in ciks if c.strip()})
+        else:
+            normalized_ciks = sorted({p.cik for p in dtos})
+
+        # Resolve statement_type.
+        if statement_type is not None:
+            resolved_statement_type = statement_type
+        elif dtos:
+            resolved_statement_type = dtos[0].statement_type
+        else:
+            # Defensive default; in practice an empty series is unusual.
+            resolved_statement_type = StatementType.INCOME_STATEMENT
+
+        # Resolve frequency.
+        resolved_frequency = (frequency or "annual").lower()
+
+        # Resolve date window.
+        if from_date is not None:
+            resolved_from_date = from_date
+        elif dtos:
+            resolved_from_date = min(p.statement_date for p in dtos)
+        else:
+            resolved_from_date = date.today()
+
+        if to_date is not None:
+            resolved_to_date = to_date
+        elif dtos:
+            resolved_to_date = max(p.statement_date for p in dtos)
+        else:
+            resolved_to_date = resolved_from_date
 
         payload = EdgarDerivedMetricsTimeSeriesHTTP(
             ciks=normalized_ciks,
-            statement_type=statement_type,
-            frequency=frequency,
-            from_date=from_date,
-            to_date=to_date,
+            statement_type=resolved_statement_type,
+            frequency=resolved_frequency,
+            from_date=resolved_from_date,
+            to_date=resolved_to_date,
             points=points,
         )
 
@@ -428,10 +473,10 @@ class EdgarPresenter(BasePresenter[SuccessEnvelope[Any]]):
             extra={
                 "trace_id": trace_id,
                 "ciks": normalized_ciks,
-                "statement_type": statement_type.value,
-                "frequency": frequency,
-                "from_date": from_date.isoformat(),
-                "to_date": to_date.isoformat(),
+                "statement_type": resolved_statement_type.value,
+                "frequency": resolved_frequency,
+                "from_date": resolved_from_date.isoformat(),
+                "to_date": resolved_to_date.isoformat(),
                 "points": len(points),
             },
         )

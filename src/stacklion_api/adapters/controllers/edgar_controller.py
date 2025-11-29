@@ -27,6 +27,10 @@ from stacklion_api.application.schemas.dto.edgar import (
     EdgarFilingDTO,
     EdgarStatementVersionDTO,
 )
+from stacklion_api.application.schemas.dto.edgar_derived import (
+    EdgarDerivedMetricsPointDTO,
+)
+from stacklion_api.domain.enums.derived_metric import DerivedMetric
 from stacklion_api.domain.enums.edgar import FilingType, StatementType
 
 
@@ -291,4 +295,31 @@ class EdgarController(BaseController):
             statement_type=statement_type,
             include_restated=include_restated,
             include_normalized=include_normalized,
+        )
+
+    async def get_derived_metrics_timeseries(
+        self,
+        *,
+        ciks: Sequence[str],
+        statement_type: StatementType,
+        metrics: Sequence[DerivedMetric] | None,
+        frequency: str,
+        from_date: date | None,
+        to_date: date | None,
+    ) -> list[EdgarDerivedMetricsPointDTO]:
+        """Placeholder for derived metrics time-series use case.
+
+        Notes:
+            This method is intentionally left unimplemented in the base
+            controller. Application wiring should provide a concrete
+            implementation that delegates to the derived-metrics time-series
+            use case and returns EdgarDerivedMetricsPointDTO instances.
+
+        Raises:
+            NotImplementedError: Always, until wired by the application.
+        """
+        raise NotImplementedError(
+            "get_derived_metrics_timeseries is not wired. Provide an implementation "
+            "that returns a list[EdgarDerivedMetricsPointDTO] for the requested "
+            "universe, or override this controller in tests."
         )
