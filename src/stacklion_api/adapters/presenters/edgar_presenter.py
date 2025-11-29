@@ -23,6 +23,7 @@ Layer:
 from __future__ import annotations
 
 from collections.abc import Iterable, Mapping
+from datetime import date
 from typing import Any
 
 from stacklion_api.adapters.presenters.base_presenter import (
@@ -30,6 +31,8 @@ from stacklion_api.adapters.presenters.base_presenter import (
     PresentResult,
 )
 from stacklion_api.adapters.schemas.http.edgar_schemas import (
+    EdgarDerivedMetricsPointHTTP,
+    EdgarDerivedMetricsTimeSeriesHTTP,
     EdgarFilingHTTP,
     EdgarStatementVersionHTTP,
     EdgarStatementVersionListHTTP,
@@ -44,6 +47,8 @@ from stacklion_api.application.schemas.dto.edgar import (
     EdgarFilingDTO,
     EdgarStatementVersionDTO,
 )
+from stacklion_api.application.schemas.dto.edgar_derived import EdgarDerivedMetricsPointDTO
+from stacklion_api.domain.enums.edgar import StatementType
 from stacklion_api.infrastructure.logging.logger import get_json_logger
 
 _LOGGER = get_json_logger(__name__)
@@ -330,6 +335,104 @@ class EdgarPresenter(BasePresenter[SuccessEnvelope[Any]]):
                 "cik": filing.cik,
                 "versions_count": len(items),
                 "include_normalized": include_normalized,
+            },
+        )
+
+        return self.present_success(data=payload, trace_id=trace_id)
+
+    # ------------------------------------------------------------------
+    # Derived metrics time series
+    # ------------------------------------------------------------------
+
+    @staticmethod
+    def _map_derived_point_dto(
+        dto: EdgarDerivedMetricsPointDTO,
+    ) -> EdgarDerivedMetricsPointHTTP:
+        """Map a derived metrics DTO to the HTTP schema.
+
+        Args:
+            dto: Application-layer derived metrics point DTO.
+
+        Returns:
+            EdgarDerivedMetricsPointHTTP: HTTP-facing schema instance.
+        """
+        return EdgarDerivedMetricsPointHTTP(
+            cik=dto.cik,
+            statement_type=dto.statement_type,
+            accounting_standard=dto.accounting_standard,
+            statement_date=dto.statement_date,
+            fiscal_year=dto.fiscal_year,
+            fiscal_period=dto.fiscal_period,
+            currency=dto.currency,
+            # Expose metric codes as strings on the wire.
+            metrics={metric.value: value for metric, value in dto.metrics.items()},
+            normalized_payload_version_sequence=dto.normalized_payload_version_sequence,
+        )
+
+    def present_derived_timeseries(
+        self,
+        *,
+        dtos: list[EdgarDerivedMetricsPointDTO],
+        ciks: list[str],
+        statement_type: StatementType,
+        frequency: str,
+        from_date: date,
+        to_date: date,
+        trace_id: str | None = None,
+    ) -> PresentResult[SuccessEnvelope[EdgarDerivedMetricsTimeSeriesHTTP]]:
+        """Present a derived metrics time series.
+
+        The collection is sorted deterministically by:
+
+            * cik (ascending)
+            * statement_date (ascending)
+            * fiscal_period value (ascending)
+            * normalized_payload_version_sequence (ascending)
+
+        Args:
+            dtos: Derived metrics DTOs to present.
+            ciks: Universe of requested CIKs (raw values).
+            statement_type: Statement type used as the base for derived metrics.
+            frequency: Time-series frequency ("annual" or "quarterly").
+            from_date: Inclusive lower bound on statement_date.
+            to_date: Inclusive upper bound on statement_date.
+            trace_id: Optional request correlation identifier.
+
+        Returns:
+            PresentResult containing SuccessEnvelope[EdgarDerivedMetricsTimeSeriesHTTP].
+        """
+        sorted_dtos = sorted(
+            dtos,
+            key=lambda p: (
+                p.cik,
+                p.statement_date,
+                p.fiscal_period.value,
+                p.normalized_payload_version_sequence,
+            ),
+        )
+        points = [self._map_derived_point_dto(dto) for dto in sorted_dtos]
+
+        normalized_ciks = sorted({c.strip() for c in ciks if c.strip()})
+
+        payload = EdgarDerivedMetricsTimeSeriesHTTP(
+            ciks=normalized_ciks,
+            statement_type=statement_type,
+            frequency=frequency,
+            from_date=from_date,
+            to_date=to_date,
+            points=points,
+        )
+
+        _LOGGER.info(
+            "edgar_presenter_derived_timeseries",
+            extra={
+                "trace_id": trace_id,
+                "ciks": normalized_ciks,
+                "statement_type": statement_type.value,
+                "frequency": frequency,
+                "from_date": from_date.isoformat(),
+                "to_date": to_date.isoformat(),
+                "points": len(points),
             },
         )
 

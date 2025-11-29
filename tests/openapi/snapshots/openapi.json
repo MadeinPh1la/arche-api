@@ -141,6 +141,107 @@
         "title": "DerivedMetric",
         "type": "string"
       },
+      "EdgarDerivedMetricsPointHTTP": {
+        "additionalProperties": false,
+        "properties": {
+          "accounting_standard": {
+            "$ref": "#/components/schemas/AccountingStandard"
+          },
+          "cik": {
+            "title": "Cik",
+            "type": "string"
+          },
+          "currency": {
+            "title": "Currency",
+            "type": "string"
+          },
+          "fiscal_period": {
+            "$ref": "#/components/schemas/FiscalPeriod"
+          },
+          "fiscal_year": {
+            "title": "Fiscal Year",
+            "type": "integer"
+          },
+          "metrics": {
+            "additionalProperties": {
+              "type": "string"
+            },
+            "title": "Metrics",
+            "type": "object"
+          },
+          "normalized_payload_version_sequence": {
+            "title": "Normalized Payload Version Sequence",
+            "type": "integer"
+          },
+          "statement_date": {
+            "format": "date",
+            "title": "Statement Date",
+            "type": "string"
+          },
+          "statement_type": {
+            "$ref": "#/components/schemas/StatementType"
+          }
+        },
+        "required": [
+          "cik",
+          "statement_type",
+          "accounting_standard",
+          "statement_date",
+          "fiscal_year",
+          "fiscal_period",
+          "currency",
+          "metrics",
+          "normalized_payload_version_sequence"
+        ],
+        "title": "EdgarDerivedMetricsPointHTTP",
+        "type": "object"
+      },
+      "EdgarDerivedMetricsTimeSeriesHTTP": {
+        "additionalProperties": false,
+        "properties": {
+          "ciks": {
+            "items": {
+              "type": "string"
+            },
+            "title": "Ciks",
+            "type": "array"
+          },
+          "frequency": {
+            "title": "Frequency",
+            "type": "string"
+          },
+          "from_date": {
+            "format": "date",
+            "title": "From Date",
+            "type": "string"
+          },
+          "points": {
+            "items": {
+              "$ref": "#/components/schemas/EdgarDerivedMetricsPointHTTP"
+            },
+            "title": "Points",
+            "type": "array"
+          },
+          "statement_type": {
+            "$ref": "#/components/schemas/StatementType"
+          },
+          "to_date": {
+            "format": "date",
+            "title": "To Date",
+            "type": "string"
+          }
+        },
+        "required": [
+          "ciks",
+          "statement_type",
+          "frequency",
+          "from_date",
+          "to_date",
+          "points"
+        ],
+        "title": "EdgarDerivedMetricsTimeSeriesHTTP",
+        "type": "object"
+      },
       "EdgarFilingHTTP": {
         "additionalProperties": false,
         "properties": {
@@ -1167,6 +1268,19 @@
         "title": "SuccessEnvelope",
         "type": "object"
       },
+      "SuccessEnvelope_EdgarDerivedMetricsTimeSeriesHTTP_": {
+        "additionalProperties": false,
+        "properties": {
+          "data": {
+            "$ref": "#/components/schemas/EdgarDerivedMetricsTimeSeriesHTTP"
+          }
+        },
+        "required": [
+          "data"
+        ],
+        "title": "SuccessEnvelope",
+        "type": "object"
+      },
       "SuccessEnvelope_EdgarFilingHTTP_": {
         "additionalProperties": false,
         "properties": {
@@ -2074,6 +2188,199 @@
               "application/json": {
                 "schema": {
                   "$ref": "#/components/schemas/PaginatedEnvelope"
+                }
+              }
+            }
+          },
+          "400": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorEnvelope"
+                }
+              }
+            }
+          },
+          "401": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorEnvelope"
+                }
+              }
+            }
+          },
+          "403": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorEnvelope"
+                }
+              }
+            }
+          },
+          "404": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorEnvelope"
+                }
+              }
+            }
+          },
+          "409": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorEnvelope"
+                }
+              }
+            }
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorEnvelope"
+                }
+              }
+            }
+          },
+          "429": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorEnvelope"
+                }
+              }
+            }
+          },
+          "500": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorEnvelope"
+                }
+              }
+            }
+          },
+          "503": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorEnvelope"
+                }
+              }
+            }
+          }
+        },
+        "tags": [
+          "EDGAR Filings"
+        ]
+      }
+    },
+    "/v1/edgar/derived-metrics/time-series": {
+      "get": {
+        "parameters": [
+          {
+            "in": "query",
+            "name": "ciks",
+            "required": true,
+            "schema": {
+              "items": {
+                "type": "string"
+              },
+              "title": "Ciks",
+              "type": "array"
+            }
+          },
+          {
+            "in": "query",
+            "name": "statement_type",
+            "required": true,
+            "schema": {
+              "title": "Statement Type",
+              "type": "string"
+            }
+          },
+          {
+            "in": "query",
+            "name": "metrics",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "items": {
+                    "$ref": "#/components/schemas/DerivedMetric"
+                  },
+                  "type": "array"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Metrics"
+            }
+          },
+          {
+            "in": "query",
+            "name": "frequency",
+            "required": false,
+            "schema": {
+              "default": "annual",
+              "title": "Frequency",
+              "type": "string"
+            }
+          },
+          {
+            "in": "query",
+            "name": "from_date",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "format": "date",
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "From Date"
+            }
+          },
+          {
+            "in": "query",
+            "name": "to_date",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "format": "date",
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "To Date"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "anyOf": [
+                    {
+                      "$ref": "#/components/schemas/SuccessEnvelope_EdgarDerivedMetricsTimeSeriesHTTP_"
+                    },
+                    {
+                      "$ref": "#/components/schemas/ErrorEnvelope"
+                    }
+                  ],
+                  "title": "Response Get  V1 Edgar Derived-Metrics Time-Series"
                 }
               }
             }

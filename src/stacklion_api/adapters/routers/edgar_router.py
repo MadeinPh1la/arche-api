@@ -34,6 +34,7 @@ from stacklion_api.adapters.presenters.base_presenter import PresentResult
 from stacklion_api.adapters.presenters.edgar_presenter import EdgarPresenter
 from stacklion_api.adapters.routers.base_router import BaseRouter, PageParams
 from stacklion_api.adapters.schemas.http.edgar_schemas import (
+    EdgarDerivedMetricsTimeSeriesHTTP,
     EdgarFilingHTTP,
     EdgarStatementVersionListHTTP,
 )
@@ -45,6 +46,7 @@ from stacklion_api.adapters.schemas.http.envelopes import (
 )
 from stacklion_api.application.schemas.dto.edgar import EdgarFilingDTO
 from stacklion_api.dependencies.edgar import get_edgar_controller
+from stacklion_api.domain.enums.derived_metric import DerivedMetric
 from stacklion_api.domain.enums.edgar import FilingType, StatementType
 from stacklion_api.domain.exceptions.edgar import (
     EdgarIngestionError,
@@ -725,3 +727,162 @@ async def get_statement_versions_for_filing(
             trace_id=trace_id,
             details={"reason": type(exc).__name__},
         )
+
+
+# --------------------------------------------------------------------------- #
+# Routes: Derived metrics time series                                         #
+# --------------------------------------------------------------------------- #
+
+
+@router.get(
+    "/derived-metrics/time-series",
+    response_model=SuccessEnvelope[EdgarDerivedMetricsTimeSeriesHTTP] | ErrorEnvelope,
+    status_code=status.HTTP_200_OK,
+    responses=cast("dict[int | str, dict[str, Any]]", BaseRouter.std_error_responses()),
+    summary="Get derived metrics time series",
+    description=(
+        "Return a derived metrics time series for one or more companies, "
+        "built on top of normalized EDGAR statement payloads.\n\n"
+        "This endpoint exposes a panel-friendly structure suitable for "
+        "modeling workflows. Metrics are requested by code (e.g., "
+        "GROSS_MARGIN, ROE) and are computed per (cik, statement_date, "
+        "fiscal_period) using the derived-metrics engine."
+    ),
+)
+async def get_derived_metrics_timeseries(
+    request: Request,
+    response: Response,
+    controller: Annotated[EdgarController, Depends(get_edgar_controller)],
+    ciks: Annotated[
+        list[str],
+        Query(
+            description="One or more company CIKs as digits (no 'CIK' prefix).",
+            examples=[["0000320193", "0000789019"]],
+        ),
+    ],
+    statement_type: Annotated[
+        str,
+        Query(
+            description=(
+                "Statement type used as the base for derived metrics "
+                "(INCOME_STATEMENT, BALANCE_SHEET, CASH_FLOW_STATEMENT)."
+            ),
+        ),
+    ],
+    metrics: Annotated[
+        list[DerivedMetric] | None,
+        Query(
+            description=(
+                "Optional list of derived metric codes to include "
+                "(e.g., GROSS_MARGIN, ROE). If omitted, all registered "
+                "derived metrics are considered."
+            ),
+            examples=[["GROSS_MARGIN", "REVENUE_GROWTH_YOY", "ROE"]],
+        ),
+    ] = None,
+    frequency: Annotated[
+        str,
+        Query(
+            description="Time-series frequency: 'annual' or 'quarterly' (default: 'annual').",
+        ),
+    ] = "annual",
+    from_date: Annotated[
+        date | None,
+        Query(
+            description="Optional lower bound on statement_date (inclusive, YYYY-MM-DD).",
+        ),
+    ] = None,
+    to_date: Annotated[
+        date | None,
+        Query(
+            description="Optional upper bound on statement_date (inclusive, YYYY-MM-DD).",
+        ),
+    ] = None,
+) -> SuccessEnvelope[EdgarDerivedMetricsTimeSeriesHTTP] | ErrorEnvelope | JSONResponse:
+    """Get a derived metrics time series (contract defined, implementation stubbed).
+
+    This route validates and normalizes basic parameters, then returns a
+    501 ErrorEnvelope for now. The presenter and HTTP schemas are fully
+    defined so a subsequent change can wire this handler into the backing
+    use case without breaking the public contract.
+    """
+    del request, controller  # reserved for future wiring
+    trace_id = response.headers.get("X-Request-ID")
+
+    # Normalize and validate CIKs.
+    normalized_ciks: list[str] = []
+    for raw in ciks:
+        try:
+            normalized_ciks.append(_normalize_cik(raw))
+        except HTTPException as exc:
+            response.status_code = exc.status_code
+            return _error_envelope(
+                http_status=exc.status_code,
+                code="VALIDATION_ERROR",
+                message=str(exc.detail),
+                trace_id=trace_id,
+                details={"cik": raw},
+            )
+
+    if not normalized_ciks:
+        response.status_code = status.HTTP_400_BAD_REQUEST
+        return _error_envelope(
+            http_status=400,
+            code="VALIDATION_ERROR",
+            message="At least one non-empty CIK must be provided.",
+            trace_id=trace_id,
+        )
+
+    # Manual parse of statement_type to keep FastAPI from returning 422.
+    try:
+        typed_statement_type = StatementType(statement_type)
+    except ValueError:
+        envelope = _error_envelope(
+            http_status=400,
+            code="VALIDATION_ERROR",
+            message="Invalid statement_type.",
+            trace_id=trace_id,
+            details={"statement_type": statement_type},
+        )
+        return JSONResponse(status_code=400, content=envelope.model_dump(mode="json"))
+
+    normalized_frequency = frequency.lower()
+    if normalized_frequency not in {"annual", "quarterly"}:
+        response.status_code = status.HTTP_400_BAD_REQUEST
+        return _error_envelope(
+            http_status=400,
+            code="VALIDATION_ERROR",
+            message="frequency must be 'annual' or 'quarterly'.",
+            trace_id=trace_id,
+            details={"frequency": frequency},
+        )
+
+    logger.info(
+        "edgar.api.get_derived_metrics_timeseries.unimplemented",
+        extra={
+            "ciks": normalized_ciks,
+            "statement_type": typed_statement_type.value,
+            "metrics": [m.value for m in (metrics or [])],
+            "frequency": normalized_frequency,
+            "from_date": from_date.isoformat() if from_date else None,
+            "to_date": to_date.isoformat() if to_date else None,
+            "trace_id": trace_id,
+        },
+    )
+
+    # Stubbed response until wired to the actual use case.
+    response.status_code = status.HTTP_501_NOT_IMPLEMENTED
+    return _error_envelope(
+        http_status=501,
+        code="DERIVED_METRICS_NOT_IMPLEMENTED",
+        message=(
+            "Derived metrics time-series endpoint is defined but not yet wired "
+            "to the underlying use case."
+        ),
+        trace_id=trace_id,
+        details={
+            "ciks": normalized_ciks,
+            "statement_type": typed_statement_type.value,
+            "frequency": normalized_frequency,
+        },
+    )

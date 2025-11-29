@@ -27,7 +27,7 @@ from __future__ import annotations
 
 from datetime import date, datetime
 
-from pydantic import ConfigDict, Field
+from pydantic import BaseModel, ConfigDict, Field
 
 from stacklion_api.adapters.schemas.http.base import BaseHTTPSchema
 from stacklion_api.domain.enums.edgar import (
@@ -496,11 +496,62 @@ class EdgarStatementVersionListHTTP(BaseHTTPSchema):
     )
 
 
+class EdgarDerivedMetricsPointHTTP(BaseModel):
+    """HTTP schema for a single derived metrics time-series point.
+
+    This mirrors the application-layer EdgarDerivedMetricsPointDTO but
+    exposes metrics as a mapping from metric *codes* (strings) to
+    decimal-string values for wire stability.
+    """
+
+    model_config = ConfigDict(extra="forbid")
+
+    cik: str
+    statement_type: StatementType
+    accounting_standard: AccountingStandard
+    statement_date: date
+    fiscal_year: int
+    fiscal_period: FiscalPeriod
+    currency: str
+    metrics: dict[str, str]
+    normalized_payload_version_sequence: int
+
+
+class EdgarDerivedMetricsTimeSeriesHTTP(BaseModel):
+    """HTTP schema for a derived metrics time series.
+
+    Attributes:
+        ciks:
+            Normalized list of company CIKs included in the series.
+        statement_type:
+            Primary statement type used as the base for the derived metrics.
+        frequency:
+            Time-series frequency ("annual" or "quarterly").
+        from_date:
+            Inclusive lower bound on statement_date.
+        to_date:
+            Inclusive upper bound on statement_date.
+        points:
+            Derived metrics time-series points in deterministic order.
+    """
+
+    model_config = ConfigDict(extra="forbid")
+
+    ciks: list[str]
+    statement_type: StatementType
+    frequency: str
+    from_date: date
+    to_date: date
+    points: list[EdgarDerivedMetricsPointHTTP]
+
+
 __all__ = [
-    "NormalizedFactHTTP",
-    "NormalizedStatementHTTP",
+    # existing exports...
     "EdgarFilingHTTP",
     "EdgarStatementVersionSummaryHTTP",
     "EdgarStatementVersionHTTP",
     "EdgarStatementVersionListHTTP",
+    "NormalizedStatementHTTP",
+    "EdgarDerivedMetricsPointHTTP",
+    "EdgarDerivedMetricsTimeSeriesHTTP",
 ]
