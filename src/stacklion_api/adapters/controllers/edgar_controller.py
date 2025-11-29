@@ -1,3 +1,4 @@
+# src/stacklion_api/adapters/controllers/edgar_controller.py
 # Copyright (c) Stacklion.
 # SPDX-License-Identifier: MIT
 """EDGAR Controller.
@@ -29,6 +30,12 @@ from stacklion_api.application.schemas.dto.edgar import (
 )
 from stacklion_api.application.schemas.dto.edgar_derived import (
     EdgarDerivedMetricsPointDTO,
+)
+from stacklion_api.application.use_cases.statements.get_derived_metrics_timeseries import (
+    GetDerivedMetricsTimeSeriesRequest,
+)
+from stacklion_api.domain.entities.edgar_derived_timeseries import (
+    DerivedMetricsTimeSeriesPoint,
 )
 from stacklion_api.domain.enums.derived_metric import DerivedMetric
 from stacklion_api.domain.enums.edgar import FilingType, StatementType
@@ -147,8 +154,26 @@ class GetStatementVersionsForFilingUseCase(Protocol):
         ...
 
 
+class GetDerivedMetricsTimeSeriesUseCase(Protocol):
+    """Protocol for a use-case building derived metrics time series."""
+
+    async def execute(
+        self,
+        req: GetDerivedMetricsTimeSeriesRequest,
+    ) -> list[DerivedMetricsTimeSeriesPoint]:
+        """Execute the derived-metrics time-series use case.
+
+        Args:
+            req: Parameter object describing the universe and window.
+
+        Returns:
+            List of domain-level derived metrics time-series points.
+        """
+        ...
+
+
 class EdgarController(BaseController):
-    """Controller orchestrating EDGAR filings and statement versions."""
+    """Controller orchestrating EDGAR filings, statements, and derived metrics."""
 
     def __init__(
         self,
@@ -156,6 +181,7 @@ class EdgarController(BaseController):
         get_filing_uc: GetFilingUseCase,
         list_statements_uc: ListStatementVersionsUseCase,
         get_filing_statements_uc: GetStatementVersionsForFilingUseCase,
+        get_derived_metrics_timeseries_uc: GetDerivedMetricsTimeSeriesUseCase | None = None,
     ) -> None:
         """Initialize the controller with its use-cases.
 
@@ -164,11 +190,16 @@ class EdgarController(BaseController):
             get_filing_uc: Use-case responsible for retrieving a single filing.
             list_statements_uc: Use-case listing statement versions.
             get_filing_statements_uc: Use-case retrieving versions for a filing.
+            get_derived_metrics_timeseries_uc:
+                Optional use-case building derived metrics time-series points.
+                May be None in legacy wiring or tests that do not exercise
+                derived metrics behavior.
         """
         self._list_filings_uc = list_filings_uc
         self._get_filing_uc = get_filing_uc
         self._list_statements_uc = list_statements_uc
         self._get_filing_statements_uc = get_filing_statements_uc
+        self._get_derived_metrics_timeseries_uc = get_derived_metrics_timeseries_uc
 
     async def list_filings(
         self,
@@ -307,19 +338,54 @@ class EdgarController(BaseController):
         from_date: date | None,
         to_date: date | None,
     ) -> list[EdgarDerivedMetricsPointDTO]:
-        """Placeholder for derived metrics time-series use case.
+        """Build a derived metrics time series for a universe of companies.
 
-        Notes:
-            This method is intentionally left unimplemented in the base
-            controller. Application wiring should provide a concrete
-            implementation that delegates to the derived-metrics time-series
-            use case and returns EdgarDerivedMetricsPointDTO instances.
+        Args:
+            ciks: Universe of company CIKs.
+            statement_type: Source statement type for fundamentals.
+            metrics: Optional subset of derived metrics to include.
+            frequency: Time-series frequency ("annual" or "quarterly").
+            from_date: Optional inclusive lower bound on statement_date.
+            to_date: Optional inclusive upper bound on statement_date.
 
-        Raises:
-            NotImplementedError: Always, until wired by the application.
+        Returns:
+            List of derived metrics time-series DTOs, suitable for HTTP
+            presenters. Metric values are converted to string representations
+            for wire stability.
         """
-        raise NotImplementedError(
-            "get_derived_metrics_timeseries is not wired. Provide an implementation "
-            "that returns a list[EdgarDerivedMetricsPointDTO] for the requested "
-            "universe, or override this controller in tests."
+        if self._get_derived_metrics_timeseries_uc is None:
+            raise RuntimeError(
+                "Derived metrics time-series use case is not wired on EdgarController.",
+            )
+
+        cleaned_ciks = [c.strip() for c in ciks if c.strip()]
+        req = GetDerivedMetricsTimeSeriesRequest(
+            ciks=cleaned_ciks,
+            statement_type=statement_type,
+            metrics=metrics,
+            frequency=frequency,
+            from_date=from_date,
+            to_date=to_date,
         )
+
+        series: list[DerivedMetricsTimeSeriesPoint] = (
+            await self._get_derived_metrics_timeseries_uc.execute(req)
+        )
+
+        # Adapter boundary: map domain points → DTOs and stringify metric values.
+        dtos = [
+            EdgarDerivedMetricsPointDTO(
+                cik=point.cik,
+                statement_type=point.statement_type,
+                accounting_standard=point.accounting_standard,
+                statement_date=point.statement_date,
+                fiscal_year=point.fiscal_year,
+                fiscal_period=point.fiscal_period,
+                currency=point.currency,
+                metrics={metric: str(value) for metric, value in point.metrics.items()},
+                normalized_payload_version_sequence=point.normalized_payload_version_sequence,
+            )
+            for point in series
+        ]
+
+        return dtos

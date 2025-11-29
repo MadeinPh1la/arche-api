@@ -1,3 +1,4 @@
+# src/stacklion_api/adapters/routers/edgar_router.py
 # Copyright (c)
 # SPDX-License-Identifier: MIT
 """EDGAR Router (v1).
@@ -14,6 +15,8 @@ Endpoints (all under /v1/edgar):
         → PaginatedEnvelope of statement versions.
     - GET /v1/edgar/companies/{cik}/filings/{accession_id}/statements
         → SuccessEnvelope with statement versions for a filing.
+    - GET /v1/edgar/derived-metrics/time-series
+        → SuccessEnvelope with derived metrics time-series points.
 
 Design:
     * Router handles HTTP validation and error mapping to envelopes.
@@ -62,9 +65,9 @@ router = BaseRouter(version="v1", resource="edgar", tags=["EDGAR Filings"])
 presenter = EdgarPresenter()
 
 
-# --------------------------------------------------------------------------- #
-# Helpers                                                                     #
-# --------------------------------------------------------------------------- #
+# ---------------------------------------------------------------------------
+# Helpers
+# ---------------------------------------------------------------------------
 
 
 def _normalize_cik(raw: str) -> str:
@@ -112,9 +115,9 @@ def _apply_present_result(response: Response, result: PresentResult[Any]) -> Any
     return body
 
 
-# --------------------------------------------------------------------------- #
-# Routes: Filings                                                             #
-# --------------------------------------------------------------------------- #
+# ---------------------------------------------------------------------------
+# Routes: Filings
+# ---------------------------------------------------------------------------
 
 
 @router.get(
@@ -409,9 +412,9 @@ async def get_filing(
         )
 
 
-# --------------------------------------------------------------------------- #
-# Routes: Statement versions                                                  #
-# --------------------------------------------------------------------------- #
+# ---------------------------------------------------------------------------
+# Routes: Statement versions
+# ---------------------------------------------------------------------------
 
 
 @router.get(
@@ -521,6 +524,7 @@ async def list_statement_versions(
             "edgar.api.list_statement_versions.success",
             extra={
                 "cik": normalized_cik,
+                "statement_type": typed_statement_type.value,
                 "count": len(dto_list),
                 "total": total,
                 "page": page_params.page,
@@ -729,26 +733,11 @@ async def get_statement_versions_for_filing(
         )
 
 
-# --------------------------------------------------------------------------- #
-# Routes: Derived metrics time series                                         #
-# --------------------------------------------------------------------------- #
+# ---------------------------------------------------------------------------
+# Routes: Derived metrics time series
+# ---------------------------------------------------------------------------
 
 
-@router.get(
-    "/derived-metrics/time-series",
-    response_model=SuccessEnvelope[EdgarDerivedMetricsTimeSeriesHTTP] | ErrorEnvelope,
-    status_code=status.HTTP_200_OK,
-    responses=cast("dict[int | str, dict[str, Any]]", BaseRouter.std_error_responses()),
-    summary="Get derived metrics time series",
-    description=(
-        "Return a derived metrics time series for one or more companies, "
-        "built on top of normalized EDGAR statement payloads.\n\n"
-        "This endpoint exposes a panel-friendly structure suitable for "
-        "modeling workflows. Metrics are requested by code (e.g., "
-        "GROSS_MARGIN, ROE) and are computed per (cik, statement_date, "
-        "fiscal_period) using the derived-metrics engine."
-    ),
-)
 @router.get(
     "/derived-metrics/time-series",
     response_model=SuccessEnvelope[EdgarDerivedMetricsTimeSeriesHTTP] | ErrorEnvelope,
@@ -814,12 +803,7 @@ async def get_derived_metrics_timeseries(
         ),
     ] = None,
 ) -> SuccessEnvelope[EdgarDerivedMetricsTimeSeriesHTTP] | ErrorEnvelope | JSONResponse:
-    """Get a derived metrics time series.
-
-    This route validates and normalizes parameters, delegates to the EDGAR
-    controller, and presents a canonical Bloomberg-class time-series
-    surface for derived metrics.
-    """
+    """Get a derived metrics time series."""
     del request
     trace_id = response.headers.get("X-Request-ID")
 
@@ -884,6 +868,10 @@ async def get_derived_metrics_timeseries(
         },
     )
 
+    # Compute effective window for the HTTP payload to align with the use case.
+    effective_from_date = from_date or date(1994, 1, 1)
+    effective_to_date = to_date or date.today()
+
     try:
         dtos = await controller.get_derived_metrics_timeseries(
             ciks=normalized_ciks,
@@ -899,8 +887,8 @@ async def get_derived_metrics_timeseries(
             ciks=normalized_ciks,
             statement_type=typed_statement_type,
             frequency=normalized_frequency,
-            from_date=from_date,
-            to_date=to_date,
+            from_date=effective_from_date,
+            to_date=effective_to_date,
             trace_id=trace_id,
         )
         body = _apply_present_result(response, result)
@@ -910,16 +898,25 @@ async def get_derived_metrics_timeseries(
             extra={
                 "ciks": normalized_ciks,
                 "statement_type": typed_statement_type.value,
-                "metrics": [m.value for m in (metrics or [])],
                 "frequency": normalized_frequency,
-                "from_date": from_date.isoformat() if from_date else None,
-                "to_date": to_date.isoformat() if to_date else None,
+                "from_date": effective_from_date.isoformat(),
+                "to_date": effective_to_date.isoformat(),
                 "points": len(dtos),
                 "trace_id": trace_id,
             },
         )
 
         return cast(SuccessEnvelope[EdgarDerivedMetricsTimeSeriesHTTP], body)
+
+    except EdgarNotFound as exc:
+        # If the use case chooses to signal empty/unavailable via NotFound.
+        envelope = _error_envelope(
+            http_status=404,
+            code="EDGAR_STATEMENTS_NOT_FOUND",
+            message=str(exc),
+            trace_id=trace_id,
+        )
+        return JSONResponse(status_code=404, content=envelope.model_dump(mode="json"))
 
     except EdgarMappingError as exc:
         envelope = _error_envelope(
@@ -941,7 +938,7 @@ async def get_derived_metrics_timeseries(
         )
         return JSONResponse(status_code=502, content=envelope.model_dump(mode="json"))
 
-    except Exception as exc:  # pragma: no cover - defensive
+    except Exception as exc:  # pragma: no cover
         logger.exception(
             "edgar.api.get_derived_metrics_timeseries.unhandled",
             extra={"ciks": normalized_ciks, "trace_id": trace_id},
