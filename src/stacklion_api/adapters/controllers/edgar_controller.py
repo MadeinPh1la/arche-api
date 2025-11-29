@@ -1,5 +1,5 @@
 # src/stacklion_api/adapters/controllers/edgar_controller.py
-# Copyright (c) Stacklion.
+# Copyright (c)
 # SPDX-License-Identifier: MIT
 """EDGAR Controller.
 
@@ -39,6 +39,7 @@ from stacklion_api.domain.entities.edgar_derived_timeseries import (
 )
 from stacklion_api.domain.enums.derived_metric import DerivedMetric
 from stacklion_api.domain.enums.edgar import FilingType, StatementType
+from stacklion_api.domain.services.metric_views import expand_view_metrics
 
 
 class ListFilingsUseCase(Protocol):
@@ -337,21 +338,41 @@ class EdgarController(BaseController):
         frequency: str,
         from_date: date | None,
         to_date: date | None,
+        bundle_code: str | None = None,
     ) -> list[EdgarDerivedMetricsPointDTO]:
         """Build a derived metrics time series for a universe of companies.
 
         Args:
-            ciks: Universe of company CIKs.
-            statement_type: Source statement type for fundamentals.
-            metrics: Optional subset of derived metrics to include.
-            frequency: Time-series frequency ("annual" or "quarterly").
-            from_date: Optional inclusive lower bound on statement_date.
-            to_date: Optional inclusive upper bound on statement_date.
+            ciks:
+                Universe of company CIKs.
+            statement_type:
+                Source statement type for fundamentals.
+            metrics:
+                Optional subset of derived metrics to include. When omitted and
+                ``bundle_code`` is also None, the use-case may choose a default
+                metric set (e.g., all registered metrics).
+            frequency:
+                Time-series frequency ("annual" or "quarterly").
+            from_date:
+                Optional inclusive lower bound on statement_date.
+            to_date:
+                Optional inclusive upper bound on statement_date.
+            bundle_code:
+                Optional metric-view code selecting a predefined bundle of
+                derived metrics (e.g., "core_fundamentals"). When provided,
+                explicit ``metrics`` must be omitted.
 
         Returns:
             List of derived metrics time-series DTOs, suitable for HTTP
             presenters. Metric values are converted to string representations
             for wire stability.
+
+        Raises:
+            RuntimeError:
+                If the derived metrics time-series use-case has not been wired.
+            ValueError:
+                If ``bundle_code`` is unknown or provided together with
+                explicit ``metrics``.
         """
         if self._get_derived_metrics_timeseries_uc is None:
             raise RuntimeError(
@@ -359,10 +380,26 @@ class EdgarController(BaseController):
             )
 
         cleaned_ciks = [c.strip() for c in ciks if c.strip()]
+        normalized_bundle = bundle_code.strip() if bundle_code is not None else None
+
+        if metrics is not None and normalized_bundle is not None:
+            raise ValueError("bundle_code and metrics cannot both be provided.")
+
+        effective_metrics: Sequence[DerivedMetric] | None = metrics
+
+        if normalized_bundle is not None:
+            # Delegate bundle resolution to the domain registry. This raises
+            # ValueError("Unknown metric view: <code>") for unknown bundles.
+            try:
+                metrics_from_view = expand_view_metrics(normalized_bundle)
+            except ValueError as exc:
+                raise ValueError(str(exc)) from exc
+            effective_metrics = list(metrics_from_view)
+
         req = GetDerivedMetricsTimeSeriesRequest(
             ciks=cleaned_ciks,
             statement_type=statement_type,
-            metrics=metrics,
+            metrics=effective_metrics,
             frequency=frequency,
             from_date=from_date,
             to_date=to_date,
