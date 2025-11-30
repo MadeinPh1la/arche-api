@@ -15,6 +15,8 @@ Endpoints (all under /v1/edgar):
         → PaginatedEnvelope of statement versions.
     - GET /v1/edgar/companies/{cik}/filings/{accession_id}/statements
         → SuccessEnvelope with statement versions for a filing.
+    - GET /v1/edgar/derived-metrics/catalog
+        → SuccessEnvelope with derived metrics catalog.
     - GET /v1/edgar/derived-metrics/time-series
         → SuccessEnvelope with derived metrics time-series points.
 
@@ -37,6 +39,7 @@ from stacklion_api.adapters.presenters.base_presenter import PresentResult
 from stacklion_api.adapters.presenters.edgar_presenter import EdgarPresenter
 from stacklion_api.adapters.routers.base_router import BaseRouter, PageParams
 from stacklion_api.adapters.schemas.http.edgar_schemas import (
+    EdgarDerivedMetricsCatalogHTTP,
     EdgarDerivedMetricsTimeSeriesHTTP,
     EdgarFilingHTTP,
     EdgarStatementVersionListHTTP,
@@ -56,6 +59,7 @@ from stacklion_api.domain.exceptions.edgar import (
     EdgarMappingError,
     EdgarNotFound,
 )
+from stacklion_api.domain.services.derived_metrics_engine import DERIVED_METRIC_SPECS
 from stacklion_api.infrastructure.logging.logger import get_json_logger
 
 logger = get_json_logger(__name__)
@@ -731,6 +735,72 @@ async def get_statement_versions_for_filing(
             trace_id=trace_id,
             details={"reason": type(exc).__name__},
         )
+
+
+# ---------------------------------------------------------------------------
+# Routes: Derived metrics catalog
+# ---------------------------------------------------------------------------
+
+
+@router.get(
+    "/derived-metrics/catalog",
+    response_model=SuccessEnvelope[EdgarDerivedMetricsCatalogHTTP] | ErrorEnvelope,
+    status_code=status.HTTP_200_OK,
+    responses=cast("dict[int | str, dict[str, Any]]", BaseRouter.std_error_responses()),
+    summary="List derived metrics catalog",
+    description=(
+        "Expose the catalog of all registered derived metrics from the EDGAR "
+        "derived-metrics engine. This endpoint provides introspection into "
+        "each metric's category, inputs, and history requirements."
+    ),
+)
+async def get_derived_metrics_catalog(
+    request: Request,
+    response: Response,
+) -> SuccessEnvelope[EdgarDerivedMetricsCatalogHTTP] | ErrorEnvelope | JSONResponse:
+    """Return the catalog of registered derived metrics."""
+    del request
+    trace_id = response.headers.get("X-Request-ID")
+
+    logger.info(
+        "edgar.api.get_derived_metrics_catalog.start",
+        extra={"trace_id": trace_id},
+    )
+
+    try:
+        specs = list(DERIVED_METRIC_SPECS.values())
+        # Deterministic ordering by metric code.
+        sorted_specs = sorted(specs, key=lambda s: s.metric.value)
+
+        result = presenter.present_derived_metrics_catalog(
+            specs=sorted_specs,
+            trace_id=trace_id,
+        )
+        body = _apply_present_result(response, result)
+
+        logger.info(
+            "edgar.api.get_derived_metrics_catalog.success",
+            extra={
+                "trace_id": trace_id,
+                "metrics_count": len(sorted_specs),
+            },
+        )
+
+        return cast(SuccessEnvelope[EdgarDerivedMetricsCatalogHTTP], body)
+
+    except Exception as exc:  # pragma: no cover - defensive
+        logger.exception(
+            "edgar.api.get_derived_metrics_catalog.unhandled",
+            extra={"trace_id": trace_id},
+        )
+        envelope = _error_envelope(
+            http_status=503,
+            code="EDGAR_UNAVAILABLE",
+            message="EDGAR service is temporarily unavailable.",
+            trace_id=trace_id,
+            details={"reason": type(exc).__name__},
+        )
+        return JSONResponse(status_code=503, content=envelope.model_dump(mode="json"))
 
 
 # ---------------------------------------------------------------------------

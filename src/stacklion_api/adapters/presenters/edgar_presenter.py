@@ -11,6 +11,7 @@ Purpose:
         * SuccessEnvelope[EdgarStatementVersionListHTTP]
         * SuccessEnvelope[EdgarDerivedMetricsTimeSeriesHTTP]
         * SuccessEnvelope[MetricViewsCatalogHTTP]
+        * SuccessEnvelope[EdgarDerivedMetricsCatalogHTTP]
 
 Design:
     * Never leaks DB or internal shapes.
@@ -33,6 +34,8 @@ from stacklion_api.adapters.presenters.base_presenter import (
     PresentResult,
 )
 from stacklion_api.adapters.schemas.http.edgar_schemas import (
+    EdgarDerivedMetricsCatalogHTTP,
+    EdgarDerivedMetricSpecHTTP,
     EdgarDerivedMetricsPointHTTP,
     EdgarDerivedMetricsTimeSeriesHTTP,
     EdgarFilingHTTP,
@@ -53,6 +56,7 @@ from stacklion_api.application.schemas.dto.edgar import (
 )
 from stacklion_api.application.schemas.dto.edgar_derived import EdgarDerivedMetricsPointDTO
 from stacklion_api.domain.enums.edgar import StatementType
+from stacklion_api.domain.services.derived_metrics_engine import DerivedMetricSpec
 from stacklion_api.domain.services.metric_views import MetricView
 from stacklion_api.infrastructure.logging.logger import get_json_logger
 
@@ -234,7 +238,9 @@ class EdgarPresenter(BasePresenter[SuccessEnvelope[Any]]):
             version_sequence=dto.version_sequence,
             filing_type=dto.filing_type,
             filing_date=dto.filing_date,
+            accepted_at=dto.accepted_at,
             normalized_payload=normalized_payload,
+            normalized_payload_version=dto.normalized_payload_version,
         )
 
     def present_statement_versions_page(
@@ -489,6 +495,70 @@ class EdgarPresenter(BasePresenter[SuccessEnvelope[Any]]):
                 "to_date": resolved_to_date.isoformat(),
                 "points": len(points),
                 "view": view,
+            },
+        )
+
+        return self.present_success(data=payload, trace_id=trace_id)
+
+    # ------------------------------------------------------------------
+    # Derived metrics catalog
+    # ------------------------------------------------------------------
+
+    @staticmethod
+    def _map_metric_spec_to_http(
+        spec: DerivedMetricSpec,
+    ) -> EdgarDerivedMetricSpecHTTP:
+        """Map a derived metric spec from the domain registry to HTTP schema.
+
+        Args:
+            spec: Domain-layer derived metric specification.
+
+        Returns:
+            EdgarDerivedMetricSpecHTTP: HTTP-facing spec schema.
+        """
+        return EdgarDerivedMetricSpecHTTP(
+            code=spec.metric.value,
+            category=spec.category.value,
+            description=spec.description,
+            is_experimental=spec.is_experimental,
+            required_statement_types=sorted(
+                spec.required_statement_types,
+                key=lambda st: st.value,
+            ),
+            required_inputs=sorted(m.value for m in spec.required_inputs),
+            uses_history=spec.uses_history,
+            window_requirements=dict(spec.window_requirements),
+        )
+
+    def present_derived_metrics_catalog(
+        self,
+        *,
+        specs: Iterable[DerivedMetricSpec],
+        trace_id: str | None = None,
+    ) -> PresentResult[SuccessEnvelope[EdgarDerivedMetricsCatalogHTTP]]:
+        """Present the catalog of registered derived metrics.
+
+        Args:
+            specs:
+                Iterable of derived metric specifications from the domain
+                registry.
+            trace_id:
+                Optional request correlation identifier.
+
+        Returns:
+            PresentResult containing SuccessEnvelope[EdgarDerivedMetricsCatalogHTTP].
+        """
+        sorted_specs = sorted(specs, key=lambda s: s.metric.value)
+        items = [self._map_metric_spec_to_http(spec) for spec in sorted_specs]
+
+        payload = EdgarDerivedMetricsCatalogHTTP(metrics=items)
+
+        _LOGGER.info(
+            "edgar_presenter_derived_metrics_catalog",
+            extra={
+                "trace_id": trace_id,
+                "metrics_count": len(items),
+                "metric_codes": [spec.metric.value for spec in sorted_specs],
             },
         )
 

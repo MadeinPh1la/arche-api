@@ -10,6 +10,7 @@ Purpose:
         * EDGAR statement versions (with optional normalized payloads).
         * EDGAR filing metadata and statement-version listings.
         * Derived-metrics time series and metric-view catalog.
+        * Derived-metrics catalog (introspection of the derived-metrics engine).
 
 Design:
     * Strict Pydantic models with extra="forbid".
@@ -562,6 +563,80 @@ class EdgarDerivedMetricsTimeSeriesHTTP(BaseModel):
 
 
 # --------------------------------------------------------------------------- #
+# Derived metrics catalog                                                     #
+# --------------------------------------------------------------------------- #
+
+
+class EdgarDerivedMetricSpecHTTP(BaseHTTPSchema):
+    """HTTP schema for a single derived metric specification.
+
+    This exposes the public-facing contract for a derived metric as defined
+    in the derived-metrics engine registry, without leaking internal types.
+    """
+
+    model_config = ConfigDict(
+        title="EdgarDerivedMetricSpecHTTP",
+        extra="forbid",
+    )
+
+    code: str = Field(
+        ...,
+        description="Derived metric code, matching the DerivedMetric enum value.",
+    )
+    category: str = Field(
+        ...,
+        description="High-level category for the metric (e.g., MARGIN, GROWTH).",
+    )
+    description: str = Field(
+        ...,
+        description="Short human-readable description of the metric definition.",
+    )
+    is_experimental: bool = Field(
+        ...,
+        description="Whether this metric is considered experimental.",
+    )
+    required_statement_types: list[StatementType] = Field(
+        default_factory=list,
+        description=(
+            "Statement types for which this metric is conceptually valid "
+            "(e.g., INCOME_STATEMENT, BALANCE_SHEET)."
+        ),
+    )
+    required_inputs: list[str] = Field(
+        default_factory=list,
+        description=(
+            "Canonical input metric codes required to compute this metric, "
+            "expressed as string identifiers."
+        ),
+    )
+    uses_history: bool = Field(
+        ...,
+        description="Whether the metric inspects prior-period history.",
+    )
+    window_requirements: dict[str, int] = Field(
+        default_factory=dict,
+        description=(
+            "History window requirements keyed by requirement name, such as "
+            '{"history_periods": 7} for TTM metrics.'
+        ),
+    )
+
+
+class EdgarDerivedMetricsCatalogHTTP(BaseHTTPSchema):
+    """HTTP schema for the catalog of registered derived metrics."""
+
+    model_config = ConfigDict(
+        title="EdgarDerivedMetricsCatalogHTTP",
+        extra="forbid",
+    )
+
+    metrics: list[EdgarDerivedMetricSpecHTTP] = Field(
+        default_factory=list,
+        description="Collection of all registered derived metrics.",
+    )
+
+
+# --------------------------------------------------------------------------- #
 # Metric views catalog                                                        #
 # --------------------------------------------------------------------------- #
 
@@ -614,6 +689,8 @@ __all__ = [
     "NormalizedStatementHTTP",
     "EdgarDerivedMetricsPointHTTP",
     "EdgarDerivedMetricsTimeSeriesHTTP",
+    "EdgarDerivedMetricSpecHTTP",
+    "EdgarDerivedMetricsCatalogHTTP",
     "MetricViewHTTP",
     "MetricViewsCatalogHTTP",
 ]
