@@ -1,5 +1,5 @@
 # src/stacklion_api/application/schemas/dto/edgar.py
-# Copyright (c) Stacklion.
+# Copyright (c)
 # SPDX-License-Identifier: MIT
 """Application DTOs for EDGAR filings and statement versions.
 
@@ -260,6 +260,52 @@ class ComputeRestatementDeltaResultDTO(BaseDTO):
     deltas: list[RestatementMetricDeltaDTO]
 
 
+class RestatementLedgerEntryDTO(BaseDTO):
+    """DTO representing a single hop in a restatement ledger.
+
+    Attributes:
+        from_version_sequence:
+            Source version sequence for the `from` side of the hop.
+        to_version_sequence:
+            Source version sequence for the `to` side of the hop.
+        summary:
+            High-level summary of the restatement between the two versions.
+    """
+
+    model_config = ConfigDict(extra="forbid")
+
+    from_version_sequence: int
+    to_version_sequence: int
+    summary: RestatementSummaryDTO
+
+
+class RestatementLedgerDTO(BaseDTO):
+    """DTO representing the restatement ledger for a single statement identity.
+
+    A ledger is defined for a specific (cik, statement_type, fiscal_year,
+    fiscal_period) tuple and consists of ordered adjacent restatement hops:
+
+        v1 → v2
+        v2 → v3
+        ...
+
+    Attributes:
+        cik: Company CIK.
+        statement_type: Statement type for the ledger.
+        fiscal_year: Fiscal year for the ledger identity.
+        fiscal_period: Fiscal period for the ledger identity.
+        entries: Ordered list of restatement ledger entries.
+    """
+
+    model_config = ConfigDict(extra="forbid")
+
+    cik: str
+    statement_type: StatementType
+    fiscal_year: int
+    fiscal_period: FiscalPeriod
+    entries: list[RestatementLedgerEntryDTO]
+
+
 __all__ = [
     "EdgarFilingDTO",
     "EdgarFilingListDTO",
@@ -270,4 +316,6 @@ __all__ = [
     "RestatementMetricDeltaDTO",
     "RestatementSummaryDTO",
     "ComputeRestatementDeltaResultDTO",
+    "RestatementLedgerEntryDTO",
+    "RestatementLedgerDTO",
 ]
