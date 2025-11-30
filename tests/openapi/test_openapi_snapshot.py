@@ -23,6 +23,7 @@ Notes:
 
 from __future__ import annotations
 
+import importlib
 import json
 import os
 from collections.abc import Iterable
@@ -33,9 +34,10 @@ from typing import Any, cast
 import pytest
 from fastapi.testclient import TestClient
 
-from stacklion_api.main import create_app
-
 SNAPSHOT_PATH = Path(__file__).parent / "snapshots" / "openapi.json"
+DEBUG_DIR = Path(__file__).parent / "debug"
+DEBUG_ACTUAL = DEBUG_DIR / "openapi_actual_normalized.json"
+DEBUG_EXPECTED = DEBUG_DIR / "openapi_snapshot_normalized.json"
 
 
 # --------------------------------------------------------------------------- #
@@ -116,10 +118,19 @@ def _stable_openapi_env(monkeypatch: pytest.MonkeyPatch) -> None:
 def _fetch_openapi() -> dict[str, Any]:
     """Return the OpenAPI spec from a freshly built FastAPI app.
 
-    We build the app inside this function (instead of importing a module-global
-    app) so the environment overrides applied in fixtures take effect.
+    We *reload* settings and main after the environment fixture has run to
+    avoid cross-test contamination and to ensure the OpenAPI spec is generated
+    under the deterministic test configuration.
     """
-    app = create_app()
+    # Import here so that the autouse fixture can set env vars first.
+    import stacklion_api.config.settings as settings_module
+    import stacklion_api.main as main_module
+
+    # Ensure settings & main pick up the current environment (from fixture).
+    importlib.reload(settings_module)
+    importlib.reload(main_module)
+
+    app = main_module.create_app()
     with TestClient(app) as client:
         resp = client.get("/openapi.json")
         assert resp.status_code == 200, f"Cannot fetch openapi.json: {resp.text}"
@@ -150,6 +161,81 @@ def _strip_path_noise(obj: Any) -> Any:
     return obj
 
 
+def _normalize_enums_and_required(obj: Any) -> Any:
+    """Recursively sort enum and required lists for determinism."""
+    if isinstance(obj, dict):
+        normalized: dict[str, Any] = {}
+        for key, value in obj.items():
+            if key in {"enum", "required"} and isinstance(value, list):
+                normalized[key] = sorted(value)
+            else:
+                normalized[key] = _normalize_enums_and_required(value)
+        return normalized
+
+    if isinstance(obj, list):
+        return [_normalize_enums_and_required(v) for v in obj]
+
+    return obj
+
+
+def _normalize_misc_lists(obj: Any) -> Any:
+    """Normalize other order-insensitive lists (tags, parameters, security, etc.).
+
+    Contract semantics do not depend on order for:
+        - tags (list[str])
+        - parameters (list[dict]) → sorted by (name, in, full-json)
+        - security (list[dict]) → sorted by key name
+    """
+    if isinstance(obj, dict):
+        out: dict[str, Any] = {}
+        for key, value in obj.items():
+            if key == "tags" and isinstance(value, list) and all(isinstance(x, str) for x in value):
+                out[key] = sorted(value)
+            elif (
+                key == "parameters"
+                and isinstance(value, list)
+                and all(isinstance(x, dict) for x in value)
+            ):
+                normalized_params = [_normalize_misc_lists(p) for p in value]
+                out[key] = sorted(
+                    normalized_params,
+                    key=lambda p: (
+                        str(p.get("name", "")),
+                        str(p.get("in", "")),
+                        json.dumps(p, sort_keys=True, separators=(",", ":")),
+                    ),
+                )
+            elif (
+                key == "security"
+                and isinstance(value, list)
+                and all(isinstance(x, dict) for x in value)
+            ):
+                # Sort security requirements by key name for stability.
+                normalized_sec = []
+                for sec_obj in value:
+                    if isinstance(sec_obj, dict):
+                        normalized_sec.append(
+                            {
+                                k: v
+                                for k, v in sorted(sec_obj.items(), key=lambda item: str(item[0]))
+                            }
+                        )
+                    else:
+                        normalized_sec.append(sec_obj)
+                out[key] = sorted(
+                    normalized_sec,
+                    key=lambda s: json.dumps(s, sort_keys=True, separators=(",", ":")),
+                )
+            else:
+                out[key] = _normalize_misc_lists(value)
+        return out
+
+    if isinstance(obj, list):
+        return [_normalize_misc_lists(x) for x in obj]
+
+    return obj
+
+
 def _normalize_openapi(spec: dict[str, Any]) -> dict[str, Any]:
     """Normalize volatile fields for stable snapshot comparisons.
 
@@ -158,6 +244,11 @@ def _normalize_openapi(spec: dict[str, Any]) -> dict[str, Any]:
         - Remove 'info.x-*' vendor fields (retain title/version).
         - Strip 'description' from component schemas to avoid wording churn.
         - Strip 'summary', 'description', 'operationId', 'examples' under paths.
+        - Sort `enum` and `required` lists for deterministic ordering.
+        - Normalize other order-insensitive lists:
+            * tags
+            * parameters
+            * security
         - Leave component schema SHAPES, parameter names/types, and response
           content schemas intact (these define the public contract).
     """
@@ -179,14 +270,40 @@ def _normalize_openapi(spec: dict[str, Any]) -> dict[str, Any]:
     if "paths" in spec and isinstance(spec["paths"], dict):
         spec["paths"] = _strip_path_noise(spec["paths"])
 
+    # Normalize enum / required ordering everywhere
+    spec = _normalize_enums_and_required(spec)
+
+    # Normalize other order-insensitive lists
+    spec = _normalize_misc_lists(spec)
+
     return spec
 
 
 def _json_equal(a: dict[str, Any], b: dict[str, Any]) -> bool:
-    """Compare dicts deterministically via canonical JSON string."""
+    """Compare dicts deterministically via canonical JSON string.
+
+    On mismatch, write both normalized documents to debug files so we can diff.
+    """
     aj = json.dumps(a, sort_keys=True, separators=(",", ":"))
     bj = json.dumps(b, sort_keys=True, separators=(",", ":"))
-    return aj == bj
+    if aj == bj:
+        # Best-effort cleanup of stale debug files
+        if DEBUG_ACTUAL.exists():
+            DEBUG_ACTUAL.unlink()
+        if DEBUG_EXPECTED.exists():
+            DEBUG_EXPECTED.unlink()
+        return True
+
+    DEBUG_DIR.mkdir(parents=True, exist_ok=True)
+    DEBUG_ACTUAL.write_text(
+        json.dumps(a, indent=2, sort_keys=True, ensure_ascii=False) + "\n",
+        encoding="utf-8",
+    )
+    DEBUG_EXPECTED.write_text(
+        json.dumps(b, indent=2, sort_keys=True, ensure_ascii=False) + "\n",
+        encoding="utf-8",
+    )
+    return False
 
 
 def _write_snapshot(data: dict[str, Any]) -> None:
@@ -209,7 +326,7 @@ def test_openapi_snapshot_contract_is_stable() -> None:
 
     Behavior:
         - If UPDATE_OPENAPI_SNAPSHOT=1 is set, writes the current normalized
-          spec to disk and passes (intentional contract update).
+          spec to disk and passes (intentional change).
         - Otherwise compares with the existing snapshot and fails on any diff.
     """
     raw = _fetch_openapi()
@@ -231,7 +348,8 @@ def test_openapi_snapshot_contract_is_stable() -> None:
     assert _json_equal(normalized, snap), (
         "OpenAPI contract drift detected. If this change is intentional, "
         "update the snapshot with UPDATE_OPENAPI_SNAPSHOT=1. Otherwise, "
-        "reconcile your routers/schemas to match the published contract."
+        "reconcile your routers/schemas to match the published contract. "
+        f"Debug written to {DEBUG_ACTUAL} (actual) and {DEBUG_EXPECTED} (snapshot)."
     )
 
 

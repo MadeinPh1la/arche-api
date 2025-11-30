@@ -3,74 +3,74 @@
     "schemas": {
       "AccountingStandard": {
         "enum": [
-          "US_GAAP",
           "IFRS",
-          "OTHER"
+          "OTHER",
+          "US_GAAP"
         ],
         "title": "AccountingStandard",
         "type": "string"
       },
       "CanonicalStatementMetric": {
         "enum": [
-          "REVENUE",
+          "ACCOUNTS_PAYABLE",
+          "ACCOUNTS_RECEIVABLE_NET",
+          "ACCUMULATED_OTHER_COMPREHENSIVE_INCOME",
+          "ADDITIONAL_PAID_IN_CAPITAL",
+          "BASIC_EPS",
+          "CAPITAL_EXPENDITURES",
+          "CASH_AND_CASH_EQUIVALENTS",
+          "CASH_PAID_FOR_INCOME_TAXES",
+          "CASH_PAID_FOR_INTEREST",
           "COST_OF_REVENUE",
-          "GROSS_PROFIT",
-          "RESEARCH_AND_DEVELOPMENT_EXPENSE",
-          "SELLING_GENERAL_AND_ADMINISTRATIVE_EXPENSE",
+          "CURRENT_PORTION_OF_LONG_TERM_DEBT",
           "DEPRECIATION_AND_AMORTIZATION_EXPENSE",
-          "OPERATING_INCOME",
-          "OPERATING_EXPENSE",
-          "INTEREST_INCOME",
-          "INTEREST_EXPENSE",
-          "OTHER_NON_OPERATING_INCOME_EXPENSE",
+          "DILUTED_EPS",
+          "FREE_CASH_FLOW",
+          "GOODWILL",
+          "GROSS_PROFIT",
           "INCOME_BEFORE_TAX",
           "INCOME_TAX_EXPENSE",
+          "INTANGIBLE_ASSETS_NET",
+          "INTEREST_EXPENSE",
+          "INTEREST_INCOME",
+          "INVENTORIES",
+          "LONG_TERM_DEBT",
+          "NET_CASH_FROM_FINANCING_ACTIVITIES",
+          "NET_CASH_FROM_INVESTING_ACTIVITIES",
+          "NET_CASH_FROM_OPERATING_ACTIVITIES",
           "NET_INCOME",
-          "BASIC_EPS",
-          "DILUTED_EPS",
-          "WEIGHTED_AVERAGE_SHARES_BASIC",
-          "WEIGHTED_AVERAGE_SHARES_DILUTED",
+          "NET_INCREASE_DECREASE_IN_CASH",
+          "OPERATING_EXPENSE",
+          "OPERATING_INCOME",
+          "OTHER_ASSETS",
+          "OTHER_CASH_FLOW_FROM_FINANCING",
+          "OTHER_CASH_FLOW_FROM_INVESTING",
+          "OTHER_CASH_FLOW_FROM_OPERATIONS",
+          "OTHER_CURRENT_ASSETS",
+          "OTHER_CURRENT_LIABILITIES",
+          "OTHER_EQUITY",
+          "OTHER_LIABILITIES",
+          "OTHER_NON_CURRENT_ASSETS",
+          "OTHER_NON_CURRENT_LIABILITIES",
+          "OTHER_NON_OPERATING_INCOME_EXPENSE",
+          "OTHER_OPERATING_INCOME_EXPENSE",
+          "PROPERTY_PLANT_AND_EQUIPMENT_NET",
+          "RESEARCH_AND_DEVELOPMENT_EXPENSE",
+          "RETAINED_EARNINGS",
+          "REVENUE",
+          "SELLING_GENERAL_AND_ADMINISTRATIVE_EXPENSE",
+          "SHORT_TERM_DEBT",
+          "SHORT_TERM_INVESTMENTS",
           "TOTAL_ASSETS",
           "TOTAL_CURRENT_ASSETS",
-          "CASH_AND_CASH_EQUIVALENTS",
-          "SHORT_TERM_INVESTMENTS",
-          "ACCOUNTS_RECEIVABLE_NET",
-          "INVENTORIES",
-          "OTHER_CURRENT_ASSETS",
-          "TOTAL_NON_CURRENT_ASSETS",
-          "PROPERTY_PLANT_AND_EQUIPMENT_NET",
-          "GOODWILL",
-          "INTANGIBLE_ASSETS_NET",
-          "OTHER_NON_CURRENT_ASSETS",
-          "TOTAL_LIABILITIES",
           "TOTAL_CURRENT_LIABILITIES",
-          "ACCOUNTS_PAYABLE",
-          "SHORT_TERM_DEBT",
-          "CURRENT_PORTION_OF_LONG_TERM_DEBT",
-          "OTHER_CURRENT_LIABILITIES",
-          "TOTAL_NON_CURRENT_LIABILITIES",
-          "LONG_TERM_DEBT",
-          "OTHER_NON_CURRENT_LIABILITIES",
           "TOTAL_EQUITY",
-          "RETAINED_EARNINGS",
-          "ADDITIONAL_PAID_IN_CAPITAL",
+          "TOTAL_LIABILITIES",
+          "TOTAL_NON_CURRENT_ASSETS",
+          "TOTAL_NON_CURRENT_LIABILITIES",
           "TREASURY_STOCK",
-          "ACCUMULATED_OTHER_COMPREHENSIVE_INCOME",
-          "NET_CASH_FROM_OPERATING_ACTIVITIES",
-          "NET_CASH_FROM_INVESTING_ACTIVITIES",
-          "NET_CASH_FROM_FINANCING_ACTIVITIES",
-          "NET_INCREASE_DECREASE_IN_CASH",
-          "CASH_PAID_FOR_INTEREST",
-          "CASH_PAID_FOR_INCOME_TAXES",
-          "CAPITAL_EXPENDITURES",
-          "FREE_CASH_FLOW",
-          "OTHER_OPERATING_INCOME_EXPENSE",
-          "OTHER_ASSETS",
-          "OTHER_LIABILITIES",
-          "OTHER_EQUITY",
-          "OTHER_CASH_FLOW_FROM_OPERATIONS",
-          "OTHER_CASH_FLOW_FROM_INVESTING",
-          "OTHER_CASH_FLOW_FROM_FINANCING"
+          "WEIGHTED_AVERAGE_SHARES_BASIC",
+          "WEIGHTED_AVERAGE_SHARES_DILUTED"
         ],
         "title": "CanonicalStatementMetric",
         "type": "string"
@@ -103,40 +103,40 @@
           },
           "status": {
             "enum": [
-              "ok",
-              "down"
+              "down",
+              "ok"
             ],
             "title": "Status",
             "type": "string"
           }
         },
         "required": [
+          "duration_ms",
           "name",
-          "status",
-          "duration_ms"
+          "status"
         ],
         "title": "CheckResult",
         "type": "object"
       },
       "DerivedMetric": {
         "enum": [
+          "DEBT_TO_EQUITY",
+          "EBIT",
+          "EBITDA",
+          "EPS_DILUTED_GROWTH",
           "GROSS_MARGIN",
-          "OPERATING_MARGIN",
+          "INTEREST_COVERAGE",
+          "LEVERED_FREE_CASH_FLOW",
           "NET_MARGIN",
-          "REVENUE_GROWTH_YOY",
+          "OPERATING_MARGIN",
           "REVENUE_GROWTH_QOQ",
           "REVENUE_GROWTH_TTM",
-          "EPS_DILUTED_GROWTH",
-          "EBITDA",
-          "EBIT",
-          "LEVERED_FREE_CASH_FLOW",
-          "UNLEVERED_FREE_CASH_FLOW",
-          "WORKING_CAPITAL",
-          "DEBT_TO_EQUITY",
-          "INTEREST_COVERAGE",
-          "ROE",
+          "REVENUE_GROWTH_YOY",
           "ROA",
-          "ROIC"
+          "ROE",
+          "ROIC",
+          "UNLEVERED_FREE_CASH_FLOW",
+          "WORKING_CAPITAL"
         ],
         "title": "DerivedMetric",
         "type": "string"
@@ -183,8 +183,8 @@
           }
         },
         "required": [
-          "code",
           "category",
+          "code",
           "description",
           "is_experimental",
           "uses_history"
@@ -248,15 +248,15 @@
           }
         },
         "required": [
-          "cik",
-          "statement_type",
           "accounting_standard",
-          "statement_date",
-          "fiscal_year",
-          "fiscal_period",
+          "cik",
           "currency",
+          "fiscal_period",
+          "fiscal_year",
           "metrics",
-          "normalized_payload_version_sequence"
+          "normalized_payload_version_sequence",
+          "statement_date",
+          "statement_type"
         ],
         "title": "EdgarDerivedMetricsPointHTTP",
         "type": "object"
@@ -309,11 +309,11 @@
         },
         "required": [
           "ciks",
-          "statement_type",
           "frequency",
           "from_date",
-          "to_date",
-          "points"
+          "points",
+          "statement_type",
+          "to_date"
         ],
         "title": "EdgarDerivedMetricsTimeSeriesHTTP",
         "type": "object"
@@ -402,8 +402,8 @@
         "required": [
           "accession_id",
           "cik",
-          "filing_type",
           "filing_date",
+          "filing_type",
           "is_amendment"
         ],
         "title": "EdgarFilingHTTP",
@@ -522,18 +522,18 @@
         },
         "required": [
           "accession_id",
-          "cik",
-          "statement_type",
           "accounting_standard",
-          "statement_date",
-          "fiscal_year",
-          "fiscal_period",
+          "cik",
           "currency",
-          "is_restated",
-          "version_source",
-          "version_sequence",
+          "filing_date",
           "filing_type",
-          "filing_date"
+          "fiscal_period",
+          "fiscal_year",
+          "is_restated",
+          "statement_date",
+          "statement_type",
+          "version_sequence",
+          "version_source"
         ],
         "title": "EdgarStatementVersionHTTP",
         "type": "object"
@@ -645,21 +645,21 @@
       "FilingType": {
         "enum": [
           "10-K",
-          "10-Q",
-          "8-K",
-          "20-F",
-          "40-F",
-          "6-K",
-          "S-1",
-          "S-3",
-          "OTHER",
           "10-K",
           "10-Q",
-          "8-K",
+          "10-Q",
+          "20-F",
           "20-F",
           "40-F",
+          "40-F",
           "6-K",
+          "6-K",
+          "8-K",
+          "8-K",
+          "OTHER",
           "S-1",
+          "S-1",
+          "S-3",
           "S-3"
         ],
         "title": "FilingType",
@@ -668,12 +668,12 @@
       "FiscalPeriod": {
         "enum": [
           "FY",
+          "H1",
+          "OTHER",
           "Q1",
           "Q2",
           "Q3",
-          "Q4",
-          "H1",
-          "OTHER"
+          "Q4"
         ],
         "title": "FiscalPeriod",
         "type": "string"
@@ -693,9 +693,9 @@
       },
       "HealthState": {
         "enum": [
-          "ok",
           "degraded",
-          "down"
+          "down",
+          "ok"
         ],
         "title": "HealthState",
         "type": "string"
@@ -774,9 +774,9 @@
           }
         },
         "required": [
-          "type",
           "message",
-          "retryable"
+          "retryable",
+          "type"
         ],
         "title": "MCPError",
         "type": "object"
@@ -911,9 +911,9 @@
         },
         "required": [
           "metric",
-          "unit",
-          "period_start",
           "period_end",
+          "period_start",
+          "unit",
           "value"
         ],
         "title": "NormalizedFactHTTP",
@@ -1060,8 +1060,8 @@
           }
         },
         "required": [
-          "statement_type",
-          "accounting_standard"
+          "accounting_standard",
+          "statement_type"
         ],
         "title": "NormalizedStatementHTTP",
         "type": "object"
@@ -1112,10 +1112,10 @@
           }
         },
         "required": [
+          "items",
           "page",
           "page_size",
-          "total",
-          "items"
+          "total"
         ],
         "title": "PaginatedEnvelope",
         "type": "object"
@@ -1168,10 +1168,10 @@
           }
         },
         "required": [
-          "ticker",
-          "price",
+          "as_of",
           "currency",
-          "as_of"
+          "price",
+          "ticker"
         ],
         "title": "QuoteItem",
         "type": "object"
@@ -1254,12 +1254,12 @@
         },
         "required": [
           "cik",
-          "statement_type",
-          "fiscal_year",
           "fiscal_period",
+          "fiscal_year",
           "from_version_sequence",
-          "to_version_sequence",
-          "summary"
+          "statement_type",
+          "summary",
+          "to_version_sequence"
         ],
         "title": "RestatementLedgerEntryHTTP",
         "type": "object"
@@ -1297,9 +1297,9 @@
         },
         "required": [
           "cik",
-          "statement_type",
-          "fiscal_year",
           "fiscal_period",
+          "fiscal_year",
+          "statement_type",
           "total_hops"
         ],
         "title": "RestatementLedgerHTTP",
@@ -1322,18 +1322,18 @@
           }
         },
         "required": [
-          "total_metrics_compared",
+          "has_material_change",
           "total_metrics_changed",
-          "has_material_change"
+          "total_metrics_compared"
         ],
         "title": "RestatementSummaryHTTP",
         "type": "object"
       },
       "StatementType": {
         "enum": [
-          "INCOME_STATEMENT",
           "BALANCE_SHEET",
-          "CASH_FLOW_STATEMENT"
+          "CASH_FLOW_STATEMENT",
+          "INCOME_STATEMENT"
         ],
         "title": "StatementType",
         "type": "string"
@@ -1466,8 +1466,8 @@
           }
         },
         "required": [
-          "status",
-          "source_status"
+          "source_status",
+          "status"
         ],
         "title": "SystemHealthResult",
         "type": "object"
@@ -1546,12 +1546,12 @@
         },
         "required": [
           "cik",
-          "statement_type",
-          "fiscal_year",
           "fiscal_period",
+          "fiscal_year",
           "from_version_sequence",
-          "to_version_sequence",
-          "summary"
+          "statement_type",
+          "summary",
+          "to_version_sequence"
         ],
         "title": "RestatementDeltaHTTP",
         "type": "object"
@@ -1678,14 +1678,14 @@
           }
         },
         "required": [
-          "cik",
-          "statement_type",
           "accounting_standard",
-          "statement_date",
-          "fiscal_year",
-          "fiscal_period",
+          "cik",
           "currency",
+          "fiscal_period",
+          "fiscal_year",
           "from_version_sequence",
+          "statement_date",
+          "statement_type",
           "to_version_sequence"
         ],
         "title": "RestatementDeltaHTTP",
@@ -1910,23 +1910,6 @@
           },
           {
             "in": "query",
-            "name": "to_date",
-            "required": false,
-            "schema": {
-              "anyOf": [
-                {
-                  "format": "date",
-                  "type": "string"
-                },
-                {
-                  "type": "null"
-                }
-              ],
-              "title": "To Date"
-            }
-          },
-          {
-            "in": "query",
             "name": "include_amendments",
             "required": false,
             "schema": {
@@ -1984,6 +1967,23 @@
                 }
               ],
               "title": "Per Page"
+            }
+          },
+          {
+            "in": "query",
+            "name": "to_date",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "format": "date",
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "To Date"
             }
           }
         ],
@@ -2089,15 +2089,6 @@
         "parameters": [
           {
             "in": "path",
-            "name": "cik",
-            "required": true,
-            "schema": {
-              "title": "Cik",
-              "type": "string"
-            }
-          },
-          {
-            "in": "path",
             "name": "accession_id",
             "required": true,
             "schema": {
@@ -2106,13 +2097,12 @@
             }
           },
           {
-            "in": "query",
-            "name": "include_statements",
-            "required": false,
+            "in": "path",
+            "name": "cik",
+            "required": true,
             "schema": {
-              "default": true,
-              "title": "Include Statements",
-              "type": "boolean"
+              "title": "Cik",
+              "type": "string"
             }
           },
           {
@@ -2122,6 +2112,16 @@
             "schema": {
               "default": false,
               "title": "Include Long Form",
+              "type": "boolean"
+            }
+          },
+          {
+            "in": "query",
+            "name": "include_statements",
+            "required": false,
+            "schema": {
+              "default": true,
+              "title": "Include Statements",
               "type": "boolean"
             }
           }
@@ -2236,6 +2236,15 @@
         "parameters": [
           {
             "in": "path",
+            "name": "accession_id",
+            "required": true,
+            "schema": {
+              "title": "Accession Id",
+              "type": "string"
+            }
+          },
+          {
+            "in": "path",
             "name": "cik",
             "required": true,
             "schema": {
@@ -2244,12 +2253,23 @@
             }
           },
           {
-            "in": "path",
-            "name": "accession_id",
-            "required": true,
+            "in": "query",
+            "name": "include_normalized",
+            "required": false,
             "schema": {
-              "title": "Accession Id",
-              "type": "string"
+              "default": false,
+              "title": "Include Normalized",
+              "type": "boolean"
+            }
+          },
+          {
+            "in": "query",
+            "name": "include_restated",
+            "required": false,
+            "schema": {
+              "default": false,
+              "title": "Include Restated",
+              "type": "boolean"
             }
           },
           {
@@ -2266,26 +2286,6 @@
                 }
               ],
               "title": "Statement Type"
-            }
-          },
-          {
-            "in": "query",
-            "name": "include_restated",
-            "required": false,
-            "schema": {
-              "default": false,
-              "title": "Include Restated",
-              "type": "boolean"
-            }
-          },
-          {
-            "in": "query",
-            "name": "include_normalized",
-            "required": false,
-            "schema": {
-              "default": false,
-              "title": "Include Normalized",
-              "type": "boolean"
             }
           }
         ],
@@ -2408,15 +2408,6 @@
           },
           {
             "in": "query",
-            "name": "statement_type",
-            "required": true,
-            "schema": {
-              "title": "Statement Type",
-              "type": "string"
-            }
-          },
-          {
-            "in": "query",
             "name": "from_date",
             "required": false,
             "schema": {
@@ -2430,23 +2421,6 @@
                 }
               ],
               "title": "From Date"
-            }
-          },
-          {
-            "in": "query",
-            "name": "to_date",
-            "required": false,
-            "schema": {
-              "anyOf": [
-                {
-                  "format": "date",
-                  "type": "string"
-                },
-                {
-                  "type": "null"
-                }
-              ],
-              "title": "To Date"
             }
           },
           {
@@ -2508,6 +2482,32 @@
                 }
               ],
               "title": "Per Page"
+            }
+          },
+          {
+            "in": "query",
+            "name": "statement_type",
+            "required": true,
+            "schema": {
+              "title": "Statement Type",
+              "type": "string"
+            }
+          },
+          {
+            "in": "query",
+            "name": "to_date",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "format": "date",
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "To Date"
             }
           }
         ],
@@ -2732,34 +2732,6 @@
           },
           {
             "in": "query",
-            "name": "statement_type",
-            "required": true,
-            "schema": {
-              "title": "Statement Type",
-              "type": "string"
-            }
-          },
-          {
-            "in": "query",
-            "name": "metrics",
-            "required": false,
-            "schema": {
-              "anyOf": [
-                {
-                  "items": {
-                    "$ref": "#/components/schemas/DerivedMetric"
-                  },
-                  "type": "array"
-                },
-                {
-                  "type": "null"
-                }
-              ],
-              "title": "Metrics"
-            }
-          },
-          {
-            "in": "query",
             "name": "frequency",
             "required": false,
             "schema": {
@@ -2783,6 +2755,34 @@
                 }
               ],
               "title": "From Date"
+            }
+          },
+          {
+            "in": "query",
+            "name": "metrics",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "items": {
+                    "$ref": "#/components/schemas/DerivedMetric"
+                  },
+                  "type": "array"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Metrics"
+            }
+          },
+          {
+            "in": "query",
+            "name": "statement_type",
+            "required": true,
+            "schema": {
+              "title": "Statement Type",
+              "type": "string"
             }
           },
           {
@@ -2922,10 +2922,10 @@
           },
           {
             "in": "query",
-            "name": "statement_type",
+            "name": "fiscal_period",
             "required": true,
             "schema": {
-              "title": "Statement Type",
+              "title": "Fiscal Period",
               "type": "string"
             }
           },
@@ -2941,21 +2941,21 @@
           },
           {
             "in": "query",
-            "name": "fiscal_period",
-            "required": true,
-            "schema": {
-              "title": "Fiscal Period",
-              "type": "string"
-            }
-          },
-          {
-            "in": "query",
             "name": "from_version_sequence",
             "required": true,
             "schema": {
               "minimum": 1,
               "title": "From Version Sequence",
               "type": "integer"
+            }
+          },
+          {
+            "in": "query",
+            "name": "statement_type",
+            "required": true,
+            "schema": {
+              "title": "Statement Type",
+              "type": "string"
             }
           },
           {
@@ -3088,10 +3088,10 @@
           },
           {
             "in": "query",
-            "name": "statement_type",
+            "name": "fiscal_period",
             "required": true,
             "schema": {
-              "title": "Statement Type",
+              "title": "Fiscal Period",
               "type": "string"
             }
           },
@@ -3107,10 +3107,10 @@
           },
           {
             "in": "query",
-            "name": "fiscal_period",
+            "name": "statement_type",
             "required": true,
             "schema": {
-              "title": "Fiscal Period",
+              "title": "Statement Type",
               "type": "string"
             }
           }
@@ -3237,33 +3237,6 @@
           },
           {
             "in": "query",
-            "name": "statement_type",
-            "required": true,
-            "schema": {
-              "$ref": "#/components/schemas/StatementType"
-            }
-          },
-          {
-            "in": "query",
-            "name": "metrics",
-            "required": false,
-            "schema": {
-              "anyOf": [
-                {
-                  "items": {
-                    "$ref": "#/components/schemas/DerivedMetric"
-                  },
-                  "type": "array"
-                },
-                {
-                  "type": "null"
-                }
-              ],
-              "title": "Metrics"
-            }
-          },
-          {
-            "in": "query",
             "name": "frequency",
             "required": false,
             "schema": {
@@ -3291,19 +3264,21 @@
           },
           {
             "in": "query",
-            "name": "to",
+            "name": "metrics",
             "required": false,
             "schema": {
               "anyOf": [
                 {
-                  "format": "date",
-                  "type": "string"
+                  "items": {
+                    "$ref": "#/components/schemas/DerivedMetric"
+                  },
+                  "type": "array"
                 },
                 {
                   "type": "null"
                 }
               ],
-              "title": "To"
+              "title": "Metrics"
             }
           },
           {
@@ -3327,6 +3302,31 @@
               "minimum": 1,
               "title": "Page Size",
               "type": "integer"
+            }
+          },
+          {
+            "in": "query",
+            "name": "statement_type",
+            "required": true,
+            "schema": {
+              "$ref": "#/components/schemas/StatementType"
+            }
+          },
+          {
+            "in": "query",
+            "name": "to",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "format": "date",
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "To"
             }
           }
         ],
@@ -3442,10 +3442,10 @@
           },
           {
             "in": "query",
-            "name": "statement_type",
+            "name": "fiscal_period",
             "required": true,
             "schema": {
-              "$ref": "#/components/schemas/StatementType"
+              "$ref": "#/components/schemas/FiscalPeriod"
             }
           },
           {
@@ -3460,20 +3460,20 @@
           },
           {
             "in": "query",
-            "name": "fiscal_period",
-            "required": true,
-            "schema": {
-              "$ref": "#/components/schemas/FiscalPeriod"
-            }
-          },
-          {
-            "in": "query",
             "name": "include_version_history",
             "required": false,
             "schema": {
               "default": true,
               "title": "Include Version History",
               "type": "boolean"
+            }
+          },
+          {
+            "in": "query",
+            "name": "statement_type",
+            "required": true,
+            "schema": {
+              "$ref": "#/components/schemas/StatementType"
             }
           }
         ],
@@ -3597,10 +3597,10 @@
           },
           {
             "in": "query",
-            "name": "statement_type",
+            "name": "fiscal_period",
             "required": true,
             "schema": {
-              "$ref": "#/components/schemas/StatementType"
+              "$ref": "#/components/schemas/FiscalPeriod"
             }
           },
           {
@@ -3615,29 +3615,11 @@
           },
           {
             "in": "query",
-            "name": "fiscal_period",
-            "required": true,
-            "schema": {
-              "$ref": "#/components/schemas/FiscalPeriod"
-            }
-          },
-          {
-            "in": "query",
             "name": "from_version_sequence",
             "required": true,
             "schema": {
               "minimum": 1,
               "title": "From Version Sequence",
-              "type": "integer"
-            }
-          },
-          {
-            "in": "query",
-            "name": "to_version_sequence",
-            "required": true,
-            "schema": {
-              "minimum": 1,
-              "title": "To Version Sequence",
               "type": "integer"
             }
           },
@@ -3658,6 +3640,24 @@
                 }
               ],
               "title": "Metrics"
+            }
+          },
+          {
+            "in": "query",
+            "name": "statement_type",
+            "required": true,
+            "schema": {
+              "$ref": "#/components/schemas/StatementType"
+            }
+          },
+          {
+            "in": "query",
+            "name": "to_version_sequence",
+            "required": true,
+            "schema": {
+              "minimum": 1,
+              "title": "To Version Sequence",
+              "type": "integer"
             }
           }
         ],
@@ -3784,33 +3784,6 @@
           },
           {
             "in": "query",
-            "name": "statement_type",
-            "required": true,
-            "schema": {
-              "$ref": "#/components/schemas/StatementType"
-            }
-          },
-          {
-            "in": "query",
-            "name": "metrics",
-            "required": false,
-            "schema": {
-              "anyOf": [
-                {
-                  "items": {
-                    "$ref": "#/components/schemas/CanonicalStatementMetric"
-                  },
-                  "type": "array"
-                },
-                {
-                  "type": "null"
-                }
-              ],
-              "title": "Metrics"
-            }
-          },
-          {
-            "in": "query",
             "name": "frequency",
             "required": false,
             "schema": {
@@ -3838,19 +3811,21 @@
           },
           {
             "in": "query",
-            "name": "to",
+            "name": "metrics",
             "required": false,
             "schema": {
               "anyOf": [
                 {
-                  "format": "date",
-                  "type": "string"
+                  "items": {
+                    "$ref": "#/components/schemas/CanonicalStatementMetric"
+                  },
+                  "type": "array"
                 },
                 {
                   "type": "null"
                 }
               ],
-              "title": "To"
+              "title": "Metrics"
             }
           },
           {
@@ -3874,6 +3849,31 @@
               "minimum": 1,
               "title": "Page Size",
               "type": "integer"
+            }
+          },
+          {
+            "in": "query",
+            "name": "statement_type",
+            "required": true,
+            "schema": {
+              "$ref": "#/components/schemas/StatementType"
+            }
+          },
+          {
+            "in": "query",
+            "name": "to",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "format": "date",
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "To"
             }
           }
         ],
@@ -4140,33 +4140,10 @@
         "parameters": [
           {
             "in": "query",
-            "name": "tickers",
-            "required": true,
-            "schema": {
-              "items": {
-                "type": "string"
-              },
-              "maxItems": 50,
-              "minItems": 1,
-              "title": "Tickers",
-              "type": "array"
-            }
-          },
-          {
-            "in": "query",
             "name": "from_",
             "required": true,
             "schema": {
               "title": "From ",
-              "type": "string"
-            }
-          },
-          {
-            "in": "query",
-            "name": "to",
-            "required": true,
-            "schema": {
-              "title": "To",
               "type": "string"
             }
           },
@@ -4204,6 +4181,29 @@
               "minimum": 1,
               "title": "Page Size",
               "type": "integer"
+            }
+          },
+          {
+            "in": "query",
+            "name": "tickers",
+            "required": true,
+            "schema": {
+              "items": {
+                "type": "string"
+              },
+              "maxItems": 50,
+              "minItems": 1,
+              "title": "Tickers",
+              "type": "array"
+            }
+          },
+          {
+            "in": "query",
+            "name": "to",
+            "required": true,
+            "schema": {
+              "title": "To",
+              "type": "string"
             }
           }
         ],
