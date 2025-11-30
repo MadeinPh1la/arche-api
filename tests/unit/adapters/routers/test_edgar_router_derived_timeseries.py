@@ -1,5 +1,5 @@
 # tests/unit/adapters/routers/test_edgar_router_derived_timeseries.py
-# Copyright (c) Stacklion.
+# Copyright (c)
 # SPDX-License-Identifier: MIT
 """HTTP tests for EDGAR derived-metrics time-series endpoint.
 
@@ -292,3 +292,38 @@ async def test_get_derived_metrics_timeseries_edgar_upstream_error(
     assert err["http_status"] == 502
     assert err["message"] == "upstream failure"
     assert isinstance(err.get("details", {}), dict)
+
+
+@pytest.mark.anyio
+async def test_get_derived_metrics_timeseries_view_metadata_absent_for_edgar_endpoint(
+    app: FastAPI,
+) -> None:
+    """Base EDGAR endpoint should not set a metric view (view should be null/absent)."""
+    dto = _make_point(
+        cik="0000000001",
+        statement_date=date(2024, 12, 31),
+        fiscal_year=2024,
+        fiscal_period=FiscalPeriod.FY,
+        normalized_payload_version_sequence=1,
+    )
+    fake_controller = _FakeDerivedMetricsController(points=[dto])
+    app.dependency_overrides[get_edgar_controller] = lambda: fake_controller
+
+    transport = ASGITransport(app=app)
+    async with AsyncClient(transport=transport, base_url="http://test") as client:
+        resp = await client.get(
+            "/v1/edgar/derived-metrics/time-series",
+            params={
+                "ciks": ["0000000001"],
+                "statement_type": "INCOME_STATEMENT",
+                "frequency": "annual",
+            },
+        )
+
+    assert resp.status_code == 200
+    payload = resp.json()
+    assert "data" in payload
+    data = payload["data"]
+
+    # For the raw EDGAR endpoint, view should not be set to a bundle.
+    assert data.get("view") is None

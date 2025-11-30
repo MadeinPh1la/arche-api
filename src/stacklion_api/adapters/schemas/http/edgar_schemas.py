@@ -9,6 +9,7 @@ Purpose:
         * Normalized facts and statements (analytics-grade, modeling-ready).
         * EDGAR statement versions (with optional normalized payloads).
         * EDGAR filing metadata and statement-version listings.
+        * Derived-metrics time series and metric-view catalog.
 
 Design:
     * Strict Pydantic models with extra="forbid".
@@ -496,6 +497,11 @@ class EdgarStatementVersionListHTTP(BaseHTTPSchema):
     )
 
 
+# --------------------------------------------------------------------------- #
+# Derived metrics time series                                                 #
+# --------------------------------------------------------------------------- #
+
+
 class EdgarDerivedMetricsPointHTTP(BaseModel):
     """HTTP schema for a single derived metrics time-series point.
 
@@ -533,6 +539,9 @@ class EdgarDerivedMetricsTimeSeriesHTTP(BaseModel):
             Inclusive upper bound on statement_date.
         points:
             Derived metrics time-series points in deterministic order.
+        view:
+            Optional metric view (bundle) identifier when the series is
+            produced via a named view. Null for ad-hoc metric selections.
     """
 
     model_config = ConfigDict(extra="forbid")
@@ -543,10 +552,61 @@ class EdgarDerivedMetricsTimeSeriesHTTP(BaseModel):
     from_date: date
     to_date: date
     points: list[EdgarDerivedMetricsPointHTTP]
+    view: str | None = Field(
+        default=None,
+        description=(
+            "Metric view (bundle) identifier when the series is derived from a "
+            "named view; null for ad-hoc metric selections."
+        ),
+    )
+
+
+# --------------------------------------------------------------------------- #
+# Metric views catalog                                                        #
+# --------------------------------------------------------------------------- #
+
+
+class MetricViewHTTP(BaseHTTPSchema):
+    """HTTP schema for a single metric view (bundle) definition."""
+
+    model_config = ConfigDict(
+        title="MetricViewHTTP",
+        extra="forbid",
+    )
+
+    code: str = Field(
+        ...,
+        description="Metric view (bundle) code, e.g. 'core_fundamentals'.",
+    )
+    label: str = Field(
+        ...,
+        description="Short human-readable label for the view.",
+    )
+    description: str = Field(
+        ...,
+        description="Longer description of the view's intent and use-cases.",
+    )
+    metrics: list[str] = Field(
+        ...,
+        description="Ordered list of derived metric codes belonging to this view.",
+    )
+
+
+class MetricViewsCatalogHTTP(BaseHTTPSchema):
+    """HTTP schema for the catalog of registered metric views."""
+
+    model_config = ConfigDict(
+        title="MetricViewsCatalogHTTP",
+        extra="forbid",
+    )
+
+    views: list[MetricViewHTTP] = Field(
+        default_factory=list,
+        description="Collection of all registered metric views.",
+    )
 
 
 __all__ = [
-    # existing exports...
     "EdgarFilingHTTP",
     "EdgarStatementVersionSummaryHTTP",
     "EdgarStatementVersionHTTP",
@@ -554,4 +614,6 @@ __all__ = [
     "NormalizedStatementHTTP",
     "EdgarDerivedMetricsPointHTTP",
     "EdgarDerivedMetricsTimeSeriesHTTP",
+    "MetricViewHTTP",
+    "MetricViewsCatalogHTTP",
 ]

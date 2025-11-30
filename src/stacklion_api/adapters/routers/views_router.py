@@ -8,6 +8,8 @@ Synopsis:
     metrics time series.
 
 Endpoints (all under /v1/views):
+    - GET /v1/views/metrics
+        → SuccessEnvelope with the catalog of registered metric views.
     - GET /v1/views/metrics/{bundle_code}
         → SuccessEnvelope with derived metrics time-series points for the
           given bundle.
@@ -34,6 +36,7 @@ from stacklion_api.adapters.presenters.edgar_presenter import EdgarPresenter
 from stacklion_api.adapters.routers.base_router import BaseRouter
 from stacklion_api.adapters.schemas.http.edgar_schemas import (
     EdgarDerivedMetricsTimeSeriesHTTP,
+    MetricViewsCatalogHTTP,
 )
 from stacklion_api.adapters.schemas.http.envelopes import (
     ErrorEnvelope,
@@ -47,6 +50,7 @@ from stacklion_api.domain.exceptions.edgar import (
     EdgarIngestionError,
     EdgarMappingError,
 )
+from stacklion_api.domain.services.metric_views import list_metric_views
 from stacklion_api.infrastructure.logging.logger import get_json_logger
 
 logger = get_json_logger(__name__)
@@ -104,6 +108,58 @@ def _apply_present_result(response: Response, result: PresentResult[Any]) -> Any
     if body is None:
         return {}
     return body
+
+
+# --------------------------------------------------------------------------- #
+# Routes: Metric views catalog                                                #
+# --------------------------------------------------------------------------- #
+
+
+@router.get(
+    "/metrics",
+    response_model=SuccessEnvelope[MetricViewsCatalogHTTP],
+    status_code=status.HTTP_200_OK,
+    responses=cast(
+        "dict[int | str, dict[str, Any]]",
+        BaseRouter.std_error_responses(),
+    ),
+    summary="List registered metric views (bundles)",
+    description=(
+        "Return the catalog of registered metric views (bundles) that can be "
+        "used with the derived-metrics time-series endpoints. Each view "
+        "represents an opinionated set of derived metrics (e.g., "
+        "'core_fundamentals')."
+    ),
+)
+async def list_metric_views_endpoint(
+    request: Request,
+    response: Response,
+) -> SuccessEnvelope[MetricViewsCatalogHTTP]:
+    """List all registered metric views."""
+    del request
+    trace_id = response.headers.get("X-Request-ID")
+
+    logger.info(
+        "views.api.list_metric_views.start",
+        extra={
+            "trace_id": trace_id,
+        },
+    )
+
+    views = list_metric_views()
+    result = presenter.present_metric_views_catalog(views=views, trace_id=trace_id)
+    body = _apply_present_result(response, result)
+
+    logger.info(
+        "views.api.list_metric_views.success",
+        extra={
+            "trace_id": trace_id,
+            "views_count": len(views),
+            "view_codes": [v.code for v in views],
+        },
+    )
+
+    return cast(SuccessEnvelope[MetricViewsCatalogHTTP], body)
 
 
 # --------------------------------------------------------------------------- #
@@ -277,6 +333,7 @@ async def get_metric_view_timeseries(
             from_date=effective_from_date,
             to_date=effective_to_date,
             trace_id=trace_id,
+            view=bundle_code,
         )
         body = _apply_present_result(response, result)
 

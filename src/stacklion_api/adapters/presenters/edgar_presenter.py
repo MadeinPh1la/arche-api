@@ -9,6 +9,8 @@ Purpose:
         * PaginatedEnvelope[EdgarStatementVersionSummaryHTTP]
         * SuccessEnvelope[EdgarFilingHTTP]
         * SuccessEnvelope[EdgarStatementVersionListHTTP]
+        * SuccessEnvelope[EdgarDerivedMetricsTimeSeriesHTTP]
+        * SuccessEnvelope[MetricViewsCatalogHTTP]
 
 Design:
     * Never leaks DB or internal shapes.
@@ -37,6 +39,8 @@ from stacklion_api.adapters.schemas.http.edgar_schemas import (
     EdgarStatementVersionHTTP,
     EdgarStatementVersionListHTTP,
     EdgarStatementVersionSummaryHTTP,
+    MetricViewHTTP,
+    MetricViewsCatalogHTTP,
     NormalizedStatementHTTP,
 )
 from stacklion_api.adapters.schemas.http.envelopes import (
@@ -49,6 +53,7 @@ from stacklion_api.application.schemas.dto.edgar import (
 )
 from stacklion_api.application.schemas.dto.edgar_derived import EdgarDerivedMetricsPointDTO
 from stacklion_api.domain.enums.edgar import StatementType
+from stacklion_api.domain.services.metric_views import MetricView
 from stacklion_api.infrastructure.logging.logger import get_json_logger
 
 _LOGGER = get_json_logger(__name__)
@@ -379,6 +384,7 @@ class EdgarPresenter(BasePresenter[SuccessEnvelope[Any]]):
         from_date: date | None = None,
         to_date: date | None = None,
         trace_id: str | None = None,
+        view: str | None = None,
     ) -> PresentResult[SuccessEnvelope[EdgarDerivedMetricsTimeSeriesHTTP]]:
         """Present a derived metrics time series.
 
@@ -410,6 +416,9 @@ class EdgarPresenter(BasePresenter[SuccessEnvelope[Any]]):
                 from_date if empty).
             trace_id:
                 Optional request correlation identifier.
+            view:
+                Optional metric view (bundle) identifier when the series is
+                produced via a named view. Null for ad-hoc selections.
 
         Returns:
             PresentResult containing SuccessEnvelope[EdgarDerivedMetricsTimeSeriesHTTP].
@@ -466,6 +475,7 @@ class EdgarPresenter(BasePresenter[SuccessEnvelope[Any]]):
             from_date=resolved_from_date,
             to_date=resolved_to_date,
             points=points,
+            view=view,
         )
 
         _LOGGER.info(
@@ -478,6 +488,52 @@ class EdgarPresenter(BasePresenter[SuccessEnvelope[Any]]):
                 "from_date": resolved_from_date.isoformat(),
                 "to_date": resolved_to_date.isoformat(),
                 "points": len(points),
+                "view": view,
+            },
+        )
+
+        return self.present_success(data=payload, trace_id=trace_id)
+
+    # ------------------------------------------------------------------
+    # Metric views catalog
+    # ------------------------------------------------------------------
+
+    def present_metric_views_catalog(
+        self,
+        *,
+        views: Iterable[MetricView],
+        trace_id: str | None = None,
+    ) -> PresentResult[SuccessEnvelope[MetricViewsCatalogHTTP]]:
+        """Present the catalog of registered metric views.
+
+        Args:
+            views:
+                Iterable of domain metric views.
+            trace_id:
+                Optional request correlation identifier.
+
+        Returns:
+            PresentResult containing SuccessEnvelope[MetricViewsCatalogHTTP].
+        """
+        sorted_views = sorted(views, key=lambda v: v.code)
+        items = [
+            MetricViewHTTP(
+                code=v.code,
+                label=v.label,
+                description=v.description,
+                metrics=[m.value for m in v.metrics],
+            )
+            for v in sorted_views
+        ]
+
+        payload = MetricViewsCatalogHTTP(views=items)
+
+        _LOGGER.info(
+            "edgar_presenter_metric_views_catalog",
+            extra={
+                "trace_id": trace_id,
+                "views_count": len(items),
+                "view_codes": [v.code for v in sorted_views],
             },
         )
 
