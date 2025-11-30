@@ -11,6 +11,7 @@ Purpose:
         * EDGAR filing metadata and statement-version listings.
         * Derived-metrics time series and metric-view catalog.
         * Derived-metrics catalog (introspection of the derived-metrics engine).
+        * Restatement deltas and ledgers.
 
 Design:
     * Strict Pydantic models with extra="forbid".
@@ -681,16 +682,210 @@ class MetricViewsCatalogHTTP(BaseHTTPSchema):
     )
 
 
+# --------------------------------------------------------------------------- #
+# Restatement deltas and ledger                                               #
+# --------------------------------------------------------------------------- #
+
+
+class RestatementMetricDeltaHTTP(BaseHTTPSchema):
+    """HTTP schema for a single restatement metric delta."""
+
+    model_config = ConfigDict(
+        title="RestatementMetricDeltaHTTP",
+        extra="forbid",
+    )
+
+    metric: str = Field(
+        ...,
+        description="Canonical metric code (e.g., REVENUE, EPS_DILUTED).",
+    )
+    old_value: str | None = Field(
+        default=None,
+        description=(
+            "Stringified numeric value from the 'from' version, or null if the "
+            "metric did not exist in that version."
+        ),
+    )
+    new_value: str | None = Field(
+        default=None,
+        description=(
+            "Stringified numeric value from the 'to' version, or null if the "
+            "metric is no longer present."
+        ),
+    )
+    diff: str | None = Field(
+        default=None,
+        description=("Stringified numeric difference (new - old), or null if not " "computable."),
+    )
+
+
+class RestatementSummaryHTTP(BaseHTTPSchema):
+    """HTTP schema for a high-level restatement summary."""
+
+    model_config = ConfigDict(
+        title="RestatementSummaryHTTP",
+        extra="forbid",
+    )
+
+    total_metrics_compared: int = Field(
+        ...,
+        description="Total number of metrics considered in the restatement.",
+    )
+    total_metrics_changed: int = Field(
+        ...,
+        description="Number of metrics whose value changed between versions.",
+    )
+    has_material_change: bool = Field(
+        ...,
+        description=(
+            "Whether the restatement is considered material under "
+            "application-defined thresholds."
+        ),
+    )
+
+
+class RestatementDeltaHTTP(BaseHTTPSchema):
+    """HTTP schema for a restatement delta between two statement versions."""
+
+    model_config = ConfigDict(
+        title="RestatementDeltaHTTP",
+        extra="forbid",
+    )
+
+    cik: str = Field(
+        ...,
+        description="Company CIK for the statement identity.",
+    )
+    statement_type: StatementType = Field(
+        ...,
+        description="Statement type for the restatement (e.g., INCOME_STATEMENT).",
+    )
+    fiscal_year: int = Field(
+        ...,
+        ge=1,
+        description="Fiscal year for the statement identity.",
+    )
+    fiscal_period: FiscalPeriod = Field(
+        ...,
+        description="Fiscal period for the statement identity (e.g., FY, Q1).",
+    )
+    from_version_sequence: int = Field(
+        ...,
+        ge=1,
+        description="Lower-bound version sequence (inclusive).",
+    )
+    to_version_sequence: int = Field(
+        ...,
+        ge=1,
+        description="Upper-bound version sequence (inclusive).",
+    )
+    summary: RestatementSummaryHTTP = Field(
+        ...,
+        description="High-level summary of the restatement.",
+    )
+    deltas: list[RestatementMetricDeltaHTTP] = Field(
+        default_factory=list,
+        description="Per-metric restatement deltas for the hop.",
+    )
+
+
+class RestatementLedgerEntryHTTP(BaseHTTPSchema):
+    """HTTP schema for a single hop in a restatement ledger."""
+
+    model_config = ConfigDict(
+        title="RestatementLedgerEntryHTTP",
+        extra="forbid",
+    )
+
+    cik: str = Field(
+        ...,
+        description="Company CIK for the statement identity.",
+    )
+    statement_type: StatementType = Field(
+        ...,
+        description="Statement type for the ledger.",
+    )
+    fiscal_year: int = Field(
+        ...,
+        ge=1,
+        description="Fiscal year for the ledger identity.",
+    )
+    fiscal_period: FiscalPeriod = Field(
+        ...,
+        description="Fiscal period for the ledger identity.",
+    )
+    from_version_sequence: int = Field(
+        ...,
+        ge=1,
+        description="Source version sequence for the 'from' side of the hop.",
+    )
+    to_version_sequence: int = Field(
+        ...,
+        ge=1,
+        description="Source version sequence for the 'to' side of the hop.",
+    )
+    summary: RestatementSummaryHTTP = Field(
+        ...,
+        description="High-level summary of the restatement between the versions.",
+    )
+    deltas: list[RestatementMetricDeltaHTTP] = Field(
+        default_factory=list,
+        description="Per-metric restatement deltas for this hop, when available.",
+    )
+
+
+class RestatementLedgerHTTP(BaseHTTPSchema):
+    """HTTP schema for a restatement ledger over a statement version history."""
+
+    model_config = ConfigDict(
+        title="RestatementLedgerHTTP",
+        extra="forbid",
+    )
+
+    cik: str = Field(
+        ...,
+        description="Company CIK for the statement identity.",
+    )
+    statement_type: StatementType = Field(
+        ...,
+        description="Statement type for the ledger.",
+    )
+    fiscal_year: int = Field(
+        ...,
+        ge=1,
+        description="Fiscal year for the ledger identity.",
+    )
+    fiscal_period: FiscalPeriod = Field(
+        ...,
+        description="Fiscal period for the ledger identity.",
+    )
+    total_hops: int = Field(
+        ...,
+        ge=0,
+        description="Total number of restatement hops in the ledger.",
+    )
+    entries: list[RestatementLedgerEntryHTTP] = Field(
+        default_factory=list,
+        description="Ordered list of restatement ledger entries.",
+    )
+
+
 __all__ = [
     "EdgarFilingHTTP",
     "EdgarStatementVersionSummaryHTTP",
     "EdgarStatementVersionHTTP",
     "EdgarStatementVersionListHTTP",
     "NormalizedStatementHTTP",
+    "NormalizedFactHTTP",
     "EdgarDerivedMetricsPointHTTP",
     "EdgarDerivedMetricsTimeSeriesHTTP",
     "EdgarDerivedMetricSpecHTTP",
     "EdgarDerivedMetricsCatalogHTTP",
     "MetricViewHTTP",
     "MetricViewsCatalogHTTP",
+    "RestatementMetricDeltaHTTP",
+    "RestatementSummaryHTTP",
+    "RestatementDeltaHTTP",
+    "RestatementLedgerEntryHTTP",
+    "RestatementLedgerHTTP",
 ]

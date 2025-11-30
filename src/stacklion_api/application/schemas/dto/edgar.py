@@ -270,6 +270,9 @@ class RestatementLedgerEntryDTO(BaseDTO):
             Source version sequence for the `to` side of the hop.
         summary:
             High-level summary of the restatement between the two versions.
+        deltas:
+            Optional per-metric restatement deltas for this hop. May be empty
+            when only summary information is available.
     """
 
     model_config = ConfigDict(extra="forbid")
@@ -277,9 +280,10 @@ class RestatementLedgerEntryDTO(BaseDTO):
     from_version_sequence: int
     to_version_sequence: int
     summary: RestatementSummaryDTO
+    deltas: list[RestatementMetricDeltaDTO]
 
 
-class RestatementLedgerDTO(BaseDTO):
+class GetRestatementLedgerResultDTO(BaseDTO):
     """DTO representing the restatement ledger for a single statement identity.
 
     A ledger is defined for a specific (cik, statement_type, fiscal_year,
@@ -306,6 +310,10 @@ class RestatementLedgerDTO(BaseDTO):
     entries: list[RestatementLedgerEntryDTO]
 
 
+# Backwards-compatible alias for any legacy imports.
+RestatementLedgerDTO = GetRestatementLedgerResultDTO
+
+
 __all__ = [
     "EdgarFilingDTO",
     "EdgarFilingListDTO",
@@ -317,5 +325,6 @@ __all__ = [
     "RestatementSummaryDTO",
     "ComputeRestatementDeltaResultDTO",
     "RestatementLedgerEntryDTO",
+    "GetRestatementLedgerResultDTO",
     "RestatementLedgerDTO",
 ]

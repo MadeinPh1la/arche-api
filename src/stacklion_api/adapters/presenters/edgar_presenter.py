@@ -1,3 +1,4 @@
+# src/stacklion_api/adapters/presenters/edgar_presenter.py
 # Copyright (c) Stacklion.
 # SPDX-License-Identifier: MIT
 """Presenter: EDGAR filings and statements → HTTP envelopes.
@@ -12,6 +13,8 @@ Purpose:
         * SuccessEnvelope[EdgarDerivedMetricsTimeSeriesHTTP]
         * SuccessEnvelope[MetricViewsCatalogHTTP]
         * SuccessEnvelope[EdgarDerivedMetricsCatalogHTTP]
+        * SuccessEnvelope[RestatementDeltaHTTP]
+        * SuccessEnvelope[RestatementLedgerHTTP]
 
 Design:
     * Never leaks DB or internal shapes.
@@ -45,14 +48,24 @@ from stacklion_api.adapters.schemas.http.edgar_schemas import (
     MetricViewHTTP,
     MetricViewsCatalogHTTP,
     NormalizedStatementHTTP,
+    RestatementDeltaHTTP,
+    RestatementLedgerEntryHTTP,
+    RestatementLedgerHTTP,
+    RestatementMetricDeltaHTTP,
+    RestatementSummaryHTTP,
 )
 from stacklion_api.adapters.schemas.http.envelopes import (
     PaginatedEnvelope,
     SuccessEnvelope,
 )
 from stacklion_api.application.schemas.dto.edgar import (
+    ComputeRestatementDeltaResultDTO,
     EdgarFilingDTO,
     EdgarStatementVersionDTO,
+    GetRestatementLedgerResultDTO,
+    RestatementLedgerEntryDTO,
+    RestatementMetricDeltaDTO,
+    RestatementSummaryDTO,
 )
 from stacklion_api.application.schemas.dto.edgar_derived import EdgarDerivedMetricsPointDTO
 from stacklion_api.domain.enums.edgar import StatementType
@@ -202,8 +215,8 @@ class EdgarPresenter(BasePresenter[SuccessEnvelope[Any]]):
             currency=dto.currency,
             is_restated=dto.is_restated,
             restatement_reason=dto.restatement_reason,
-            version_source=dto.version_source,
             version_sequence=dto.version_sequence,
+            version_source=dto.version_source,
             filing_type=dto.filing_type,
             filing_date=dto.filing_date,
         )
@@ -346,6 +359,189 @@ class EdgarPresenter(BasePresenter[SuccessEnvelope[Any]]):
                 "cik": filing.cik,
                 "versions_count": len(items),
                 "include_normalized": include_normalized,
+            },
+        )
+
+        return self.present_success(data=payload, trace_id=trace_id)
+
+    # ------------------------------------------------------------------
+    # Restatements: helpers
+    # ------------------------------------------------------------------
+
+    @staticmethod
+    def _map_restatement_metric_delta_dto(
+        dto: RestatementMetricDeltaDTO,
+    ) -> RestatementMetricDeltaHTTP:
+        """Map a restatement metric delta DTO to the HTTP schema.
+
+        Args:
+            dto: RestatementMetricDeltaDTO instance.
+
+        Returns:
+            RestatementMetricDeltaHTTP: HTTP-facing schema.
+        """
+        return RestatementMetricDeltaHTTP(
+            metric=dto.metric,
+            old_value=dto.old_value,
+            new_value=dto.new_value,
+            diff=dto.diff,
+        )
+
+    @staticmethod
+    def _map_restatement_summary_dto(
+        dto: RestatementSummaryDTO,
+    ) -> RestatementSummaryHTTP:
+        """Map a restatement summary DTO to the HTTP schema.
+
+        Args:
+            dto: RestatementSummaryDTO instance.
+
+        Returns:
+            RestatementSummaryHTTP: HTTP-facing schema.
+        """
+        return RestatementSummaryHTTP(
+            total_metrics_compared=dto.total_metrics_compared,
+            total_metrics_changed=dto.total_metrics_changed,
+            has_material_change=dto.has_material_change,
+        )
+
+    # ------------------------------------------------------------------
+    # Restatements: delta
+    # ------------------------------------------------------------------
+
+    def present_restatement_delta(
+        self,
+        *,
+        dto: ComputeRestatementDeltaResultDTO,
+        trace_id: str | None = None,
+    ) -> PresentResult[SuccessEnvelope[RestatementDeltaHTTP]]:
+        """Present a restatement delta between two statement versions.
+
+        The metric deltas are sorted deterministically by metric code.
+
+        Args:
+            dto:
+                Application-layer restatement delta result DTO.
+            trace_id:
+                Optional request correlation identifier.
+
+        Returns:
+            PresentResult containing SuccessEnvelope[RestatementDeltaHTTP].
+        """
+        # Deterministic ordering by metric code.
+        sorted_deltas = sorted(dto.deltas, key=lambda d: d.metric)
+
+        metric_http = [self._map_restatement_metric_delta_dto(delta) for delta in sorted_deltas]
+        summary_http = self._map_restatement_summary_dto(dto.summary)
+
+        payload = RestatementDeltaHTTP(
+            cik=dto.cik,
+            statement_type=dto.statement_type,
+            fiscal_year=dto.fiscal_year,
+            fiscal_period=dto.fiscal_period,
+            from_version_sequence=dto.from_version_sequence,
+            to_version_sequence=dto.to_version_sequence,
+            summary=summary_http,
+            deltas=metric_http,
+        )
+
+        _LOGGER.info(
+            "edgar_presenter_restatement_delta",
+            extra={
+                "trace_id": trace_id,
+                "cik": dto.cik,
+                "statement_type": dto.statement_type.value,
+                "fiscal_year": dto.fiscal_year,
+                "fiscal_period": dto.fiscal_period.value,
+                "from_version_sequence": dto.from_version_sequence,
+                "to_version_sequence": dto.to_version_sequence,
+                "total_metrics_compared": dto.summary.total_metrics_compared,
+                "total_metrics_changed": dto.summary.total_metrics_changed,
+                "has_material_change": dto.summary.has_material_change,
+                "metrics": len(metric_http),
+            },
+        )
+
+        return self.present_success(data=payload, trace_id=trace_id)
+
+    # ------------------------------------------------------------------
+    # Restatements: ledger
+    # ------------------------------------------------------------------
+
+    def present_restatement_ledger(
+        self,
+        *,
+        dto: GetRestatementLedgerResultDTO,
+        trace_id: str | None = None,
+    ) -> PresentResult[SuccessEnvelope[RestatementLedgerHTTP]]:
+        """Present a restatement ledger across all versions of a statement.
+
+        Ledger entries are sorted deterministically by:
+
+            * from_version_sequence ASC
+            * to_version_sequence ASC
+
+        Args:
+            dto:
+                Restatement ledger result DTO.
+            trace_id:
+                Optional request correlation identifier.
+
+        Returns:
+            PresentResult containing SuccessEnvelope[RestatementLedgerHTTP].
+        """
+        # Defensive deterministic ordering.
+        sorted_entries: list[RestatementLedgerEntryDTO] = sorted(
+            dto.entries,
+            key=lambda e: (e.from_version_sequence, e.to_version_sequence),
+        )
+
+        entries_http: list[RestatementLedgerEntryHTTP] = []
+        for entry in sorted_entries:
+            summary_http = self._map_restatement_summary_dto(entry.summary)
+            # Metric deltas may be absent (empty list) depending on use-case wiring.
+            sorted_metric_deltas = sorted(entry.deltas, key=lambda d: d.metric)
+            metric_http = [
+                self._map_restatement_metric_delta_dto(delta) for delta in sorted_metric_deltas
+            ]
+
+            entries_http.append(
+                RestatementLedgerEntryHTTP(
+                    cik=dto.cik,
+                    statement_type=dto.statement_type,
+                    fiscal_year=dto.fiscal_year,
+                    fiscal_period=dto.fiscal_period,
+                    from_version_sequence=entry.from_version_sequence,
+                    to_version_sequence=entry.to_version_sequence,
+                    summary=summary_http,
+                    deltas=metric_http,
+                ),
+            )
+
+        payload = RestatementLedgerHTTP(
+            cik=dto.cik,
+            statement_type=dto.statement_type,
+            fiscal_year=dto.fiscal_year,
+            fiscal_period=dto.fiscal_period,
+            total_hops=len(entries_http),
+            entries=entries_http,
+        )
+
+        _LOGGER.info(
+            "edgar_presenter_restatement_ledger",
+            extra={
+                "trace_id": trace_id,
+                "cik": dto.cik,
+                "statement_type": dto.statement_type.value,
+                "fiscal_year": dto.fiscal_year,
+                "fiscal_period": dto.fiscal_period.value,
+                "ledger_entries_count": len(entries_http),
+                "min_from_version_sequence": (
+                    entries_http[0].from_version_sequence if entries_http else None
+                ),
+                "max_to_version_sequence": (
+                    entries_http[-1].to_version_sequence if entries_http else None
+                ),
             },
         )
 

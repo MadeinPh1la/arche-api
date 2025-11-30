@@ -176,6 +176,10 @@ class GetRestatementLedgerUseCase:
                     from_version_sequence=delta.from_version_sequence,
                     to_version_sequence=delta.to_version_sequence,
                     summary=summary_dto,
+                    # Metric-level deltas are currently not surfaced at the
+                    # ledger hop level; this field is required by the DTO and
+                    # will be populated when the domain engine exposes them.
+                    deltas=[],
                 ),
             )
 

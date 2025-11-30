@@ -21,24 +21,35 @@ from __future__ import annotations
 
 from collections.abc import Sequence
 from datetime import date
-from typing import Protocol
+from typing import Any, Protocol
 
 from stacklion_api.adapters.controllers.base import BaseController
 from stacklion_api.application.schemas.dto.edgar import (
+    ComputeRestatementDeltaResultDTO,
     EdgarFilingDTO,
     EdgarStatementVersionDTO,
+    GetRestatementLedgerResultDTO,
+    RestatementLedgerEntryDTO,
+    RestatementMetricDeltaDTO,
+    RestatementSummaryDTO,
 )
 from stacklion_api.application.schemas.dto.edgar_derived import (
     EdgarDerivedMetricsPointDTO,
 )
+from stacklion_api.application.use_cases.statements.compute_restatement_delta import (
+    ComputeRestatementDeltaRequest,
+)
 from stacklion_api.application.use_cases.statements.get_derived_metrics_timeseries import (
     GetDerivedMetricsTimeSeriesRequest,
+)
+from stacklion_api.application.use_cases.statements.get_restatement_ledger import (
+    GetRestatementLedgerRequest,
 )
 from stacklion_api.domain.entities.edgar_derived_timeseries import (
     DerivedMetricsTimeSeriesPoint,
 )
 from stacklion_api.domain.enums.derived_metric import DerivedMetric
-from stacklion_api.domain.enums.edgar import FilingType, StatementType
+from stacklion_api.domain.enums.edgar import FilingType, FiscalPeriod, StatementType
 from stacklion_api.domain.services.metric_views import expand_view_metrics
 
 
@@ -173,6 +184,47 @@ class GetDerivedMetricsTimeSeriesUseCase(Protocol):
         ...
 
 
+class ComputeRestatementDeltaUseCase(Protocol):
+    """Protocol for the restatement delta use case."""
+
+    async def execute(
+        self,
+        req: ComputeRestatementDeltaRequest,
+    ) -> Any:
+        """Execute the restatement delta use case.
+
+        The concrete result type is a domain object with at least:
+
+            - ``delta.metrics``: mapping from canonical metric enums to
+              metric-delta objects exposing ``old``, ``new``, and ``diff``
+              attributes.
+
+        This controller maps that domain result into DTOs.
+        """
+        ...
+
+
+class GetRestatementLedgerUseCase(Protocol):
+    """Protocol for the restatement ledger use case."""
+
+    async def execute(
+        self,
+        req: GetRestatementLedgerRequest,
+    ) -> Any:
+        """Execute the restatement ledger use case.
+
+        The concrete result type is a domain object with at least:
+
+            - ``cik``, ``statement_type``, ``fiscal_year``, ``fiscal_period``.
+            - ``entries``: iterable of entry objects exposing:
+                * ``from_version_sequence``
+                * ``to_version_sequence``
+                * ``summary`` with the same shape as RestatementSummaryDTO.
+                * optionally ``delta.metrics`` for per-metric deltas.
+        """
+        ...
+
+
 class EdgarController(BaseController):
     """Controller orchestrating EDGAR filings, statements, and derived metrics."""
 
@@ -183,6 +235,8 @@ class EdgarController(BaseController):
         list_statements_uc: ListStatementVersionsUseCase,
         get_filing_statements_uc: GetStatementVersionsForFilingUseCase,
         get_derived_metrics_timeseries_uc: GetDerivedMetricsTimeSeriesUseCase | None = None,
+        compute_restatement_delta_uc: ComputeRestatementDeltaUseCase | None = None,
+        get_restatement_ledger_uc: GetRestatementLedgerUseCase | None = None,
     ) -> None:
         """Initialize the controller with its use-cases.
 
@@ -195,12 +249,24 @@ class EdgarController(BaseController):
                 Optional use-case building derived metrics time-series points.
                 May be None in legacy wiring or tests that do not exercise
                 derived metrics behavior.
+            compute_restatement_delta_uc:
+                Optional use-case computing restatement deltas between two
+                statement versions.
+            get_restatement_ledger_uc:
+                Optional use-case producing a restatement ledger across a
+                statement's version history.
         """
         self._list_filings_uc = list_filings_uc
         self._get_filing_uc = get_filing_uc
         self._list_statements_uc = list_statements_uc
         self._get_filing_statements_uc = get_filing_statements_uc
         self._get_derived_metrics_timeseries_uc = get_derived_metrics_timeseries_uc
+        self._compute_restatement_delta_uc = compute_restatement_delta_uc
+        self._get_restatement_ledger_uc = get_restatement_ledger_uc
+
+    # ------------------------------------------------------------------
+    # Filings
+    # ------------------------------------------------------------------
 
     async def list_filings(
         self,
@@ -260,6 +326,10 @@ class EdgarController(BaseController):
             cik=cik.strip(),
             accession_id=accession_id.strip(),
         )
+
+    # ------------------------------------------------------------------
+    # Statement versions
+    # ------------------------------------------------------------------
 
     async def list_statements(
         self,
@@ -329,6 +399,10 @@ class EdgarController(BaseController):
             include_normalized=include_normalized,
         )
 
+    # ------------------------------------------------------------------
+    # Derived metrics time series
+    # ------------------------------------------------------------------
+
     async def get_derived_metrics_timeseries(
         self,
         *,
@@ -369,7 +443,7 @@ class EdgarController(BaseController):
 
         Raises:
             RuntimeError:
-                If the derived metrics time-series use-case has not been wired.
+                If the derived metrics time-series use case has not been wired.
             ValueError:
                 If ``bundle_code`` is unknown or provided together with
                 explicit ``metrics``.
@@ -426,3 +500,180 @@ class EdgarController(BaseController):
         ]
 
         return dtos
+
+    # ------------------------------------------------------------------
+    # Restatements: delta
+    # ------------------------------------------------------------------
+
+    async def compute_restatement_delta(
+        self,
+        *,
+        cik: str,
+        statement_type: StatementType,
+        fiscal_year: int,
+        fiscal_period: FiscalPeriod,
+        from_version_sequence: int,
+        to_version_sequence: int,
+    ) -> ComputeRestatementDeltaResultDTO:
+        """Compute a restatement delta between two statement versions.
+
+        This is a thin adapter over the domain restatement-delta use case. It
+        maps the domain result into a transport-ready DTO structure with
+        stringified numeric values and canonical metric codes.
+        """
+        if self._compute_restatement_delta_uc is None:
+            raise RuntimeError(
+                "ComputeRestatementDeltaUseCase is not wired on EdgarController.",
+            )
+
+        req = ComputeRestatementDeltaRequest(
+            cik=cik.strip(),
+            statement_type=statement_type,
+            fiscal_year=fiscal_year,
+            fiscal_period=fiscal_period,
+            from_version_sequence=from_version_sequence,
+            to_version_sequence=to_version_sequence,
+            metrics=None,
+        )
+
+        result: Any = await self._compute_restatement_delta_uc.execute(req)
+
+        # Domain contract: result.delta.metrics is a mapping from canonical
+        # metric enum → metric delta object with old/new/diff attributes.
+        delta_obj: Any = getattr(result, "delta", None)
+        metrics_map: dict[Any, Any] = getattr(delta_obj, "metrics", {}) if delta_obj else {}
+
+        deltas: list[RestatementMetricDeltaDTO] = []
+        for metric_key, metric_delta in metrics_map.items():
+            metric_code = getattr(metric_key, "value", str(metric_key))
+
+            old_val = getattr(metric_delta, "old", None)
+            new_val = getattr(metric_delta, "new", None)
+            diff_val = getattr(metric_delta, "diff", None)
+
+            deltas.append(
+                RestatementMetricDeltaDTO(
+                    metric=metric_code,
+                    old_value=str(old_val) if old_val is not None else None,
+                    new_value=str(new_val) if new_val is not None else None,
+                    diff=str(diff_val) if diff_val is not None else None,
+                ),
+            )
+
+        total_metrics_compared = len(metrics_map)
+        total_metrics_changed = sum(
+            1
+            for metric_delta in metrics_map.values()
+            if getattr(metric_delta, "diff", None) not in (None, 0)
+        )
+        summary = RestatementSummaryDTO(
+            total_metrics_compared=total_metrics_compared,
+            total_metrics_changed=total_metrics_changed,
+            has_material_change=total_metrics_changed > 0,
+        )
+
+        return ComputeRestatementDeltaResultDTO(
+            cik=cik.strip(),
+            statement_type=statement_type,
+            fiscal_year=fiscal_year,
+            fiscal_period=fiscal_period,
+            from_version_sequence=from_version_sequence,
+            to_version_sequence=to_version_sequence,
+            summary=summary,
+            deltas=deltas,
+        )
+
+    # ------------------------------------------------------------------
+    # Restatements: ledger
+    # ------------------------------------------------------------------
+
+    async def get_restatement_ledger(
+        self,
+        *,
+        cik: str,
+        statement_type: StatementType,
+        fiscal_year: int,
+        fiscal_period: FiscalPeriod,
+    ) -> GetRestatementLedgerResultDTO:
+        """Build a restatement ledger across statement versions.
+
+        The ledger is an ordered sequence of hops between adjacent versions,
+        each with a summary and optional per-metric deltas.
+        """
+        if self._get_restatement_ledger_uc is None:
+            raise RuntimeError(
+                "GetRestatementLedgerUseCase is not wired on EdgarController.",
+            )
+
+        req = GetRestatementLedgerRequest(
+            cik=cik.strip(),
+            statement_type=statement_type,
+            fiscal_year=fiscal_year,
+            fiscal_period=fiscal_period,
+        )
+
+        result: Any = await self._get_restatement_ledger_uc.execute(req)
+
+        entries_dto: list[RestatementLedgerEntryDTO] = []
+        for entry in getattr(result, "entries", []):
+            summary_domain: Any = getattr(entry, "summary", None)
+            if summary_domain is not None:
+                summary_dto = RestatementSummaryDTO(
+                    total_metrics_compared=getattr(
+                        summary_domain,
+                        "total_metrics_compared",
+                        0,
+                    ),
+                    total_metrics_changed=getattr(
+                        summary_domain,
+                        "total_metrics_changed",
+                        0,
+                    ),
+                    has_material_change=bool(
+                        getattr(summary_domain, "has_material_change", False),
+                    ),
+                )
+            else:
+                summary_dto = RestatementSummaryDTO(
+                    total_metrics_compared=0,
+                    total_metrics_changed=0,
+                    has_material_change=False,
+                )
+
+            # Optional metric deltas per hop, if the domain exposes them.
+            delta_obj: Any = getattr(entry, "delta", None)
+            metrics_map: dict[Any, Any] = getattr(delta_obj, "metrics", {}) if delta_obj else {}
+
+            metric_deltas_dto: list[RestatementMetricDeltaDTO] = []
+            for metric_key, metric_delta in metrics_map.items():
+                metric_code = getattr(metric_key, "value", str(metric_key))
+
+                old_val = getattr(metric_delta, "old", None)
+                new_val = getattr(metric_delta, "new", None)
+                diff_val = getattr(metric_delta, "diff", None)
+
+                metric_deltas_dto.append(
+                    RestatementMetricDeltaDTO(
+                        metric=metric_code,
+                        old_value=str(old_val) if old_val is not None else None,
+                        new_value=str(new_val) if new_val is not None else None,
+                        diff=str(diff_val) if diff_val is not None else None,
+                    ),
+                )
+
+            entries_dto.append(
+                RestatementLedgerEntryDTO(
+                    from_version_sequence=entry.from_version_sequence,
+                    to_version_sequence=entry.to_version_sequence,
+                    summary=summary_dto,
+                    deltas=metric_deltas_dto,
+                ),
+            )
+
+        return GetRestatementLedgerResultDTO(
+            cik=cik.strip(),
+            statement_type=statement_type,
+            fiscal_year=fiscal_year,
+            fiscal_period=fiscal_period,
+            entries=entries_dto,
+        )

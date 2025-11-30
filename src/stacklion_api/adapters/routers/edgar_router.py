@@ -19,12 +19,17 @@ Endpoints (all under /v1/edgar):
         → SuccessEnvelope with derived metrics catalog.
     - GET /v1/edgar/derived-metrics/time-series
         → SuccessEnvelope with derived metrics time-series points.
+    - GET /v1/edgar/statements/restatements/delta
+        → SuccessEnvelope with restatement delta between two versions.
+    - GET /v1/edgar/statements/restatements/ledger
+        → SuccessEnvelope with restatement ledger over version history.
 
 Design:
     * Router handles HTTP validation and error mapping to envelopes.
     * Controllers orchestrate use cases only (no direct repo/infra).
     * Presenters shape DTOs into canonical envelopes and HTTP schemas.
 """
+
 
 from __future__ import annotations
 
@@ -43,6 +48,8 @@ from stacklion_api.adapters.schemas.http.edgar_schemas import (
     EdgarDerivedMetricsTimeSeriesHTTP,
     EdgarFilingHTTP,
     EdgarStatementVersionListHTTP,
+    RestatementDeltaHTTP,
+    RestatementLedgerHTTP,
 )
 from stacklion_api.adapters.schemas.http.envelopes import (
     ErrorEnvelope,
@@ -53,7 +60,7 @@ from stacklion_api.adapters.schemas.http.envelopes import (
 from stacklion_api.application.schemas.dto.edgar import EdgarFilingDTO
 from stacklion_api.dependencies.edgar import get_edgar_controller
 from stacklion_api.domain.enums.derived_metric import DerivedMetric
-from stacklion_api.domain.enums.edgar import FilingType, StatementType
+from stacklion_api.domain.enums.edgar import FilingType, FiscalPeriod, StatementType
 from stacklion_api.domain.exceptions.edgar import (
     EdgarIngestionError,
     EdgarMappingError,
@@ -1012,6 +1019,387 @@ async def get_derived_metrics_timeseries(
         logger.exception(
             "edgar.api.get_derived_metrics_timeseries.unhandled",
             extra={"ciks": normalized_ciks, "trace_id": trace_id},
+        )
+        envelope = _error_envelope(
+            http_status=503,
+            code="EDGAR_UNAVAILABLE",
+            message="EDGAR service is temporarily unavailable.",
+            trace_id=trace_id,
+            details={"reason": type(exc).__name__},
+        )
+        return JSONResponse(status_code=503, content=envelope.model_dump(mode="json"))
+
+
+# ---------------------------------------------------------------------------
+# Routes: Restatements (delta + ledger)
+# ---------------------------------------------------------------------------
+
+
+@router.get(
+    "/statements/restatements/delta",
+    response_model=SuccessEnvelope[RestatementDeltaHTTP] | ErrorEnvelope,
+    status_code=status.HTTP_200_OK,
+    responses=cast("dict[int | str, dict[str, Any]]", BaseRouter.std_error_responses()),
+    summary="Get restatement delta between two statement versions",
+    description=(
+        "Compute per-metric restatement deltas between two normalized statement "
+        "versions for a given (cik, statement_type, fiscal_year, fiscal_period) "
+        "identity. The delta is expressed as old/new/diff per canonical metric."
+    ),
+)
+async def get_restatement_delta(
+    request: Request,
+    response: Response,
+    controller: Annotated[EdgarController, Depends(get_edgar_controller)],
+    cik: Annotated[
+        str,
+        Query(
+            description="Company CIK as digits (no leading 'CIK' prefix).",
+            examples=["0000320193"],
+        ),
+    ],
+    statement_type: Annotated[
+        str,
+        Query(
+            description=(
+                "Statement type " "(INCOME_STATEMENT, BALANCE_SHEET, CASH_FLOW_STATEMENT)."
+            ),
+            examples=["INCOME_STATEMENT"],
+        ),
+    ],
+    fiscal_year: Annotated[
+        int,
+        Query(
+            ge=1,
+            description="Fiscal year for the statement identity (e.g., 2024).",
+        ),
+    ],
+    fiscal_period: Annotated[
+        str,
+        Query(
+            description="Fiscal period code (e.g., FY, Q1, Q2, Q3, Q4).",
+            examples=["FY"],
+        ),
+    ],
+    from_version_sequence: Annotated[
+        int,
+        Query(
+            ge=1,
+            description="Lower-bound version sequence (inclusive).",
+            examples=[1],
+        ),
+    ],
+    to_version_sequence: Annotated[
+        int,
+        Query(
+            ge=1,
+            description="Upper-bound version sequence (inclusive).",
+            examples=[2],
+        ),
+    ],
+) -> SuccessEnvelope[RestatementDeltaHTTP] | ErrorEnvelope | JSONResponse:
+    """Get a restatement delta between two statement versions."""
+    del request
+    trace_id = response.headers.get("X-Request-ID")
+
+    # Normalize and validate CIK.
+    try:
+        normalized_cik = _normalize_cik(cik)
+    except HTTPException as exc:
+        response.status_code = exc.status_code
+        return _error_envelope(
+            http_status=exc.status_code,
+            code="VALIDATION_ERROR",
+            message=str(exc.detail),
+            trace_id=trace_id,
+            details={"cik": cik},
+        )
+
+    # Parse enums manually so invalid values return 400 envelopes, not 422.
+    try:
+        typed_statement_type = StatementType(statement_type)
+    except ValueError:
+        envelope = _error_envelope(
+            http_status=400,
+            code="VALIDATION_ERROR",
+            message="Invalid statement_type.",
+            trace_id=trace_id,
+            details={"statement_type": statement_type},
+        )
+        return JSONResponse(status_code=400, content=envelope.model_dump(mode="json"))
+
+    try:
+        typed_fiscal_period = FiscalPeriod(fiscal_period)
+    except ValueError:
+        envelope = _error_envelope(
+            http_status=400,
+            code="VALIDATION_ERROR",
+            message="Invalid fiscal_period.",
+            trace_id=trace_id,
+            details={"fiscal_period": fiscal_period},
+        )
+        return JSONResponse(status_code=400, content=envelope.model_dump(mode="json"))
+
+    # Basic version ordering validation.
+    if from_version_sequence > to_version_sequence:
+        response.status_code = status.HTTP_400_BAD_REQUEST
+        return _error_envelope(
+            http_status=400,
+            code="VALIDATION_ERROR",
+            message="from_version_sequence must be <= to_version_sequence.",
+            trace_id=trace_id,
+            details={
+                "from_version_sequence": from_version_sequence,
+                "to_version_sequence": to_version_sequence,
+            },
+        )
+
+    logger.info(
+        "edgar.api.get_restatement_delta.start",
+        extra={
+            "cik": normalized_cik,
+            "statement_type": typed_statement_type.value,
+            "fiscal_year": fiscal_year,
+            "fiscal_period": typed_fiscal_period.value,
+            "from_version_sequence": from_version_sequence,
+            "to_version_sequence": to_version_sequence,
+            "trace_id": trace_id,
+        },
+    )
+
+    try:
+        dto = await controller.compute_restatement_delta(
+            cik=normalized_cik,
+            statement_type=typed_statement_type,
+            fiscal_year=fiscal_year,
+            fiscal_period=typed_fiscal_period,
+            from_version_sequence=from_version_sequence,
+            to_version_sequence=to_version_sequence,
+        )
+
+        result = presenter.present_restatement_delta(dto=dto, trace_id=trace_id)
+        body = _apply_present_result(response, result)
+
+        logger.info(
+            "edgar.api.get_restatement_delta.success",
+            extra={
+                "cik": normalized_cik,
+                "statement_type": typed_statement_type.value,
+                "fiscal_year": fiscal_year,
+                "fiscal_period": typed_fiscal_period.value,
+                "from_version_sequence": from_version_sequence,
+                "to_version_sequence": to_version_sequence,
+                "trace_id": trace_id,
+            },
+        )
+
+        return cast(SuccessEnvelope[RestatementDeltaHTTP], body)
+
+    except EdgarNotFound as exc:
+        envelope = _error_envelope(
+            http_status=404,
+            code="EDGAR_STATEMENTS_NOT_FOUND",
+            message=str(exc),
+            trace_id=trace_id,
+        )
+        return JSONResponse(status_code=404, content=envelope.model_dump(mode="json"))
+
+    except EdgarMappingError as exc:
+        envelope = _error_envelope(
+            http_status=500,
+            code="EDGAR_MAPPING_ERROR",
+            message=str(exc),
+            trace_id=trace_id,
+            details=getattr(exc, "details", None),
+        )
+        return JSONResponse(status_code=500, content=envelope.model_dump(mode="json"))
+
+    except EdgarIngestionError as exc:
+        envelope = _error_envelope(
+            http_status=502,
+            code="EDGAR_UPSTREAM_ERROR",
+            message=str(exc),
+            trace_id=trace_id,
+            details=getattr(exc, "details", None),
+        )
+        return JSONResponse(status_code=502, content=envelope.model_dump(mode="json"))
+
+    except Exception as exc:  # pragma: no cover - defensive
+        logger.exception(
+            "edgar.api.get_restatement_delta.unhandled",
+            extra={
+                "cik": normalized_cik,
+                "trace_id": trace_id,
+            },
+        )
+        envelope = _error_envelope(
+            http_status=503,
+            code="EDGAR_UNAVAILABLE",
+            message="EDGAR service is temporarily unavailable.",
+            trace_id=trace_id,
+            details={"reason": type(exc).__name__},
+        )
+        return JSONResponse(status_code=503, content=envelope.model_dump(mode="json"))
+
+
+@router.get(
+    "/statements/restatements/ledger",
+    response_model=SuccessEnvelope[RestatementLedgerHTTP] | ErrorEnvelope,
+    status_code=status.HTTP_200_OK,
+    responses=cast("dict[int | str, dict[str, Any]]", BaseRouter.std_error_responses()),
+    summary="Get restatement ledger for a statement identity",
+    description=(
+        "Return the restatement ledger for a given (cik, statement_type, fiscal_year, "
+        "fiscal_period) identity. The ledger consists of ordered hops between "
+        "adjacent statement versions with per-hop summaries and optional per-metric "
+        "deltas."
+    ),
+)
+async def get_restatement_ledger(
+    request: Request,
+    response: Response,
+    controller: Annotated[EdgarController, Depends(get_edgar_controller)],
+    cik: Annotated[
+        str,
+        Query(
+            description="Company CIK as digits (no leading 'CIK' prefix).",
+            examples=["0000320193"],
+        ),
+    ],
+    statement_type: Annotated[
+        str,
+        Query(
+            description=(
+                "Statement type " "(INCOME_STATEMENT, BALANCE_SHEET, CASH_FLOW_STATEMENT)."
+            ),
+            examples=["INCOME_STATEMENT"],
+        ),
+    ],
+    fiscal_year: Annotated[
+        int,
+        Query(
+            ge=1,
+            description="Fiscal year for the ledger identity.",
+        ),
+    ],
+    fiscal_period: Annotated[
+        str,
+        Query(
+            description="Fiscal period code (e.g., FY, Q1, Q2, Q3, Q4).",
+            examples=["FY"],
+        ),
+    ],
+) -> SuccessEnvelope[RestatementLedgerHTTP] | ErrorEnvelope | JSONResponse:
+    """Get the restatement ledger for a statement identity."""
+    del request
+    trace_id = response.headers.get("X-Request-ID")
+
+    # Normalize and validate CIK.
+    try:
+        normalized_cik = _normalize_cik(cik)
+    except HTTPException as exc:
+        response.status_code = exc.status_code
+        return _error_envelope(
+            http_status=exc.status_code,
+            code="VALIDATION_ERROR",
+            message=str(exc.detail),
+            trace_id=trace_id,
+            details={"cik": cik},
+        )
+
+    # Parse enums manually to produce 400 envelopes on invalid values.
+    try:
+        typed_statement_type = StatementType(statement_type)
+    except ValueError:
+        envelope = _error_envelope(
+            http_status=400,
+            code="VALIDATION_ERROR",
+            message="Invalid statement_type.",
+            trace_id=trace_id,
+            details={"statement_type": statement_type},
+        )
+        return JSONResponse(status_code=400, content=envelope.model_dump(mode="json"))
+
+    try:
+        typed_fiscal_period = FiscalPeriod(fiscal_period)
+    except ValueError:
+        envelope = _error_envelope(
+            http_status=400,
+            code="VALIDATION_ERROR",
+            message="Invalid fiscal_period.",
+            trace_id=trace_id,
+            details={"fiscal_period": fiscal_period},
+        )
+        return JSONResponse(status_code=400, content=envelope.model_dump(mode="json"))
+
+    logger.info(
+        "edgar.api.get_restatement_ledger.start",
+        extra={
+            "cik": normalized_cik,
+            "statement_type": typed_statement_type.value,
+            "fiscal_year": fiscal_year,
+            "fiscal_period": typed_fiscal_period.value,
+            "trace_id": trace_id,
+        },
+    )
+
+    try:
+        dto = await controller.get_restatement_ledger(
+            cik=normalized_cik,
+            statement_type=typed_statement_type,
+            fiscal_year=fiscal_year,
+            fiscal_period=typed_fiscal_period,
+        )
+
+        result = presenter.present_restatement_ledger(dto=dto, trace_id=trace_id)
+        body = _apply_present_result(response, result)
+
+        logger.info(
+            "edgar.api.get_restatement_ledger.success",
+            extra={
+                "cik": normalized_cik,
+                "statement_type": typed_statement_type.value,
+                "fiscal_year": fiscal_year,
+                "fiscal_period": typed_fiscal_period.value,
+                "trace_id": trace_id,
+            },
+        )
+
+        return cast(SuccessEnvelope[RestatementLedgerHTTP], body)
+
+    except EdgarNotFound as exc:
+        envelope = _error_envelope(
+            http_status=404,
+            code="EDGAR_STATEMENTS_NOT_FOUND",
+            message=str(exc),
+            trace_id=trace_id,
+        )
+        return JSONResponse(status_code=404, content=envelope.model_dump(mode="json"))
+
+    except EdgarMappingError as exc:
+        envelope = _error_envelope(
+            http_status=500,
+            code="EDGAR_MAPPING_ERROR",
+            message=str(exc),
+            trace_id=trace_id,
+            details=getattr(exc, "details", None),
+        )
+        return JSONResponse(status_code=500, content=envelope.model_dump(mode="json"))
+
+    except EdgarIngestionError as exc:
+        envelope = _error_envelope(
+            http_status=502,
+            code="EDGAR_UPSTREAM_ERROR",
+            message=str(exc),
+            trace_id=trace_id,
+            details=getattr(exc, "details", None),
+        )
+        return JSONResponse(status_code=502, content=envelope.model_dump(mode="json"))
+
+    except Exception as exc:  # pragma: no cover - defensive
+        logger.exception(
+            "edgar.api.get_restatement_ledger.unhandled",
+            extra={"cik": normalized_cik, "trace_id": trace_id},
         )
         envelope = _error_envelope(
             http_status=503,
