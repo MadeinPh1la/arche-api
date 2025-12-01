@@ -870,6 +870,83 @@ class RestatementLedgerHTTP(BaseHTTPSchema):
     )
 
 
+class RestatementMetricTimelineHTTP(BaseHTTPSchema):
+    """HTTP schema for a restatement metric timeline.
+
+    This schema represents a hop-aligned, ledger-aware time series of
+    restatement deltas for a single statement identity. It is the HTTP
+    projection of :class:`RestatementMetricTimelineDTO`.
+
+    Attributes:
+        cik:
+            Company CIK for the statement identity.
+        statement_type:
+            Statement type (e.g., INCOME_STATEMENT, BALANCE_SHEET).
+        fiscal_year:
+            Fiscal year associated with the statement identity.
+        fiscal_period:
+            Fiscal period (e.g., FY, Q1, Q2, Q3, Q4).
+        by_metric:
+            Mapping from metric code to a list of [version_order, absolute_delta]
+            pairs, both encoded as strings for wire stability. version_order is
+            the 1-based hop index within the ledger.
+        restatement_frequency:
+            Mapping from metric code to the number of hops in which that metric
+            exhibited a non-zero absolute delta.
+        per_metric_max_delta:
+            Mapping from metric code to the largest absolute delta observed
+            across all hops, stringified.
+        total_hops:
+            Total number of hops in the underlying restatement ledger.
+        timeline_severity:
+            Aggregate severity classification for the timeline, as a string
+            (e.g., "NONE", "LOW", "MEDIUM", "HIGH").
+    """
+
+    model_config = ConfigDict(
+        extra="forbid",
+        json_schema_extra={
+            "example": {
+                "cik": "0000320193",
+                "statement_type": "INCOME_STATEMENT",
+                "fiscal_year": 2023,
+                "fiscal_period": "FY",
+                "by_metric": {
+                    "REVENUE": [
+                        ["1", "15000000.00"],
+                        ["2", "25000000.00"],
+                    ],
+                    "NET_INCOME": [
+                        ["1", "5000000.00"],
+                    ],
+                },
+                "restatement_frequency": {
+                    "REVENUE": 2,
+                    "NET_INCOME": 1,
+                },
+                "per_metric_max_delta": {
+                    "REVENUE": "25000000.00",
+                    "NET_INCOME": "5000000.00",
+                },
+                "total_hops": 3,
+                "timeline_severity": "LOW",
+            },
+        },
+    )
+
+    cik: str
+    statement_type: StatementType
+    fiscal_year: int
+    fiscal_period: FiscalPeriod
+
+    # metric_code -> [[version_order_str, absolute_delta_str], ...]
+    by_metric: dict[str, list[list[str]]]
+    restatement_frequency: dict[str, int]
+    per_metric_max_delta: dict[str, str]
+    total_hops: int
+    timeline_severity: str
+
+
 __all__ = [
     "EdgarFilingHTTP",
     "EdgarStatementVersionSummaryHTTP",

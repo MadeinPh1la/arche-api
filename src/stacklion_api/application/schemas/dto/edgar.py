@@ -23,6 +23,7 @@ from stacklion_api.domain.enums.edgar import (
     AccountingStandard,
     FilingType,
     FiscalPeriod,
+    MaterialityClass,
     StatementType,
 )
 
@@ -314,6 +315,52 @@ class GetRestatementLedgerResultDTO(BaseDTO):
 RestatementLedgerDTO = GetRestatementLedgerResultDTO
 
 
+class RestatementMetricTimelineDTO(BaseDTO):
+    """DTO representing a hop-aligned restatement metric timeline.
+
+    This is the application-level projection of the
+    :class:`RestatementMetricTimeline` domain entity and is intended to be
+    mapped into HTTP time-series structures suitable for modeling.
+
+    Attributes:
+        cik:
+            Company CIK for the statement identity.
+        statement_type:
+            Statement type (e.g., INCOME_STATEMENT, BALANCE_SHEET).
+        fiscal_year:
+            Fiscal year associated with the statement identity.
+        fiscal_period:
+            Fiscal period (e.g., FY, Q1, Q2, Q3, Q4).
+        by_metric:
+            Mapping from metric code (string) to a list of (version_order,
+            absolute_delta) pairs, where absolute_delta is stringified.
+        restatement_frequency:
+            Mapping from metric code to the number of hops in which that
+            metric exhibited a non-zero absolute delta.
+        per_metric_max_delta:
+            Mapping from metric code to the largest absolute delta observed
+            across all hops, stringified.
+        total_hops:
+            Total number of hops in the underlying restatement ledger.
+        timeline_severity:
+            Aggregate severity classification for the timeline, using the
+            same semantics as the materiality engine.
+    """
+
+    model_config = ConfigDict(extra="forbid")
+
+    cik: str
+    statement_type: StatementType
+    fiscal_year: int
+    fiscal_period: FiscalPeriod
+
+    by_metric: dict[str, list[tuple[int, str]]]
+    restatement_frequency: dict[str, int]
+    per_metric_max_delta: dict[str, str]
+    total_hops: int
+    timeline_severity: MaterialityClass
+
+
 __all__ = [
     "EdgarFilingDTO",
     "EdgarFilingListDTO",
@@ -327,4 +374,5 @@ __all__ = [
     "RestatementLedgerEntryDTO",
     "GetRestatementLedgerResultDTO",
     "RestatementLedgerDTO",
+    "RestatementMetricTimelineDTO",
 ]

@@ -31,6 +31,7 @@ from stacklion_api.application.schemas.dto.edgar import (
     GetRestatementLedgerResultDTO,
     RestatementLedgerEntryDTO,
     RestatementMetricDeltaDTO,
+    RestatementMetricTimelineDTO,
     RestatementSummaryDTO,
 )
 from stacklion_api.application.schemas.dto.edgar_derived import (
@@ -44,6 +45,9 @@ from stacklion_api.application.use_cases.statements.get_derived_metrics_timeseri
 )
 from stacklion_api.application.use_cases.statements.get_restatement_ledger import (
     GetRestatementLedgerRequest,
+)
+from stacklion_api.application.use_cases.statements.get_restatement_timeline import (
+    GetRestatementTimelineRequest,
 )
 from stacklion_api.domain.entities.edgar_derived_timeseries import (
     DerivedMetricsTimeSeriesPoint,
@@ -81,6 +85,17 @@ class ListFilingsUseCase(Protocol):
         Returns:
             A tuple of (filings, total_count) for the given criteria.
         """
+        ...
+
+
+class GetRestatementTimelineUseCase(Protocol):
+    """Protocol for the restatement metric timeline use case."""
+
+    async def execute(
+        self,
+        req: GetRestatementTimelineRequest,
+    ) -> RestatementMetricTimelineDTO:
+        """Execute the restatement timeline use case."""
         ...
 
 
@@ -237,6 +252,7 @@ class EdgarController(BaseController):
         get_derived_metrics_timeseries_uc: GetDerivedMetricsTimeSeriesUseCase | None = None,
         compute_restatement_delta_uc: ComputeRestatementDeltaUseCase | None = None,
         get_restatement_ledger_uc: GetRestatementLedgerUseCase | None = None,
+        get_restatement_timeline_uc: GetRestatementTimelineUseCase | None = None,
     ) -> None:
         """Initialize the controller with its use-cases.
 
@@ -255,6 +271,9 @@ class EdgarController(BaseController):
             get_restatement_ledger_uc:
                 Optional use-case producing a restatement ledger across a
                 statement's version history.
+            get_restatement_timeline_uc:
+                Optional use-case producing a hop-aligned restatement metric
+                timeline across a statement's version history.
         """
         self._list_filings_uc = list_filings_uc
         self._get_filing_uc = get_filing_uc
@@ -263,6 +282,7 @@ class EdgarController(BaseController):
         self._get_derived_metrics_timeseries_uc = get_derived_metrics_timeseries_uc
         self._compute_restatement_delta_uc = compute_restatement_delta_uc
         self._get_restatement_ledger_uc = get_restatement_ledger_uc
+        self._get_restatement_timeline_uc = get_restatement_timeline_uc
 
     # ------------------------------------------------------------------
     # Filings
@@ -677,3 +697,34 @@ class EdgarController(BaseController):
             fiscal_period=fiscal_period,
             entries=entries_dto,
         )
+
+    # ------------------------------------------------------------------
+    # Restatements: metric timeline
+    # ------------------------------------------------------------------
+
+    async def get_restatement_timeline(
+        self,
+        *,
+        cik: str,
+        statement_type: StatementType,
+        fiscal_year: int,
+        fiscal_period: FiscalPeriod,
+    ) -> RestatementMetricTimelineDTO:
+        """Build a restatement metric timeline across statement versions.
+
+        The timeline is a hop-aligned, per-metric time series derived from
+        the restatement ledger for the given identity.
+        """
+        if self._get_restatement_timeline_uc is None:
+            raise RuntimeError(
+                "GetRestatementTimelineUseCase is not wired on EdgarController.",
+            )
+
+        req = GetRestatementTimelineRequest(
+            cik=cik.strip(),
+            statement_type=statement_type,
+            fiscal_year=fiscal_year,
+            fiscal_period=fiscal_period,
+        )
+
+        return await self._get_restatement_timeline_uc.execute(req)

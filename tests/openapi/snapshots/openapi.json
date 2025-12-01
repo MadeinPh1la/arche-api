@@ -1305,6 +1305,107 @@
         "title": "RestatementLedgerHTTP",
         "type": "object"
       },
+      "RestatementMetricTimelineHTTP": {
+        "additionalProperties": false,
+        "example": {
+          "by_metric": {
+            "NET_INCOME": [
+              [
+                "1",
+                "5000000.00"
+              ]
+            ],
+            "REVENUE": [
+              [
+                "1",
+                "15000000.00"
+              ],
+              [
+                "2",
+                "25000000.00"
+              ]
+            ]
+          },
+          "cik": "0000320193",
+          "fiscal_period": "FY",
+          "fiscal_year": 2023,
+          "per_metric_max_delta": {
+            "NET_INCOME": "5000000.00",
+            "REVENUE": "25000000.00"
+          },
+          "restatement_frequency": {
+            "NET_INCOME": 1,
+            "REVENUE": 2
+          },
+          "statement_type": "INCOME_STATEMENT",
+          "timeline_severity": "LOW",
+          "total_hops": 3
+        },
+        "properties": {
+          "by_metric": {
+            "additionalProperties": {
+              "items": {
+                "items": {
+                  "type": "string"
+                },
+                "type": "array"
+              },
+              "type": "array"
+            },
+            "title": "By Metric",
+            "type": "object"
+          },
+          "cik": {
+            "title": "Cik",
+            "type": "string"
+          },
+          "fiscal_period": {
+            "$ref": "#/components/schemas/FiscalPeriod"
+          },
+          "fiscal_year": {
+            "title": "Fiscal Year",
+            "type": "integer"
+          },
+          "per_metric_max_delta": {
+            "additionalProperties": {
+              "type": "string"
+            },
+            "title": "Per Metric Max Delta",
+            "type": "object"
+          },
+          "restatement_frequency": {
+            "additionalProperties": {
+              "type": "integer"
+            },
+            "title": "Restatement Frequency",
+            "type": "object"
+          },
+          "statement_type": {
+            "$ref": "#/components/schemas/StatementType"
+          },
+          "timeline_severity": {
+            "title": "Timeline Severity",
+            "type": "string"
+          },
+          "total_hops": {
+            "title": "Total Hops",
+            "type": "integer"
+          }
+        },
+        "required": [
+          "by_metric",
+          "cik",
+          "fiscal_period",
+          "fiscal_year",
+          "per_metric_max_delta",
+          "restatement_frequency",
+          "statement_type",
+          "timeline_severity",
+          "total_hops"
+        ],
+        "title": "RestatementMetricTimelineHTTP",
+        "type": "object"
+      },
       "RestatementSummaryHTTP": {
         "additionalProperties": false,
         "properties": {
@@ -1434,6 +1535,19 @@
         "properties": {
           "data": {
             "$ref": "#/components/schemas/RestatementLedgerHTTP"
+          }
+        },
+        "required": [
+          "data"
+        ],
+        "title": "SuccessEnvelope",
+        "type": "object"
+      },
+      "SuccessEnvelope_RestatementMetricTimelineHTTP_": {
+        "additionalProperties": false,
+        "properties": {
+          "data": {
+            "$ref": "#/components/schemas/RestatementMetricTimelineHTTP"
           }
         },
         "required": [
@@ -1607,7 +1721,7 @@
         "additionalProperties": false,
         "properties": {
           "data": {
-            "$ref": "#/components/schemas/stacklion_api__adapters__schemas__http__edgar_schemas__RestatementDeltaHTTP"
+            "$ref": "#/components/schemas/stacklion_api__adapters__schemas__http__fundamentals__RestatementDeltaHTTP"
           }
         },
         "required": [
@@ -1616,11 +1730,11 @@
         "title": "SuccessEnvelope",
         "type": "object"
       },
-      "stacklion_api__adapters__schemas__http__envelopes__SuccessEnvelope_RestatementDeltaHTTP___2": {
+      "stacklion_api__adapters__schemas__http__envelopes__SuccessEnvelope_RestatementDeltaHTTP___1": {
         "additionalProperties": false,
         "properties": {
           "data": {
-            "$ref": "#/components/schemas/stacklion_api__adapters__schemas__http__fundamentals__RestatementDeltaHTTP"
+            "$ref": "#/components/schemas/stacklion_api__adapters__schemas__http__edgar_schemas__RestatementDeltaHTTP"
           }
         },
         "required": [
@@ -2608,6 +2722,152 @@
         ]
       }
     },
+    "/v1/edgar/companies/{cik}/statements/restatement-timeline": {
+      "get": {
+        "parameters": [
+          {
+            "in": "path",
+            "name": "cik",
+            "required": true,
+            "schema": {
+              "title": "Cik",
+              "type": "string"
+            }
+          },
+          {
+            "in": "query",
+            "name": "fiscal_period",
+            "required": true,
+            "schema": {
+              "title": "Fiscal Period",
+              "type": "string"
+            }
+          },
+          {
+            "in": "query",
+            "name": "fiscal_year",
+            "required": true,
+            "schema": {
+              "minimum": 1,
+              "title": "Fiscal Year",
+              "type": "integer"
+            }
+          },
+          {
+            "in": "query",
+            "name": "statement_type",
+            "required": true,
+            "schema": {
+              "title": "Statement Type",
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "anyOf": [
+                    {
+                      "$ref": "#/components/schemas/SuccessEnvelope_RestatementMetricTimelineHTTP_"
+                    },
+                    {
+                      "$ref": "#/components/schemas/ErrorEnvelope"
+                    }
+                  ],
+                  "title": "Response Get  V1 Edgar Companies Cik Statements Restatement-Timeline"
+                }
+              }
+            }
+          },
+          "400": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorEnvelope"
+                }
+              }
+            }
+          },
+          "401": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorEnvelope"
+                }
+              }
+            }
+          },
+          "403": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorEnvelope"
+                }
+              }
+            }
+          },
+          "404": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorEnvelope"
+                }
+              }
+            }
+          },
+          "409": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorEnvelope"
+                }
+              }
+            }
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorEnvelope"
+                }
+              }
+            }
+          },
+          "429": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorEnvelope"
+                }
+              }
+            }
+          },
+          "500": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorEnvelope"
+                }
+              }
+            }
+          },
+          "503": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorEnvelope"
+                }
+              }
+            }
+          }
+        },
+        "tags": [
+          "EDGAR Filings"
+        ]
+      }
+    },
     "/v1/edgar/derived-metrics/catalog": {
       "get": {
         "responses": {
@@ -2976,7 +3236,7 @@
                 "schema": {
                   "anyOf": [
                     {
-                      "$ref": "#/components/schemas/stacklion_api__adapters__schemas__http__envelopes__SuccessEnvelope[RestatementDeltaHTTP]"
+                      "$ref": "#/components/schemas/stacklion_api__adapters__schemas__http__envelopes__SuccessEnvelope_RestatementDeltaHTTP___1"
                     },
                     {
                       "$ref": "#/components/schemas/ErrorEnvelope"
@@ -3668,7 +3928,7 @@
                 "schema": {
                   "anyOf": [
                     {
-                      "$ref": "#/components/schemas/stacklion_api__adapters__schemas__http__envelopes__SuccessEnvelope_RestatementDeltaHTTP___2"
+                      "$ref": "#/components/schemas/stacklion_api__adapters__schemas__http__envelopes__SuccessEnvelope[RestatementDeltaHTTP]"
                     },
                     {
                       "$ref": "#/components/schemas/ErrorEnvelope"

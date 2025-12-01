@@ -91,9 +91,23 @@ class FiscalPeriod(str, Enum):
     OTHER = "OTHER"
 
 
+class MaterialityClass(str, Enum):
+    """Materiality classification for restatement analytics.
+
+    This enum is used by restatement profiles and timelines to capture
+    the aggregate severity of changes across statement versions.
+    """
+
+    NONE = "NONE"
+    LOW = "LOW"
+    MEDIUM = "MEDIUM"
+    HIGH = "HIGH"
+
+
 __all__ = [
     "FilingType",
     "StatementType",
     "AccountingStandard",
     "FiscalPeriod",
+    "MaterialityClass",
 ]

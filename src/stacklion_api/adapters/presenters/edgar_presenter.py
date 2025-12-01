@@ -52,6 +52,7 @@ from stacklion_api.adapters.schemas.http.edgar_schemas import (
     RestatementLedgerEntryHTTP,
     RestatementLedgerHTTP,
     RestatementMetricDeltaHTTP,
+    RestatementMetricTimelineHTTP,
     RestatementSummaryHTTP,
 )
 from stacklion_api.adapters.schemas.http.envelopes import (
@@ -65,6 +66,7 @@ from stacklion_api.application.schemas.dto.edgar import (
     GetRestatementLedgerResultDTO,
     RestatementLedgerEntryDTO,
     RestatementMetricDeltaDTO,
+    RestatementMetricTimelineDTO,
     RestatementSummaryDTO,
 )
 from stacklion_api.application.schemas.dto.edgar_derived import EdgarDerivedMetricsPointDTO
@@ -542,6 +544,78 @@ class EdgarPresenter(BasePresenter[SuccessEnvelope[Any]]):
                 "max_to_version_sequence": (
                     entries_http[-1].to_version_sequence if entries_http else None
                 ),
+            },
+        )
+
+        return self.present_success(data=payload, trace_id=trace_id)
+
+    # ------------------------------------------------------------------
+    # Restatements: metric timeline
+    # ------------------------------------------------------------------
+
+    def present_restatement_timeline(
+        self,
+        *,
+        dto: RestatementMetricTimelineDTO,
+        trace_id: str | None = None,
+    ) -> PresentResult[SuccessEnvelope[RestatementMetricTimelineHTTP]]:
+        """Present a restatement metric timeline for a statement identity.
+
+        The presenter enforces deterministic ordering of:
+
+            * metric codes (alphabetical)
+            * hop sequences per metric (by version_order ascending)
+            * restatement_frequency and per_metric_max_delta keys
+
+        Args:
+            dto:
+                Application-layer restatement metric timeline DTO.
+            trace_id:
+                Optional request correlation identifier.
+
+        Returns:
+            PresentResult containing SuccessEnvelope[RestatementMetricTimelineHTTP].
+        """
+        # Sort metrics alphabetically and hops by version_order.
+        by_metric_http: dict[str, list[list[str]]] = {}
+        for metric_code, hops in sorted(dto.by_metric.items(), key=lambda kv: kv[0]):
+            sorted_hops = sorted(hops, key=lambda h: h[0])
+            by_metric_http[metric_code] = [
+                [str(version_order), delta_str] for version_order, delta_str in sorted_hops
+            ]
+
+        # Sort frequency and max-delta keys for deterministic output.
+        restatement_frequency_http = {
+            metric_code: dto.restatement_frequency[metric_code]
+            for metric_code in sorted(dto.restatement_frequency.keys())
+        }
+        per_metric_max_delta_http = {
+            metric_code: dto.per_metric_max_delta[metric_code]
+            for metric_code in sorted(dto.per_metric_max_delta.keys())
+        }
+
+        payload = RestatementMetricTimelineHTTP(
+            cik=dto.cik,
+            statement_type=dto.statement_type,
+            fiscal_year=dto.fiscal_year,
+            fiscal_period=dto.fiscal_period,
+            by_metric=by_metric_http,
+            restatement_frequency=restatement_frequency_http,
+            per_metric_max_delta=per_metric_max_delta_http,
+            total_hops=dto.total_hops,
+            timeline_severity=dto.timeline_severity.value,
+        )
+
+        _LOGGER.info(
+            "edgar_presenter_restatement_timeline",
+            extra={
+                "trace_id": trace_id,
+                "cik": dto.cik,
+                "statement_type": dto.statement_type.value,
+                "fiscal_year": dto.fiscal_year,
+                "fiscal_period": dto.fiscal_period.value,
+                "total_hops": dto.total_hops,
+                "metrics": len(by_metric_http),
             },
         )
 
