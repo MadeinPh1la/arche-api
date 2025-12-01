@@ -35,7 +35,12 @@ from datetime import date
 from pydantic import ConfigDict, Field
 
 from stacklion_api.adapters.schemas.http.base import BaseHTTPSchema
-from stacklion_api.adapters.schemas.http.edgar_schemas import EdgarStatementVersionHTTP
+from stacklion_api.adapters.schemas.http.edgar_schemas import (
+    EdgarStatementVersionHTTP,
+)
+from stacklion_api.adapters.schemas.http.edgar_schemas import (
+    RestatementDeltaHTTP as RestatementDeltaHTTP,
+)
 from stacklion_api.domain.enums.edgar import AccountingStandard, FiscalPeriod, StatementType
 
 
@@ -253,85 +258,6 @@ class RestatementMetricDeltaHTTP(BaseHTTPSchema):
     diff: str | None = Field(
         default=None,
         description="Difference new - old as a decimal string, when applicable.",
-    )
-
-
-class RestatementDeltaHTTP(BaseHTTPSchema):
-    """HTTP schema for a restatement delta across canonical metrics.
-
-    Attributes:
-        cik:
-            Central Index Key for the filer.
-        statement_type:
-            Statement type (income, balance sheet, cash flow, etc.).
-        accounting_standard:
-            Accounting standard (e.g., US_GAAP, IFRS).
-        statement_date:
-            Reporting period end date.
-        fiscal_year:
-            Fiscal year associated with the statement.
-        fiscal_period:
-            Fiscal period within the year (e.g., FY, Q1, Q2).
-        currency:
-            ISO 4217 currency code for all monetary metrics.
-        from_version_sequence:
-            Source version sequence for the 'from' (pre-restatement) payload.
-        to_version_sequence:
-            Source version sequence for the 'to' (post-restatement) payload.
-        metrics:
-            Mapping from canonical metric codes to their per-metric restatement
-            deltas. Only metrics that changed between the two versions are
-            included by default.
-    """
-
-    model_config = ConfigDict(
-        title="RestatementDeltaHTTP",
-        extra="forbid",
-    )
-
-    cik: str = Field(..., description="Central Index Key for the filer.")
-    statement_type: StatementType = Field(
-        ...,
-        description="High-level statement taxonomy (income, balance sheet, cash flow).",
-    )
-    accounting_standard: AccountingStandard = Field(
-        ...,
-        description="Accounting standard (e.g., US_GAAP, IFRS).",
-    )
-    statement_date: date = Field(
-        ...,
-        description="Reporting period end date for the restated statement.",
-    )
-    fiscal_year: int = Field(
-        ...,
-        ge=1,
-        description="Fiscal year associated with the statement (e.g., 2024).",
-    )
-    fiscal_period: FiscalPeriod = Field(
-        ...,
-        description="Fiscal period within the year (e.g., FY, Q1, Q2).",
-    )
-    currency: str = Field(
-        ...,
-        description="ISO 4217 currency code for monetary metrics (e.g., USD).",
-    )
-    from_version_sequence: int = Field(
-        ...,
-        ge=1,
-        description="Sequence number for the 'from' (pre-restatement) version.",
-    )
-    to_version_sequence: int = Field(
-        ...,
-        ge=1,
-        description="Sequence number for the 'to' (post-restatement) version.",
-    )
-    metrics: Mapping[str, RestatementMetricDeltaHTTP] = Field(
-        default_factory=dict,
-        description=(
-            "Mapping of canonical metric codes to their restatement deltas. "
-            "Only metrics whose values changed between the two versions are "
-            "included."
-        ),
     )
 
 

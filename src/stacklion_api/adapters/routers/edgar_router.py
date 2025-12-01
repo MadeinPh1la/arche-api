@@ -48,7 +48,6 @@ from stacklion_api.adapters.schemas.http.edgar_schemas import (
     EdgarDerivedMetricsTimeSeriesHTTP,
     EdgarFilingHTTP,
     EdgarStatementVersionListHTTP,
-    RestatementDeltaHTTP,
     RestatementLedgerHTTP,
     RestatementMetricTimelineHTTP,
 )
@@ -56,6 +55,7 @@ from stacklion_api.adapters.schemas.http.envelopes import (
     ErrorEnvelope,
     ErrorObject,
     PaginatedEnvelope,
+    RestatementDeltaSuccessEnvelope,
     SuccessEnvelope,
 )
 from stacklion_api.application.schemas.dto.edgar import EdgarFilingDTO
@@ -1038,7 +1038,7 @@ async def get_derived_metrics_timeseries(
 
 @router.get(
     "/statements/restatements/delta",
-    response_model=SuccessEnvelope[RestatementDeltaHTTP] | ErrorEnvelope,
+    response_model=RestatementDeltaSuccessEnvelope | ErrorEnvelope,
     status_code=status.HTTP_200_OK,
     responses=cast("dict[int | str, dict[str, Any]]", BaseRouter.std_error_responses()),
     summary="Get restatement delta between two statement versions",
@@ -1098,7 +1098,7 @@ async def get_restatement_delta(
             examples=[2],
         ),
     ],
-) -> SuccessEnvelope[RestatementDeltaHTTP] | ErrorEnvelope | JSONResponse:
+) -> RestatementDeltaSuccessEnvelope | ErrorEnvelope | JSONResponse:
     """Get a restatement delta between two statement versions."""
     del request
     trace_id = response.headers.get("X-Request-ID")
@@ -1194,7 +1194,7 @@ async def get_restatement_delta(
             },
         )
 
-        return cast(SuccessEnvelope[RestatementDeltaHTTP], body)
+        return cast(RestatementDeltaSuccessEnvelope, body)
 
     except EdgarNotFound as exc:
         envelope = _error_envelope(

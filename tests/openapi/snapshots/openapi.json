@@ -1213,6 +1213,70 @@
         "title": "ReadinessResponse",
         "type": "object"
       },
+      "RestatementDeltaHTTP": {
+        "additionalProperties": false,
+        "properties": {
+          "cik": {
+            "title": "Cik",
+            "type": "string"
+          },
+          "deltas": {
+            "items": {
+              "$ref": "#/components/schemas/RestatementMetricDeltaHTTP"
+            },
+            "title": "Deltas",
+            "type": "array"
+          },
+          "fiscal_period": {
+            "$ref": "#/components/schemas/FiscalPeriod"
+          },
+          "fiscal_year": {
+            "minimum": 1.0,
+            "title": "Fiscal Year",
+            "type": "integer"
+          },
+          "from_version_sequence": {
+            "minimum": 1.0,
+            "title": "From Version Sequence",
+            "type": "integer"
+          },
+          "statement_type": {
+            "$ref": "#/components/schemas/StatementType"
+          },
+          "summary": {
+            "$ref": "#/components/schemas/RestatementSummaryHTTP"
+          },
+          "to_version_sequence": {
+            "minimum": 1.0,
+            "title": "To Version Sequence",
+            "type": "integer"
+          }
+        },
+        "required": [
+          "cik",
+          "fiscal_period",
+          "fiscal_year",
+          "from_version_sequence",
+          "statement_type",
+          "summary",
+          "to_version_sequence"
+        ],
+        "title": "RestatementDeltaHTTP",
+        "type": "object"
+      },
+      "RestatementDeltaSuccessEnvelope": {
+        "additionalProperties": false,
+        "properties": {
+          "data": {
+            "$ref": "#/components/schemas/RestatementDeltaHTTP"
+          }
+        },
+        "required": [
+          "data"
+        ],
+        "title": "SuccessEnvelopeRestatementDeltaHTTP",
+        "type": "object"
+      },
       "RestatementLedgerEntryHTTP": {
         "additionalProperties": false,
         "properties": {
@@ -1222,7 +1286,7 @@
           },
           "deltas": {
             "items": {
-              "$ref": "#/components/schemas/stacklion_api__adapters__schemas__http__edgar_schemas__RestatementMetricDeltaHTTP"
+              "$ref": "#/components/schemas/RestatementMetricDeltaHTTP"
             },
             "title": "Deltas",
             "type": "array"
@@ -1303,6 +1367,53 @@
           "total_hops"
         ],
         "title": "RestatementLedgerHTTP",
+        "type": "object"
+      },
+      "RestatementMetricDeltaHTTP": {
+        "additionalProperties": false,
+        "properties": {
+          "diff": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Diff"
+          },
+          "metric": {
+            "title": "Metric",
+            "type": "string"
+          },
+          "new_value": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "New Value"
+          },
+          "old_value": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Old Value"
+          }
+        },
+        "required": [
+          "metric"
+        ],
+        "title": "RestatementMetricDeltaHTTP",
         "type": "object"
       },
       "RestatementMetricTimelineHTTP": {
@@ -1617,239 +1728,6 @@
           "type"
         ],
         "title": "ValidationError",
-        "type": "object"
-      },
-      "stacklion_api__adapters__schemas__http__edgar_schemas__RestatementDeltaHTTP": {
-        "additionalProperties": false,
-        "properties": {
-          "cik": {
-            "title": "Cik",
-            "type": "string"
-          },
-          "deltas": {
-            "items": {
-              "$ref": "#/components/schemas/stacklion_api__adapters__schemas__http__edgar_schemas__RestatementMetricDeltaHTTP"
-            },
-            "title": "Deltas",
-            "type": "array"
-          },
-          "fiscal_period": {
-            "$ref": "#/components/schemas/FiscalPeriod"
-          },
-          "fiscal_year": {
-            "minimum": 1.0,
-            "title": "Fiscal Year",
-            "type": "integer"
-          },
-          "from_version_sequence": {
-            "minimum": 1.0,
-            "title": "From Version Sequence",
-            "type": "integer"
-          },
-          "statement_type": {
-            "$ref": "#/components/schemas/StatementType"
-          },
-          "summary": {
-            "$ref": "#/components/schemas/RestatementSummaryHTTP"
-          },
-          "to_version_sequence": {
-            "minimum": 1.0,
-            "title": "To Version Sequence",
-            "type": "integer"
-          }
-        },
-        "required": [
-          "cik",
-          "fiscal_period",
-          "fiscal_year",
-          "from_version_sequence",
-          "statement_type",
-          "summary",
-          "to_version_sequence"
-        ],
-        "title": "RestatementDeltaHTTP",
-        "type": "object"
-      },
-      "stacklion_api__adapters__schemas__http__edgar_schemas__RestatementMetricDeltaHTTP": {
-        "additionalProperties": false,
-        "properties": {
-          "diff": {
-            "anyOf": [
-              {
-                "type": "string"
-              },
-              {
-                "type": "null"
-              }
-            ],
-            "title": "Diff"
-          },
-          "metric": {
-            "title": "Metric",
-            "type": "string"
-          },
-          "new_value": {
-            "anyOf": [
-              {
-                "type": "string"
-              },
-              {
-                "type": "null"
-              }
-            ],
-            "title": "New Value"
-          },
-          "old_value": {
-            "anyOf": [
-              {
-                "type": "string"
-              },
-              {
-                "type": "null"
-              }
-            ],
-            "title": "Old Value"
-          }
-        },
-        "required": [
-          "metric"
-        ],
-        "title": "RestatementMetricDeltaHTTP",
-        "type": "object"
-      },
-      "stacklion_api__adapters__schemas__http__envelopes__SuccessEnvelope[RestatementDeltaHTTP]": {
-        "additionalProperties": false,
-        "properties": {
-          "data": {
-            "$ref": "#/components/schemas/stacklion_api__adapters__schemas__http__fundamentals__RestatementDeltaHTTP"
-          }
-        },
-        "required": [
-          "data"
-        ],
-        "title": "SuccessEnvelope",
-        "type": "object"
-      },
-      "stacklion_api__adapters__schemas__http__envelopes__SuccessEnvelope_RestatementDeltaHTTP___1": {
-        "additionalProperties": false,
-        "properties": {
-          "data": {
-            "$ref": "#/components/schemas/stacklion_api__adapters__schemas__http__edgar_schemas__RestatementDeltaHTTP"
-          }
-        },
-        "required": [
-          "data"
-        ],
-        "title": "SuccessEnvelope",
-        "type": "object"
-      },
-      "stacklion_api__adapters__schemas__http__fundamentals__RestatementDeltaHTTP": {
-        "additionalProperties": false,
-        "properties": {
-          "accounting_standard": {
-            "$ref": "#/components/schemas/AccountingStandard"
-          },
-          "cik": {
-            "title": "Cik",
-            "type": "string"
-          },
-          "currency": {
-            "title": "Currency",
-            "type": "string"
-          },
-          "fiscal_period": {
-            "$ref": "#/components/schemas/FiscalPeriod"
-          },
-          "fiscal_year": {
-            "minimum": 1.0,
-            "title": "Fiscal Year",
-            "type": "integer"
-          },
-          "from_version_sequence": {
-            "minimum": 1.0,
-            "title": "From Version Sequence",
-            "type": "integer"
-          },
-          "metrics": {
-            "additionalProperties": {
-              "$ref": "#/components/schemas/stacklion_api__adapters__schemas__http__fundamentals__RestatementMetricDeltaHTTP"
-            },
-            "title": "Metrics",
-            "type": "object"
-          },
-          "statement_date": {
-            "format": "date",
-            "title": "Statement Date",
-            "type": "string"
-          },
-          "statement_type": {
-            "$ref": "#/components/schemas/StatementType"
-          },
-          "to_version_sequence": {
-            "minimum": 1.0,
-            "title": "To Version Sequence",
-            "type": "integer"
-          }
-        },
-        "required": [
-          "accounting_standard",
-          "cik",
-          "currency",
-          "fiscal_period",
-          "fiscal_year",
-          "from_version_sequence",
-          "statement_date",
-          "statement_type",
-          "to_version_sequence"
-        ],
-        "title": "RestatementDeltaHTTP",
-        "type": "object"
-      },
-      "stacklion_api__adapters__schemas__http__fundamentals__RestatementMetricDeltaHTTP": {
-        "additionalProperties": false,
-        "properties": {
-          "diff": {
-            "anyOf": [
-              {
-                "type": "string"
-              },
-              {
-                "type": "null"
-              }
-            ],
-            "title": "Diff"
-          },
-          "metric": {
-            "title": "Metric",
-            "type": "string"
-          },
-          "new": {
-            "anyOf": [
-              {
-                "type": "string"
-              },
-              {
-                "type": "null"
-              }
-            ],
-            "title": "New"
-          },
-          "old": {
-            "anyOf": [
-              {
-                "type": "string"
-              },
-              {
-                "type": "null"
-              }
-            ],
-            "title": "Old"
-          }
-        },
-        "required": [
-          "metric"
-        ],
-        "title": "RestatementMetricDeltaHTTP",
         "type": "object"
       }
     }
@@ -3236,7 +3114,7 @@
                 "schema": {
                   "anyOf": [
                     {
-                      "$ref": "#/components/schemas/stacklion_api__adapters__schemas__http__envelopes__SuccessEnvelope_RestatementDeltaHTTP___1"
+                      "$ref": "#/components/schemas/RestatementDeltaSuccessEnvelope"
                     },
                     {
                       "$ref": "#/components/schemas/ErrorEnvelope"
@@ -3928,7 +3806,7 @@
                 "schema": {
                   "anyOf": [
                     {
-                      "$ref": "#/components/schemas/stacklion_api__adapters__schemas__http__envelopes__SuccessEnvelope[RestatementDeltaHTTP]"
+                      "$ref": "#/components/schemas/RestatementDeltaSuccessEnvelope"
                     },
                     {
                       "$ref": "#/components/schemas/ErrorEnvelope"

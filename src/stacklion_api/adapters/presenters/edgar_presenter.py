@@ -13,8 +13,9 @@ Purpose:
         * SuccessEnvelope[EdgarDerivedMetricsTimeSeriesHTTP]
         * SuccessEnvelope[MetricViewsCatalogHTTP]
         * SuccessEnvelope[EdgarDerivedMetricsCatalogHTTP]
-        * SuccessEnvelope[RestatementDeltaHTTP]
+        * RestatementDeltaSuccessEnvelope
         * SuccessEnvelope[RestatementLedgerHTTP]
+        * SuccessEnvelope[RestatementMetricTimelineHTTP]
 
 Design:
     * Never leaks DB or internal shapes.
@@ -57,6 +58,7 @@ from stacklion_api.adapters.schemas.http.edgar_schemas import (
 )
 from stacklion_api.adapters.schemas.http.envelopes import (
     PaginatedEnvelope,
+    RestatementDeltaSuccessEnvelope,
     SuccessEnvelope,
 )
 from stacklion_api.application.schemas.dto.edgar import (
@@ -416,7 +418,7 @@ class EdgarPresenter(BasePresenter[SuccessEnvelope[Any]]):
         *,
         dto: ComputeRestatementDeltaResultDTO,
         trace_id: str | None = None,
-    ) -> PresentResult[SuccessEnvelope[RestatementDeltaHTTP]]:
+    ) -> PresentResult[RestatementDeltaSuccessEnvelope]:
         """Present a restatement delta between two statement versions.
 
         The metric deltas are sorted deterministically by metric code.
@@ -428,7 +430,7 @@ class EdgarPresenter(BasePresenter[SuccessEnvelope[Any]]):
                 Optional request correlation identifier.
 
         Returns:
-            PresentResult containing SuccessEnvelope[RestatementDeltaHTTP].
+            PresentResult containing RestatementDeltaSuccessEnvelope.
         """
         # Deterministic ordering by metric code.
         sorted_deltas = sorted(dto.deltas, key=lambda d: d.metric)
@@ -464,7 +466,16 @@ class EdgarPresenter(BasePresenter[SuccessEnvelope[Any]]):
             },
         )
 
-        return self.present_success(data=payload, trace_id=trace_id)
+        # We keep using the BasePresenter helper for headers/status;
+        # the router's response_model is the concrete RestatementDeltaSuccessEnvelope.
+        envelope = RestatementDeltaSuccessEnvelope(data=payload)
+        result = self.present_success(data=envelope.data, trace_id=trace_id)
+        # Overwrite the body with the concrete envelope to keep OpenAPI stable.
+        return PresentResult(
+            body=envelope,
+            status_code=result.status_code,
+            headers=result.headers,
+        )
 
     # ------------------------------------------------------------------
     # Restatements: ledger

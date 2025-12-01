@@ -22,6 +22,7 @@ from typing import Any
 from pydantic import BaseModel, ConfigDict, Field
 
 from stacklion_api.adapters.schemas.http.base import BaseHTTPSchema
+from stacklion_api.adapters.schemas.http.edgar_schemas import RestatementDeltaHTTP
 
 __all__ = [
     "ErrorObject",
@@ -153,3 +154,17 @@ class PaginatedEnvelope[T](BaseHTTPSchema):
     page_size: int = Field(..., ge=1, le=200)
     total: int = Field(..., ge=0)
     items: Sequence[T] = Field(...)
+
+
+class RestatementDeltaSuccessEnvelope(SuccessEnvelope[RestatementDeltaHTTP]):
+    """Success envelope for restatement delta responses.
+
+    Attributes:
+        data:
+            RestatementDeltaHTTP payload containing restatement deltas and
+            summary information for a specific statement identity.
+    """
+
+    model_config = ConfigDict(
+        title="SuccessEnvelopeRestatementDeltaHTTP",
+    )

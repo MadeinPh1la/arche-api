@@ -50,13 +50,13 @@ from stacklion_api.adapters.schemas.http.envelopes import (
     ErrorEnvelope,
     ErrorObject,
     PaginatedEnvelope,
+    RestatementDeltaSuccessEnvelope,
     SuccessEnvelope,
 )
 from stacklion_api.adapters.schemas.http.fundamentals import (
     DerivedMetricsTimeSeriesPointHTTP,
     FundamentalsTimeSeriesPointHTTP,
     NormalizedStatementViewHTTP,
-    RestatementDeltaHTTP,
 )
 from stacklion_api.application.uow import UnitOfWork
 from stacklion_api.application.use_cases.statements.compute_restatement_delta import (
@@ -619,7 +619,7 @@ async def get_derived_metrics_time_series(
         "normalized EDGAR statement, returning per-metric changes between "
         "two version sequences."
     ),
-    response_model=SuccessEnvelope[RestatementDeltaHTTP] | ErrorEnvelope,
+    response_model=RestatementDeltaSuccessEnvelope | ErrorEnvelope,
     responses=cast("dict[int | str, dict[str, Any]]", BaseRouter.std_error_responses()),
 )
 async def get_restatement_delta(
@@ -681,7 +681,7 @@ async def get_restatement_delta(
             ),
         ),
     ] = None,
-) -> SuccessEnvelope[RestatementDeltaHTTP] | ErrorEnvelope | JSONResponse:
+) -> RestatementDeltaSuccessEnvelope | ErrorEnvelope | JSONResponse:
     """HTTP handler for /v1/fundamentals/restatement-delta."""
     del request  # reserved for future auth
     trace_id = response.headers.get("X-Request-ID")
@@ -740,7 +740,7 @@ async def get_restatement_delta(
                 "fiscal_period": fiscal_period.value,
                 "from_version_sequence": from_version_sequence,
                 "to_version_sequence": to_version_sequence,
-                "metrics_count": len(envelope.data.metrics),
+                "metrics_count": len(envelope.data.deltas),
                 "trace_id": trace_id,
             },
         )

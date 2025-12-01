@@ -20,17 +20,26 @@ Notes:
 
 from __future__ import annotations
 
-from collections.abc import Iterable, Mapping
+from collections.abc import Iterable
 from decimal import Decimal
 from math import ceil
+from typing import cast
 
-from stacklion_api.adapters.schemas.http.envelopes import PaginatedEnvelope, SuccessEnvelope
+from stacklion_api.adapters.presenters.edgar_presenter import EdgarPresenter
+from stacklion_api.adapters.schemas.http.envelopes import (
+    PaginatedEnvelope,
+    RestatementDeltaSuccessEnvelope,
+    SuccessEnvelope,
+)
 from stacklion_api.adapters.schemas.http.fundamentals import (
     DerivedMetricsTimeSeriesPointHTTP,
     FundamentalsTimeSeriesPointHTTP,
     NormalizedStatementViewHTTP,
-    RestatementDeltaHTTP,
-    RestatementMetricDeltaHTTP,
+)
+from stacklion_api.application.schemas.dto.edgar import (
+    ComputeRestatementDeltaResultDTO,
+    RestatementMetricDeltaDTO,
+    RestatementSummaryDTO,
 )
 from stacklion_api.application.use_cases.statements.compute_restatement_delta import (
     ComputeRestatementDeltaResult,
@@ -44,7 +53,6 @@ from stacklion_api.domain.entities.edgar_derived_timeseries import (
 from stacklion_api.domain.entities.edgar_fundamentals_timeseries import (
     FundamentalsTimeSeriesPoint,
 )
-from stacklion_api.domain.entities.edgar_restatement_delta import RestatementMetricDelta
 
 
 def _decimal_to_str(value: Decimal | None) -> str | None:
@@ -52,13 +60,6 @@ def _decimal_to_str(value: Decimal | None) -> str | None:
     if value is None:
         return None
     return format(value, "f")
-
-
-def _map_metrics_to_http(
-    metrics: Mapping[str, Decimal],
-) -> dict[str, str]:
-    """Map a metric → Decimal mapping into a metric → decimal-string dict."""
-    return {metric: _decimal_to_str(amount) or "0" for metric, amount in metrics.items()}
 
 
 def _map_fundamentals_point(point: FundamentalsTimeSeriesPoint) -> FundamentalsTimeSeriesPointHTTP:
@@ -96,19 +97,6 @@ def _map_derived_point(point: DerivedMetricsTimeSeriesPoint) -> DerivedMetricsTi
         currency=point.currency,
         metrics=metrics_http,
         normalized_payload_version_sequence=point.normalized_payload_version_sequence,
-    )
-
-
-def _map_restatement_metric_delta(
-    metric_code: str,
-    delta: RestatementMetricDelta,
-) -> RestatementMetricDeltaHTTP:
-    """Convert a RestatementMetricDelta into its HTTP representation."""
-    return RestatementMetricDeltaHTTP(
-        metric=metric_code,
-        old=_decimal_to_str(delta.old),
-        new=_decimal_to_str(delta.new),
-        diff=_decimal_to_str(delta.diff),
     )
 
 
@@ -212,40 +200,61 @@ def present_derived_time_series(
 def present_restatement_delta(
     *,
     result: ComputeRestatementDeltaResult,
-) -> SuccessEnvelope[RestatementDeltaHTTP]:
-    """Present a restatement delta computation result as a success envelope.
+) -> RestatementDeltaSuccessEnvelope:
+    """Present a restatement delta result using the EDGAR presenter.
+
+    This keeps the fundamentals facade in lockstep with the canonical EDGAR
+    restatement delta envelope and schema, while adapting from the
+    ComputeRestatementDeltaResult type returned by the fundamentals
+    use case.
 
     Args:
         result:
-            Use-case result containing both source versions and the computed
-            domain-level RestatementDelta.
+            Use-case result containing the domain-level RestatementDelta.
 
     Returns:
-        SuccessEnvelope containing a RestatementDeltaHTTP payload.
+        RestatementDeltaSuccessEnvelope containing the RestatementDeltaHTTP payload.
     """
     delta = result.delta
 
-    metrics_http: dict[str, RestatementMetricDeltaHTTP] = {}
+    # Adapt domain metric deltas → DTOs expected by the EDGAR presenter.
+    metric_dtos: list[RestatementMetricDeltaDTO] = []
     for metric, metric_delta in delta.metrics.items():
-        metrics_http[metric.value] = _map_restatement_metric_delta(
-            metric_code=metric.value,
-            delta=metric_delta,
+        metric_dtos.append(
+            RestatementMetricDeltaDTO(
+                metric=metric,
+                old_value=metric_delta.old,
+                new_value=metric_delta.new,
+                diff=metric_delta.diff,
+            ),
         )
 
-    payload = RestatementDeltaHTTP(
-        cik=delta.cik,
-        statement_type=delta.statement_type,
-        accounting_standard=delta.accounting_standard,
-        statement_date=delta.statement_date,
-        fiscal_year=delta.fiscal_year,
-        fiscal_period=delta.fiscal_period,
-        currency=delta.currency,
-        from_version_sequence=delta.from_version_sequence,
-        to_version_sequence=delta.to_version_sequence,
-        metrics=metrics_http,
+    # Derive a conservative summary from the domain delta.
+    summary_dto = RestatementSummaryDTO(
+        total_metrics_compared=len(delta.metrics),
+        total_metrics_changed=len(delta.metrics),
+        has_material_change=bool(delta.metrics),
     )
 
-    return SuccessEnvelope[RestatementDeltaHTTP](data=payload)
+    dto = ComputeRestatementDeltaResultDTO(
+        cik=delta.cik,
+        statement_type=delta.statement_type,
+        fiscal_year=delta.fiscal_year,
+        fiscal_period=delta.fiscal_period,
+        from_version_sequence=delta.from_version_sequence,
+        to_version_sequence=delta.to_version_sequence,
+        summary=summary_dto,
+        deltas=metric_dtos,
+    )
+
+    presenter = EdgarPresenter()
+    present_result = presenter.present_restatement_delta(dto=dto, trace_id=None)
+
+    # EdgarPresenter.present_restatement_delta() guarantees `.body` is a
+    # SuccessEnvelope[RestatementDeltaHTTP]; the type alias for that in
+    # the HTTP layer is RestatementDeltaSuccessEnvelope.
+    envelope = cast(RestatementDeltaSuccessEnvelope, present_result.body)
+    return envelope
 
 
 def present_normalized_statement(
