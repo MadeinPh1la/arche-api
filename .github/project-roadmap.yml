@@ -1,12 +1,11 @@
 # .github/project-roadmap.yml
-# Declarative config for the Stacklion Bloomberg-class roadmap
+# Declarative config for the Stacklion professional-class roadmap.
 
 project:
-  owner: "MadeinPh1la"         # GitHub user or org that owns the project
-  owner_type: "USER"           # "USER" or "ORGANIZATION"
-  name: "Stacklion – Bloomberg-Class Roadmap"
-  # Optional: if you already created the project manually, set its number to avoid creating duplicates
-  # project_number: 1
+  owner: "MadeinPh1la"          # GitHub user or org that owns the project
+  owner_type: "USER"            # "USER" or "ORGANIZATION"
+  name: "@MadeinPh1la's Stacklion API"
+  # No project_number: script will find or create by name.
 
 repository:
   full_name: "MadeinPh1la/stacklion-api"
@@ -58,24 +57,36 @@ phases:
     default_status: "Backlog"
 
 views:
-  # Roadmap table grouped by milestone
+  # Roadmap table grouped by milestone (configure manually in Project UI).
   - name: "Roadmap"
     layout: "TABLE"
     filter: "is:issue repo:MadeinPh1la/stacklion-api"
-    group_by_field: "Milestone"   # GitHub Projects field name, not enforced by script yet
+    group_by_field: "Milestone"
 
-  # Delivery Kanban for near-term work (E9 + E10)
+  # Delivery Kanban for near-term work (E9 + E10).
   - name: "Delivery board"
     layout: "BOARD"
     filter: "is:issue repo:MadeinPh1la/stacklion-api label:phase:E9,label:phase:E10"
     group_by_field: "Status"
 
+# Project Status field configuration.
+# Create a Project field named "Status" (single-select) with options:
+#   Backlog, In Progress, Blocked, Done
+status_field:
+  name: "Status"
+  states:
+    backlog: "Todo"          # <-- underlying option name
+    in_progress: "In Progress"
+    blocked: "Todo"          # or add a real "Blocked" option in the Project later
+    done: "Done"
+
 status_mapping:
-  # If you later add a Status field on the project, you can map labels or milestones to it.
-  default: "Backlog"
+  default_state: "Todo"
+  in_progress_state: "In Progress"
+  done_state: "Done"
+
   in_progress_labels:
-    - "type:feature"
-    - "type:enhancement"
+    - "status:in_progress"
+
   done_labels:
-    - "type:test"
-    - "type:docs"
+    - "status:done"

@@ -11,7 +11,7 @@ on:
 permissions:
   contents: read
   issues: read
-  projects: write   # required for Projects v2
+  repository-projects: write   # required for Projects v2
 
 jobs:
   sync-project:
