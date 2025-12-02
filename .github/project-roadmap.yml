@@ -1,0 +1,81 @@
+# .github/project-roadmap.yml
+# Declarative config for the Stacklion Bloomberg-class roadmap
+
+project:
+  owner: "MadeinPh1la"         # GitHub user or org that owns the project
+  owner_type: "USER"           # "USER" or "ORGANIZATION"
+  name: "Stacklion – Bloomberg-Class Roadmap"
+  # Optional: if you already created the project manually, set its number to avoid creating duplicates
+  # project_number: 1
+
+repository:
+  full_name: "MadeinPh1la/stacklion-api"
+
+phases:
+  - code: "E9"
+    milestone: "E9 – Persistent Data Quality & Fact Store"
+    label: "phase:E9"
+    default_status: "Backlog"
+
+  - code: "E10"
+    milestone: "E10 – XBRL Normalization Layer"
+    label: "phase:E10"
+    default_status: "Backlog"
+
+  - code: "E11"
+    milestone: "E11 – Reconciliation Engine"
+    label: "phase:E11"
+    default_status: "Backlog"
+
+  - code: "E12"
+    milestone: "E12 – Auditability & Provenance"
+    label: "phase:E12"
+    default_status: "Backlog"
+
+  - code: "E13"
+    milestone: "E13 – Modeling Warehouse Layer"
+    label: "phase:E13"
+    default_status: "Backlog"
+
+  - code: "E14"
+    milestone: "E14 – Professional Modeling APIs"
+    label: "phase:E14"
+    default_status: "Backlog"
+
+  - code: "E15"
+    milestone: "E15 – MCP Modeling Capabilities"
+    label: "phase:E15"
+    default_status: "Backlog"
+
+  - code: "E16"
+    milestone: "E16 – Reliability, SLOs, and Scaling"
+    label: "phase:E16"
+    default_status: "Backlog"
+
+  - code: "E17"
+    milestone: "E17 – AI and Advanced Modeling Enhancements"
+    label: "phase:E17"
+    default_status: "Backlog"
+
+views:
+  # Roadmap table grouped by milestone
+  - name: "Roadmap"
+    layout: "TABLE"
+    filter: "is:issue repo:MadeinPh1la/stacklion-api"
+    group_by_field: "Milestone"   # GitHub Projects field name, not enforced by script yet
+
+  # Delivery Kanban for near-term work (E9 + E10)
+  - name: "Delivery board"
+    layout: "BOARD"
+    filter: "is:issue repo:MadeinPh1la/stacklion-api label:phase:E9,label:phase:E10"
+    group_by_field: "Status"
+
+status_mapping:
+  # If you later add a Status field on the project, you can map labels or milestones to it.
+  default: "Backlog"
+  in_progress_labels:
+    - "type:feature"
+    - "type:enhancement"
+  done_labels:
+    - "type:test"
+    - "type:docs"
