@@ -1,7 +1,6 @@
-from __future__ import annotations
+# src/stacklion_api/domain/value_objects/__init__.py
+"""Public exports for domain value objects."""
 
-# Re-export Principal from the actual module file in this package.
-# If you later split files (principal.py), you can switch the import target here.
 from .value_objects import Principal
 
 __all__ = ["Principal"]

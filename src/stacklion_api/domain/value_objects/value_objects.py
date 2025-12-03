@@ -1,29 +1,27 @@
-"""Principal Value Object (Domain Layer).
+# src/stacklion_api/domain/value_objects/value_objects.py
+"""Principal and other Value Objects (Domain Layer).
 
 Purpose:
-    Represent the authenticated actor (human or service) in a transport-agnostic,
-    domain-friendly form. This object is intentionally small and immutable, and it
-    does not embed any adapter or infrastructure concerns (e.g., HTTP, JWT, DB).
+    Represent core domain value objects in a transport-agnostic, domain-friendly
+    form. These objects are intentionally small and immutable, and they do not
+    embed any adapter or infrastructure concerns (e.g., HTTP, JWT, DB).
 
 Design:
-    - **Value Object** semantics: immutable, hashable, equality by value.
-    - **Validation** via Pydantic v2: strict types, forbidden extras, safe defaults.
-    - **Interoperability**: simple fields that map cleanly from common IdP claims.
+    - Value Object semantics: immutable, hashable, equality by value.
+    - Validation via Pydantic v2 for Principal; simple dataclass for lightweight
+      identity tuples.
+    - Interoperability: simple fields that map cleanly from common IdP claims
+      or statement identity tuples.
 
 Layer:
     domain/value_objects
-
-Notes:
-    - `subject` is a stable external identifier (e.g., Clerk user ID or service account ID).
-    - `email` is optional and validated when present.
-    - `roles` is a normalized, case-preserving, duplicate-free list of role strings.
 """
 
 from __future__ import annotations
 
 from typing import Any
 
-from pydantic import BaseModel, ConfigDict, EmailStr, Field, field_validator
+from pydantic import BaseModel, ConfigDict, Field, field_validator
 
 __all__ = ["Principal"]
 
@@ -66,7 +64,7 @@ class Principal(BaseModel):
         description="Stable external identifier for the actor (e.g., user or service account ID).",
         min_length=1,
     )
-    email: EmailStr | None = Field(
+    email: str | None = Field(
         default=None,
         description="Primary email address for the actor, when applicable.",
     )

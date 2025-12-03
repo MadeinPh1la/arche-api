@@ -20,6 +20,8 @@ from typing import Any
 
 from sqlalchemy.ext.asyncio import AsyncSession, async_sessionmaker
 
+from stacklion_api.adapters.repositories.edgar_dq_repository import EdgarDQRepository
+from stacklion_api.adapters.repositories.edgar_facts_repository import EdgarFactsRepository
 from stacklion_api.adapters.repositories.edgar_filings_repository import (
     EdgarFilingsRepository,
 )
@@ -27,6 +29,12 @@ from stacklion_api.adapters.repositories.edgar_statements_repository import (
     EdgarStatementsRepository,
 )
 from stacklion_api.application.uow import UnitOfWork
+from stacklion_api.domain.interfaces.repositories.edgar_dq_repository import (
+    EdgarDQRepository as EdgarDQRepositoryProtocol,
+)
+from stacklion_api.domain.interfaces.repositories.edgar_facts_repository import (
+    EdgarFactsRepository as EdgarFactsRepositoryProtocol,
+)
 from stacklion_api.domain.interfaces.repositories.edgar_statements_repository import (
     EdgarStatementsRepository as EdgarStatementsRepositoryProtocol,
 )
@@ -69,6 +77,10 @@ class SqlAlchemyUnitOfWork(UnitOfWork):
             EdgarFilingsRepository: lambda s: EdgarFilingsRepository(session=s),
             EdgarStatementsRepositoryProtocol: lambda s: EdgarStatementsRepository(session=s),
             EdgarStatementsRepository: lambda s: EdgarStatementsRepository(session=s),
+            EdgarFactsRepositoryProtocol: lambda s: EdgarFactsRepository(session=s),
+            EdgarFactsRepository: lambda s: EdgarFactsRepository(session=s),
+            EdgarDQRepositoryProtocol: lambda s: EdgarDQRepository(session=s),
+            EdgarDQRepository: lambda s: EdgarDQRepository(session=s),
         }
 
         self._repo_factories: dict[type[Any], Callable[[AsyncSession], Any]] = {
@@ -80,9 +92,9 @@ class SqlAlchemyUnitOfWork(UnitOfWork):
         self._committed = False
         self._rolled_back = False
 
-    # ------------------------------------------------------------------
-    # Async context manager
-    # ------------------------------------------------------------------
+    # ------------------------------------------------------------------ #
+    # Async context manager                                              #
+    # ------------------------------------------------------------------ #
 
     async def __aenter__(self) -> SqlAlchemyUnitOfWork:
         """Enter the UnitOfWork context and open a new AsyncSession.
@@ -130,9 +142,9 @@ class SqlAlchemyUnitOfWork(UnitOfWork):
             self._repos.clear()
         return None
 
-    # ------------------------------------------------------------------
-    # Transaction control
-    # ------------------------------------------------------------------
+    # ------------------------------------------------------------------ #
+    # Transaction control                                                #
+    # ------------------------------------------------------------------ #
 
     async def commit(self) -> None:
         """Commit the current transaction if active.
@@ -165,9 +177,9 @@ class SqlAlchemyUnitOfWork(UnitOfWork):
         await self._session.rollback()
         self._rolled_back = True
 
-    # ------------------------------------------------------------------
-    # Repository resolution
-    # ------------------------------------------------------------------
+    # ------------------------------------------------------------------ #
+    # Repository resolution                                              #
+    # ------------------------------------------------------------------ #
 
     def get_repository(self, repo_type: type[Any]) -> Any:
         """Return a repository instance for the given type.
