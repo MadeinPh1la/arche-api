@@ -965,4 +965,5 @@ __all__ = [
     "RestatementDeltaHTTP",
     "RestatementLedgerEntryHTTP",
     "RestatementLedgerHTTP",
+    "RestatementMetricTimelineHTTP",
 ]

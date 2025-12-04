@@ -26,6 +26,8 @@ stacklion_api
 │   ├── repositories
 │   │   ├── __init__.py
 │   │   ├── base_repository.py
+│   │   ├── edgar_dq_repository.py
+│   │   ├── edgar_facts_repository.py
 │   │   ├── edgar_filings_repository.py
 │   │   ├── edgar_statements_repository.py
 │   │   ├── idempotency_repository.py
@@ -43,7 +45,8 @@ stacklion_api
 │   │   ├── metrics_router.py
 │   │   ├── openapi_registry.py
 │   │   ├── protected_router.py
-│   │   └── quotes_router.py
+│   │   ├── quotes_router.py
+│   │   └── views_router.py
 │   ├── schemas
 │   │   ├── http
 │   │   │   ├── __init__.py
@@ -72,6 +75,9 @@ stacklion_api
 │   │   │   ├── __init__.py
 │   │   │   ├── base.py
 │   │   │   ├── edgar.py
+│   │   │   ├── edgar_derived.py
+│   │   │   ├── edgar_dq.py
+│   │   │   ├── fundamentals.py
 │   │   │   └── quotes.py
 │   │   └── __init__.py
 │   ├── services
@@ -103,8 +109,15 @@ stacklion_api
 │   │   ├── statements
 │   │   │   ├── __init__.py
 │   │   │   ├── compute_restatement_delta.py
+│   │   │   ├── get_derived_metrics_timeseries.py
 │   │   │   ├── get_fundamentals_timeseries.py
-│   │   │   └── get_normalized_statement.py
+│   │   │   ├── get_normalized_statement.py
+│   │   │   ├── get_restatement_delta_between_versions.py
+│   │   │   ├── get_restatement_ledger.py
+│   │   │   ├── get_restatement_timeline.py
+│   │   │   ├── get_statement_with_dq_overlay.py
+│   │   │   ├── persist_normalized_facts_for_statement.py
+│   │   │   └── run_statement_dq.py
 │   │   ├── valuation
 │   │   │   └── __init__.py
 │   │   └── __init__.py
@@ -129,16 +142,23 @@ stacklion_api
 │   │   ├── base.py
 │   │   ├── canonical_statement_payload.py
 │   │   ├── edgar_company.py
+│   │   ├── edgar_derived_timeseries.py
+│   │   ├── edgar_dq.py
 │   │   ├── edgar_filing.py
 │   │   ├── edgar_fundamentals_timeseries.py
+│   │   ├── edgar_normalized_fact.py
 │   │   ├── edgar_restatement_delta.py
 │   │   ├── edgar_statement_version.py
 │   │   ├── historical_bar.py
 │   │   ├── quote.py
-│   │   └── restatement_delta.py
+│   │   ├── restatement_delta.py
+│   │   ├── restatement_metric_timeline.py
+│   │   └── statement_quality.py
 │   ├── enums
 │   │   ├── __init__.py
 │   │   ├── canonical_statement_metric.py
+│   │   ├── derived_metric.py
+│   │   ├── derived_metric_category.py
 │   │   └── edgar.py
 │   ├── exceptions
 │   │   ├── __init__.py
@@ -152,13 +172,22 @@ stacklion_api
 │   │   │   └── market_data_gateway.py
 │   │   ├── repositories
 │   │   │   ├── __init__.py
+│   │   │   ├── edgar_dq_repository.py
+│   │   │   ├── edgar_facts_repository.py
 │   │   │   ├── edgar_statements_repository.py
 │   │   │   ├── idempotency_repository.py
 │   │   │   ├── market_data_repository.py
 │   │   │   └── staging_repository.py
 │   │   └── __init__.py
 │   ├── services
-│   │   └── edgar_normalization.py
+│   │   ├── __init__.py
+│   │   ├── derived_metrics_engine.py
+│   │   ├── edgar_normalization.py
+│   │   ├── fact_dq_engine.py
+│   │   ├── fact_store_service.py
+│   │   ├── metric_views.py
+│   │   ├── restatement_timeline.py
+│   │   └── statement_ledger_delta_engine.py
 │   ├── validators
 │   │   └── __init__.py
 │   ├── value_objects

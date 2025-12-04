@@ -40,6 +40,9 @@ from sqlalchemy import pool
 from sqlalchemy.engine import Connection
 from sqlalchemy.ext.asyncio import AsyncEngine, create_async_engine
 
+from stacklion_api.infrastructure.database.models import ref as _ref_models  # noqa: F401
+from stacklion_api.infrastructure.database.models import sec as _sec_models  # noqa: F401
+
 # Import your declarative Base from the application package.
 # Ensure PYTHONPATH includes "src" (pyproject/mypy_path) so this resolves.
 from stacklion_api.infrastructure.database.models.base import (
