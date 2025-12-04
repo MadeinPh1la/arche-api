@@ -35,43 +35,7 @@ from stacklion_api.domain.enums.edgar import (
 
 
 class NormalizedFactDTO(BaseDTO):
-    """DTO representing a single normalized fact from the fact store.
-
-    Attributes:
-        cik:
-            Company CIK.
-        statement_type:
-            Statement type (income, balance sheet, cash flow, etc.).
-        accounting_standard:
-            Accounting standard (e.g., US_GAAP, IFRS).
-        fiscal_year:
-            Fiscal year associated with the statement (>= 1).
-        fiscal_period:
-            Fiscal period (e.g., FY, Q1, Q2).
-        statement_date:
-            Reporting period end date.
-        version_sequence:
-            Version sequence of the canonical normalized payload that produced
-            this fact.
-        metric_code:
-            Canonical metric code (e.g., REVENUE, NET_INCOME).
-        metric_label:
-            Optional human-readable label for the metric, if available.
-        unit:
-            Unit code (typically ISO 4217 currency, e.g. "USD").
-        period_start:
-            Optional inclusive start of the fact's reporting period.
-        period_end:
-            Inclusive end of the fact's reporting period.
-        value:
-            Decimal value represented as a string.
-        dimension_key:
-            Stable key representing the dimensional context (e.g., segment).
-        dimensions:
-            Mapping of dimensional qualifiers (e.g., {"segment": "US"}).
-        source_line_item:
-            Original line-item label from the filing, when available.
-    """
+    """DTO representing a single normalized fact from the fact store."""
 
     model_config = ConfigDict(extra="forbid")
 
@@ -136,40 +100,7 @@ class DQAnomalyDTO(BaseDTO):
 
 
 class StatementDQOverlayDTO(BaseDTO):
-    """DTO representing a statement-level DQ overlay.
-
-    Attributes:
-        cik:
-            Company CIK.
-        statement_type:
-            Statement type (e.g., INCOME_STATEMENT).
-        fiscal_year:
-            Fiscal year for the statement identity.
-        fiscal_period:
-            Fiscal period for the statement identity.
-        version_sequence:
-            Version sequence for the statement identity.
-        accounting_standard:
-            Accounting standard of the underlying statement.
-        statement_date:
-            Reporting period end date.
-        currency:
-            ISO currency code (e.g., "USD").
-        dq_run_id:
-            Identifier of the DQ run used for this overlay, if any.
-        dq_rule_set_version:
-            Rule-set version used in the DQ run, if any.
-        dq_executed_at:
-            Execution timestamp for the DQ run, if any.
-        max_severity:
-            Highest severity observed across fact-quality flags and anomalies.
-        facts:
-            Flattened facts for the statement identity.
-        fact_quality:
-            Fact-level quality evaluations aligned to the same identity.
-        anomalies:
-            Rule-level anomalies associated with the statement.
-    """
+    """DTO representing a statement-level DQ overlay."""
 
     model_config = ConfigDict(extra="forbid")
 
@@ -220,10 +151,12 @@ class RunStatementDQResultDTO(BaseDTO):
 
     rule_set_version: str
     scope_type: str
+    history_lookback: int | None
+
     executed_at: datetime
 
-    total_fact_quality: int
-    total_anomalies: int
+    facts_evaluated: int
+    anomaly_count: int
     max_severity: MaterialityClass | None
 
 

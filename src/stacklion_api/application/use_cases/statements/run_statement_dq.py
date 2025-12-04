@@ -1,20 +1,7 @@
 # src/stacklion_api/application/use_cases/statements/run_statement_dq.py
 # Copyright (c)
 # SPDX-License-Identifier: MIT
-"""Use case: run data-quality checks for a single statement identity.
-
-Purpose:
-    Evaluate basic data-quality rules over the normalized fact store for a
-    given (cik, statement_type, fiscal_year, fiscal_period, version_sequence)
-    identity and persist:
-
-        * A DQ run record.
-        * Fact-level quality flags.
-        * Rule-level anomalies.
-
-Layer:
-    application/use_cases/statements
-"""
+"""Use case: run data-quality checks for a single statement identity."""
 
 from __future__ import annotations
 
@@ -61,19 +48,27 @@ class RunStatementDQRequest:
 class RunStatementDQUseCase:
     """Run data-quality checks for a normalized statement and persist results.
 
-    Args:
-        uow: Unit of work exposing EDGAR facts and DQ repositories.
-        history_lookback: Number of historical observations to use for
-            longitudinal DQ rules (e.g., trend checks).
+    This use case:
+        * Locates the target normalized statement and its persisted facts.
+        * Runs the fact-level DQ engine for the requested rule-set and scope.
+        * Persists the DQ run, fact-quality flags, and anomalies in a single
+          transaction.
+        * Returns a summary DTO suitable for HTTP presentation.
 
-    Methods:
-        execute: Load normalized facts for the requested statement identity,
-            run the fact-level DQ engine, persist the DQ run and artifacts,
-            and return the resulting DQRunDTO.
+    Args:
+        uow: UnitOfWork providing transactional access to the EDGAR fact store,
+            DQ repositories, and statement metadata repositories.
+
+    Returns:
+        RunStatementDQResultDTO when :meth:`execute` is called.
 
     Raises:
-        EdgarIngestionError: If the statement identity or facts cannot be
-            resolved for the requested statement.
+        EdgarNotFound:
+            If the target statement or its facts cannot be located.
+        EdgarMappingError:
+            If the request is structurally invalid or domain invariants fail.
+        EdgarIngestionError:
+            If an upstream ingestion or persistence error occurs during the run.
     """
 
     def __init__(
@@ -83,15 +78,15 @@ class RunStatementDQUseCase:
         facts_repo_type: type[EdgarFactsRepositoryProtocol] = EdgarFactsRepositoryProtocol,
         dq_repo_type: type[EdgarDQRepositoryProtocol] = EdgarDQRepositoryProtocol,
     ) -> None:
-        """Initialize the use case with its dependencies.
+        """Initialize the use case.
 
         Args:
-            uow:
-                Unit-of-work providing transactional boundaries.
-            facts_repo_type:
-                Repository interface/key used to resolve the facts repo.
-            dq_repo_type:
-                Repository interface/key used to resolve the DQ repo.
+            uow: Factory that creates unit-of-work instances bound to a
+                database session for this use case.
+            dq_repo_type: Concrete `EdgarDQRepository` implementation used to
+                persist DQ runs, fact quality flags, and anomalies.
+            facts_repo_type: Concrete `EdgarFactsRepository` implementation used
+                to read normalized facts for the target statement version.
         """
         self._uow = uow
         self._facts_repo_type = facts_repo_type
@@ -167,9 +162,10 @@ class RunStatementDQUseCase:
             version_sequence=identity.version_sequence,
             rule_set_version=req.rule_set_version,
             scope_type=req.scope_type,
+            history_lookback=req.history_lookback,
             executed_at=executed_at,
-            total_fact_quality=len(fact_quality),
-            total_anomalies=len(anomalies),
+            facts_evaluated=len(fact_quality),
+            anomaly_count=len(anomalies),
             max_severity=max_severity,
         )
 
@@ -185,22 +181,7 @@ class RunStatementDQUseCase:
         facts_repo: EdgarFactsRepositoryProtocol,
         history_lookback: int,
     ) -> tuple[list[EdgarFactQuality], list[EdgarDQAnomaly]]:
-        """Evaluate basic DQ rules over a set of facts.
-
-        Rules (phase 1, intentionally simple but useful):
-
-            * presence:
-                Every fact that exists is considered present=True.
-            * non_negative:
-                For now, flag metrics with negative values as LOW severity.
-            * history_consistency:
-                Retrieve up to `history_lookback` prior points for each
-                (metric_code) and flag MEDIUM severity if the latest value
-                changes by more than 500% relative to the last history point.
-
-        This logic can be refactored into a dedicated domain service later
-        without changing the public use-case contract.
-        """
+        """Evaluate basic DQ rules over a set of facts."""
         fq_results: list[EdgarFactQuality] = []
         anomaly_results: list[EdgarDQAnomaly] = []
 
@@ -248,7 +229,7 @@ class RunStatementDQUseCase:
                                 dimension_key=fact.dimension_key,
                                 rule_code="HISTORY_SPIKE",
                                 severity=MaterialityClass.MEDIUM,
-                                message=("Metric exhibits large change relative to history."),
+                                message="Metric exhibits large change relative to history.",
                                 details={
                                     "previous_value": str(last.value),
                                     "current_value": str(fact.value),

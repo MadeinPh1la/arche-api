@@ -1,7 +1,6 @@
 # tests/unit/application/use_cases/statements/test_run_statement_dq.py
-# Copyright (c) Stacklion.
+# Copyright (c)
 # SPDX-License-Identifier: MIT
-"""Unit tests for RunStatementDQUseCase."""
 
 from __future__ import annotations
 
@@ -57,10 +56,7 @@ class _FakeFactsRepo(EdgarFactsRepository):
         metric_code: str,
         limit: int,
     ) -> list[EdgarNormalizedFact]:
-        # Ignore filters for tests; just return configured history slice.
         return self._history[:limit]
-
-    # Other interface methods are not needed for these tests.
 
 
 class _FakeDQRepo(EdgarDQRepository):
@@ -122,11 +118,9 @@ class _FakeTx(UnitOfWorkProtocol):
         return self
 
     async def __aexit__(self, exc_type, exc, tb) -> None:  # type: ignore[override]
-        # No-op for tests.
         return None
 
     def get_repository(self, repo_type: type[Any]) -> Any:  # type: ignore[override]
-        # Identity comparison is enough; avoids runtime protocol checks.
         if repo_type is EdgarFactsRepository:
             return self._facts_repo
         if repo_type is EdgarDQRepository:
@@ -162,11 +156,6 @@ def _make_fact(value: Decimal) -> EdgarNormalizedFact:
     )
 
 
-# --------------------------------------------------------------------------- #
-# execute() invariants                                                       #
-# --------------------------------------------------------------------------- #
-
-
 @pytest.mark.asyncio
 async def test_execute_raises_for_empty_cik() -> None:
     facts_repo = _FakeFactsRepo(facts=[])
@@ -189,7 +178,6 @@ async def test_execute_raises_for_empty_cik() -> None:
 
 @pytest.mark.asyncio
 async def test_execute_raises_when_no_facts_exist() -> None:
-    """When no facts exist for the identity, raise EdgarIngestionError."""
     facts_repo = _FakeFactsRepo(facts=[])
     dq_repo = _FakeDQRepo()
     uow = _FakeTx(facts_repo, dq_repo)
@@ -237,8 +225,8 @@ async def test_execute_success_persists_run_and_artifacts_and_returns_dto() -> N
     assert isinstance(result, RunStatementDQResultDTO)
     assert result.cik == "0000123456"
     assert result.statement_type == StatementType.INCOME_STATEMENT
-    assert result.total_fact_quality == 1
-    assert result.total_anomalies >= 1
+    assert result.facts_evaluated == 1
+    assert result.anomaly_count >= 1
     assert result.dq_run_id
     assert result.max_severity in (MaterialityClass.LOW, MaterialityClass.MEDIUM)
     assert dq_repo.runs
@@ -246,16 +234,10 @@ async def test_execute_success_persists_run_and_artifacts_and_returns_dto() -> N
     assert uow.committed is True
 
 
-# --------------------------------------------------------------------------- #
-# History-consistency rule coverage                                          #
-# --------------------------------------------------------------------------- #
-
-
 @pytest.mark.asyncio
 async def test_execute_marks_history_consistent_without_spike() -> None:
-    """History present with moderate change should set consistency=True and no spike anomaly."""
     current_fact = _make_fact(Decimal("110"))
-    history_fact = _make_fact(Decimal("100"))  # +10% change
+    history_fact = _make_fact(Decimal("100"))
 
     facts_repo = _FakeFactsRepo(facts=[current_fact], history=[history_fact])
     dq_repo = _FakeDQRepo()
@@ -274,21 +256,17 @@ async def test_execute_marks_history_consistent_without_spike() -> None:
 
     result = await use_case.execute(req)
 
-    # No HISTORY_SPIKE anomalies expected.
     spike_codes = {a.rule_code for run in dq_repo.anomalies for a in run}
     assert "HISTORY_SPIKE" not in spike_codes
 
-    # Fact quality should record consistency=True.
     fq_items = dq_repo.fact_quality[0]
     assert len(fq_items) == 1
     assert fq_items[0].is_consistent_with_history is True
-    # Severity should be NONE because no rules fired.
     assert result.max_severity in (MaterialityClass.NONE, None)
 
 
 @pytest.mark.asyncio
 async def test_execute_history_zero_sets_consistency_unknown() -> None:
-    """When last history value is zero, history-consistency is set to None and no spike is emitted."""
     current_fact = _make_fact(Decimal("100"))
     history_fact_zero = _make_fact(Decimal("0"))
 
@@ -309,7 +287,6 @@ async def test_execute_history_zero_sets_consistency_unknown() -> None:
 
     await use_case.execute(req)
 
-    # No HISTORY_SPIKE anomalies when previous value is zero.
     spike_codes = {a.rule_code for run in dq_repo.anomalies for a in run}
     assert "HISTORY_SPIKE" not in spike_codes
 
@@ -317,13 +294,7 @@ async def test_execute_history_zero_sets_consistency_unknown() -> None:
     assert fq_items[0].is_consistent_with_history is None
 
 
-# --------------------------------------------------------------------------- #
-# _severity_rank / _max_severity                                             #
-# --------------------------------------------------------------------------- #
-
-
 def test_severity_rank_orders_by_materiality() -> None:
-    """_severity_rank should reflect NONE < LOW < MEDIUM < HIGH."""
     order = [
         MaterialityClass.NONE,
         MaterialityClass.LOW,
@@ -337,8 +308,6 @@ def test_severity_rank_orders_by_materiality() -> None:
 
 
 def test_max_severity_handles_empty_and_mixed_sequences() -> None:
-    """_max_severity should return None for empty inputs and highest severity otherwise."""
-    # Empty case.
     assert _max_severity([], []) is None
 
     identity = NormalizedStatementIdentity(

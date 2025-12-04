@@ -40,9 +40,18 @@ from fastapi import Depends, HTTPException, Path, Query, Request, Response, stat
 from fastapi.responses import JSONResponse
 
 from stacklion_api.adapters.controllers.edgar_controller import EdgarController
+from stacklion_api.adapters.dependencies.edgar_uow import get_edgar_uow
 from stacklion_api.adapters.presenters.base_presenter import PresentResult
+from stacklion_api.adapters.presenters.edgar_dq_presenter import (
+    present_run_statement_dq,
+    present_statement_dq_overlay,
+)
 from stacklion_api.adapters.presenters.edgar_presenter import EdgarPresenter
 from stacklion_api.adapters.routers.base_router import BaseRouter, PageParams
+from stacklion_api.adapters.schemas.http.edgar_dq_schemas import (
+    RunStatementDQResultHTTP,
+    StatementDQOverlayHTTP,
+)
 from stacklion_api.adapters.schemas.http.edgar_schemas import (
     EdgarDerivedMetricsCatalogHTTP,
     EdgarDerivedMetricsTimeSeriesHTTP,
@@ -59,6 +68,15 @@ from stacklion_api.adapters.schemas.http.envelopes import (
     SuccessEnvelope,
 )
 from stacklion_api.application.schemas.dto.edgar import EdgarFilingDTO
+from stacklion_api.application.uow import UnitOfWork
+from stacklion_api.application.use_cases.statements.get_statement_with_dq_overlay import (
+    GetStatementWithDQOverlayRequest,
+    GetStatementWithDQOverlayUseCase,
+)
+from stacklion_api.application.use_cases.statements.run_statement_dq import (
+    RunStatementDQRequest,
+    RunStatementDQUseCase,
+)
 from stacklion_api.dependencies.edgar import get_edgar_controller
 from stacklion_api.domain.enums.derived_metric import DerivedMetric
 from stacklion_api.domain.enums.edgar import FilingType, FiscalPeriod, StatementType
@@ -1580,3 +1598,402 @@ async def get_restatement_timeline(
             details={"reason": type(exc).__name__},
         )
         return JSONResponse(status_code=503, content=envelope.model_dump(mode="json"))
+
+
+# ---------------------------------------------------------------------------
+# Routes: Data Quality (DQ) – statement scope
+# ---------------------------------------------------------------------------
+
+
+@router.post(
+    "/companies/{cik}/statements/dq/run",
+    response_model=SuccessEnvelope[RunStatementDQResultHTTP] | ErrorEnvelope,
+    status_code=status.HTTP_200_OK,
+    responses=cast("dict[int | str, dict[str, Any]]", BaseRouter.std_error_responses()),
+    summary="Run data-quality checks for a normalized statement",
+    description=(
+        "Execute the EDGAR data-quality engine for a specific normalized "
+        "statement version and persist the resulting run, fact-quality flags, "
+        "and anomalies. Facts must have been persisted for the statement "
+        "prior to invoking this endpoint."
+    ),
+)
+async def run_statement_dq(
+    request: Request,
+    response: Response,
+    uow: Annotated[UnitOfWork, Depends(get_edgar_uow)],
+    cik: Annotated[
+        str,
+        Path(
+            description="Company CIK as digits (no leading 'CIK' prefix).",
+            examples=["0000320193"],
+        ),
+    ],
+    statement_type: Annotated[
+        str,
+        Query(
+            description=(
+                "Statement type " "(INCOME_STATEMENT, BALANCE_SHEET, CASH_FLOW_STATEMENT)."
+            ),
+            examples=["INCOME_STATEMENT"],
+        ),
+    ],
+    fiscal_year: Annotated[
+        int,
+        Query(
+            ge=1,
+            description="Fiscal year for the statement identity (>= 1).",
+            examples=[2024],
+        ),
+    ],
+    fiscal_period: Annotated[
+        str,
+        Query(
+            description="Fiscal period code (e.g., FY, Q1, Q2, Q3, Q4).",
+            examples=["FY"],
+        ),
+    ],
+    version_sequence: Annotated[
+        int,
+        Query(
+            ge=1,
+            description="Version sequence number for this statement identity (>= 1).",
+            examples=[1],
+        ),
+    ],
+    rule_set_version: Annotated[
+        str,
+        Query(
+            ...,
+            description="Rule-set version identifier to use for this DQ run.",
+        ),
+    ],
+    scope_type: Annotated[
+        str,
+        Query(
+            ...,
+            description="DQ scope type (e.g., STATEMENT_ONLY, STATEMENT_WITH_HISTORY).",
+        ),
+    ],
+    history_lookback: Annotated[
+        int,
+        Query(
+            ...,
+            ge=1,
+            description=(
+                "Number of historical periods to inspect for history-based rules "
+                "(e.g., HISTORY_SPIKE)."
+            ),
+        ),
+    ],
+) -> SuccessEnvelope[RunStatementDQResultHTTP] | ErrorEnvelope | JSONResponse:
+    """Trigger a DQ run for a specific statement version."""
+    del request  # reserved for future auth/feature flags
+    trace_id = response.headers.get("X-Request-ID")
+    normalized_cik = _normalize_cik(cik)
+
+    # Manual enum parsing → 400 envelopes instead of FastAPI 422.
+    try:
+        typed_statement_type = StatementType(statement_type)
+    except ValueError:
+        error = _error_envelope(
+            http_status=400,
+            code="VALIDATION_ERROR",
+            message="Invalid statement_type.",
+            trace_id=trace_id,
+            details={"statement_type": statement_type},
+        )
+        return JSONResponse(status_code=400, content=error.model_dump(mode="json"))
+
+    try:
+        typed_fiscal_period = FiscalPeriod(fiscal_period)
+    except ValueError:
+        error = _error_envelope(
+            http_status=400,
+            code="VALIDATION_ERROR",
+            message="Invalid fiscal_period.",
+            trace_id=trace_id,
+            details={"fiscal_period": fiscal_period},
+        )
+        return JSONResponse(status_code=400, content=error.model_dump(mode="json"))
+
+    logger.info(
+        "edgar.api.run_statement_dq.start",
+        extra={
+            "cik": normalized_cik,
+            "statement_type": typed_statement_type.value,
+            "fiscal_year": fiscal_year,
+            "fiscal_period": typed_fiscal_period.value,
+            "version_sequence": version_sequence,
+            "rule_set_version": rule_set_version,
+            "scope_type": scope_type,
+            "history_lookback": history_lookback,
+            "trace_id": trace_id,
+        },
+    )
+
+    use_case = RunStatementDQUseCase(uow=uow)
+
+    try:
+        req = RunStatementDQRequest(
+            cik=normalized_cik,
+            statement_type=typed_statement_type,
+            fiscal_year=fiscal_year,
+            fiscal_period=typed_fiscal_period,
+            version_sequence=version_sequence,
+            rule_set_version=rule_set_version,
+            scope_type=scope_type,
+            history_lookback=history_lookback,
+        )
+
+        result_dto = await use_case.execute(req)
+        envelope = present_run_statement_dq(result_dto)
+
+        logger.info(
+            "edgar.api.run_statement_dq.success",
+            extra={
+                "cik": normalized_cik,
+                "statement_type": typed_statement_type.value,
+                "fiscal_year": fiscal_year,
+                "fiscal_period": typed_fiscal_period.value,
+                "version_sequence": version_sequence,
+                "dq_run_id": str(envelope.data.dq_run_id),
+                "max_severity": envelope.data.max_severity,
+                "facts_evaluated": envelope.data.facts_evaluated,
+                "anomaly_count": envelope.data.anomaly_count,
+                "trace_id": trace_id,
+            },
+        )
+
+        return envelope
+
+    except EdgarNotFound as exc:
+        error = _error_envelope(
+            http_status=404,
+            code="EDGAR_STATEMENT_NOT_FOUND",
+            message=str(exc),
+            trace_id=trace_id,
+        )
+        return JSONResponse(status_code=404, content=error.model_dump(mode="json"))
+
+    except EdgarMappingError as exc:
+        error = _error_envelope(
+            http_status=500,
+            code="EDGAR_MAPPING_ERROR",
+            message=str(exc),
+            trace_id=trace_id,
+            details=getattr(exc, "details", None),
+        )
+        return JSONResponse(status_code=500, content=error.model_dump(mode="json"))
+
+    except EdgarIngestionError as exc:
+        error = _error_envelope(
+            http_status=502,
+            code="EDGAR_UPSTREAM_ERROR",
+            message=str(exc),
+            trace_id=trace_id,
+            details=getattr(exc, "details", None),
+        )
+        return JSONResponse(status_code=502, content=error.model_dump(mode="json"))
+
+    except Exception as exc:  # pragma: no cover - defensive
+        logger.exception(
+            "edgar.api.run_statement_dq.unhandled",
+            extra={
+                "cik": normalized_cik,
+                "statement_type": typed_statement_type.value,
+                "fiscal_year": fiscal_year,
+                "fiscal_period": typed_fiscal_period.value,
+                "version_sequence": version_sequence,
+                "trace_id": trace_id,
+            },
+        )
+        error = _error_envelope(
+            http_status=503,
+            code="EDGAR_UNAVAILABLE",
+            message="DQ service is temporarily unavailable.",
+            trace_id=trace_id,
+            details={"reason": type(exc).__name__},
+        )
+        return JSONResponse(status_code=503, content=error.model_dump(mode="json"))
+
+
+@router.get(
+    "/companies/{cik}/statements/dq/overlay",
+    response_model=SuccessEnvelope[StatementDQOverlayHTTP] | ErrorEnvelope,
+    status_code=status.HTTP_200_OK,
+    responses=cast("dict[int | str, dict[str, Any]]", BaseRouter.std_error_responses()),
+    summary="Get a normalized statement with DQ overlay",
+    description=(
+        "Return a normalized EDGAR statement combined with its fact-level "
+        "data-quality overlay, including latest DQ run metadata, fact-quality "
+        "flags, and anomalies."
+    ),
+)
+async def get_statement_dq_overlay(
+    request: Request,
+    response: Response,
+    uow: Annotated[UnitOfWork, Depends(get_edgar_uow)],
+    cik: Annotated[
+        str,
+        Path(
+            description="Company CIK as digits (no leading 'CIK' prefix).",
+            examples=["0000320193"],
+        ),
+    ],
+    statement_type: Annotated[
+        str,
+        Query(
+            description=(
+                "Statement type " "(INCOME_STATEMENT, BALANCE_SHEET, CASH_FLOW_STATEMENT)."
+            ),
+            examples=["INCOME_STATEMENT"],
+        ),
+    ],
+    fiscal_year: Annotated[
+        int,
+        Query(
+            ge=1,
+            description="Fiscal year for the statement identity (>= 1).",
+            examples=[2024],
+        ),
+    ],
+    fiscal_period: Annotated[
+        str,
+        Query(
+            description="Fiscal period code (e.g., FY, Q1, Q2, Q3, Q4).",
+            examples=["FY"],
+        ),
+    ],
+    version_sequence: Annotated[
+        int,
+        Query(
+            ge=1,
+            description="Version sequence number for this statement identity (>= 1).",
+            examples=[1],
+        ),
+    ],
+) -> SuccessEnvelope[StatementDQOverlayHTTP] | ErrorEnvelope | JSONResponse:
+    """Retrieve a statement + DQ overlay for a specific statement version."""
+    del request
+    trace_id = response.headers.get("X-Request-ID")
+    normalized_cik = _normalize_cik(cik)
+
+    try:
+        typed_statement_type = StatementType(statement_type)
+    except ValueError:
+        error = _error_envelope(
+            http_status=400,
+            code="VALIDATION_ERROR",
+            message="Invalid statement_type.",
+            trace_id=trace_id,
+            details={"statement_type": statement_type},
+        )
+        return JSONResponse(status_code=400, content=error.model_dump(mode="json"))
+
+    try:
+        typed_fiscal_period = FiscalPeriod(fiscal_period)
+    except ValueError:
+        error = _error_envelope(
+            http_status=400,
+            code="VALIDATION_ERROR",
+            message="Invalid fiscal_period.",
+            trace_id=trace_id,
+            details={"fiscal_period": fiscal_period},
+        )
+        return JSONResponse(status_code=400, content=error.model_dump(mode="json"))
+
+    logger.info(
+        "edgar.api.get_statement_dq_overlay.start",
+        extra={
+            "cik": normalized_cik,
+            "statement_type": typed_statement_type.value,
+            "fiscal_year": fiscal_year,
+            "fiscal_period": typed_fiscal_period.value,
+            "version_sequence": version_sequence,
+            "trace_id": trace_id,
+        },
+    )
+
+    use_case = GetStatementWithDQOverlayUseCase(uow=uow)
+
+    try:
+        req = GetStatementWithDQOverlayRequest(
+            cik=normalized_cik,
+            statement_type=typed_statement_type,
+            fiscal_year=fiscal_year,
+            fiscal_period=typed_fiscal_period,
+            version_sequence=version_sequence,
+        )
+
+        overlay_dto = await use_case.execute(req)
+        envelope = present_statement_dq_overlay(overlay_dto)
+
+        logger.info(
+            "edgar.api.get_statement_dq_overlay.success",
+            extra={
+                "cik": normalized_cik,
+                "statement_type": typed_statement_type.value,
+                "fiscal_year": fiscal_year,
+                "fiscal_period": typed_fiscal_period.value,
+                "version_sequence": version_sequence,
+                "dq_run_id": (str(envelope.data.dq_run_id) if envelope.data.dq_run_id else None),
+                "max_severity": envelope.data.max_severity,
+                "facts_count": len(envelope.data.facts),
+                "fact_quality_count": len(envelope.data.fact_quality),
+                "anomalies_count": len(envelope.data.anomalies),
+                "trace_id": trace_id,
+            },
+        )
+
+        return envelope
+
+    except EdgarNotFound as exc:
+        error = _error_envelope(
+            http_status=404,
+            code="EDGAR_STATEMENT_NOT_FOUND",
+            message=str(exc),
+            trace_id=trace_id,
+        )
+        return JSONResponse(status_code=404, content=error.model_dump(mode="json"))
+
+    except EdgarMappingError as exc:
+        error = _error_envelope(
+            http_status=500,
+            code="EDGAR_MAPPING_ERROR",
+            message=str(exc),
+            trace_id=trace_id,
+            details=getattr(exc, "details", None),
+        )
+        return JSONResponse(status_code=500, content=error.model_dump(mode="json"))
+
+    except EdgarIngestionError as exc:
+        error = _error_envelope(
+            http_status=502,
+            code="EDGAR_UPSTREAM_ERROR",
+            message=str(exc),
+            trace_id=trace_id,
+            details=getattr(exc, "details", None),
+        )
+        return JSONResponse(status_code=502, content=error.model_dump(mode="json"))
+
+    except Exception as exc:  # pragma: no cover - defensive
+        logger.exception(
+            "edgar.api.get_statement_dq_overlay.unhandled",
+            extra={
+                "cik": normalized_cik,
+                "statement_type": typed_statement_type.value,
+                "fiscal_year": fiscal_year,
+                "fiscal_period": typed_fiscal_period.value,
+                "version_sequence": version_sequence,
+                "trace_id": trace_id,
+            },
+        )
+        error = _error_envelope(
+            http_status=503,
+            code="EDGAR_UNAVAILABLE",
+            message="DQ overlay service is temporarily unavailable.",
+            trace_id=trace_id,
+            details={"reason": type(exc).__name__},
+        )
+        return JSONResponse(status_code=503, content=error.model_dump(mode="json"))

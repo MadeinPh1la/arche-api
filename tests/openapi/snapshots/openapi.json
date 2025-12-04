@@ -118,6 +118,70 @@
         "title": "CheckResult",
         "type": "object"
       },
+      "DQAnomalyHTTP": {
+        "additionalProperties": false,
+        "properties": {
+          "details": {
+            "anyOf": [
+              {
+                "additionalProperties": {
+                  "type": "string"
+                },
+                "type": "object"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Details"
+          },
+          "dimension_key": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Dimension Key"
+          },
+          "dq_run_id": {
+            "title": "Dq Run Id",
+            "type": "string"
+          },
+          "message": {
+            "title": "Message",
+            "type": "string"
+          },
+          "metric_code": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Metric Code"
+          },
+          "rule_code": {
+            "title": "Rule Code",
+            "type": "string"
+          },
+          "severity": {
+            "$ref": "#/components/schemas/MaterialityClass"
+          }
+        },
+        "required": [
+          "dq_run_id",
+          "message",
+          "rule_code",
+          "severity"
+        ],
+        "title": "DQAnomalyHTTP",
+        "type": "object"
+      },
       "DerivedMetric": {
         "enum": [
           "DEBT_TO_EQUITY",
@@ -642,6 +706,102 @@
         "title": "ErrorObject",
         "type": "object"
       },
+      "FactQualityHTTP": {
+        "additionalProperties": false,
+        "properties": {
+          "cik": {
+            "title": "Cik",
+            "type": "string"
+          },
+          "details": {
+            "anyOf": [
+              {
+                "additionalProperties": {
+                  "type": "string"
+                },
+                "type": "object"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Details"
+          },
+          "dimension_key": {
+            "title": "Dimension Key",
+            "type": "string"
+          },
+          "fiscal_period": {
+            "title": "Fiscal Period",
+            "type": "string"
+          },
+          "fiscal_year": {
+            "minimum": 0.0,
+            "title": "Fiscal Year",
+            "type": "integer"
+          },
+          "has_known_issue": {
+            "title": "Has Known Issue",
+            "type": "boolean"
+          },
+          "is_consistent_with_history": {
+            "anyOf": [
+              {
+                "type": "boolean"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Is Consistent With History"
+          },
+          "is_non_negative": {
+            "anyOf": [
+              {
+                "type": "boolean"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Is Non Negative"
+          },
+          "is_present": {
+            "title": "Is Present",
+            "type": "boolean"
+          },
+          "metric_code": {
+            "title": "Metric Code",
+            "type": "string"
+          },
+          "severity": {
+            "$ref": "#/components/schemas/MaterialityClass"
+          },
+          "statement_type": {
+            "title": "Statement Type",
+            "type": "string"
+          },
+          "version_sequence": {
+            "minimum": 1.0,
+            "title": "Version Sequence",
+            "type": "integer"
+          }
+        },
+        "required": [
+          "cik",
+          "dimension_key",
+          "fiscal_period",
+          "fiscal_year",
+          "has_known_issue",
+          "is_present",
+          "metric_code",
+          "severity",
+          "statement_type",
+          "version_sequence"
+        ],
+        "title": "FactQualityHTTP",
+        "type": "object"
+      },
       "FilingType": {
         "enum": [
           "10-K",
@@ -833,91 +993,15 @@
         "title": "MCPResponse",
         "type": "object"
       },
-      "NormalizedFactHTTP": {
-        "additionalProperties": false,
-        "examples": [
-          {
-            "dimension": {
-              "segment": "US"
-            },
-            "label": "Revenue",
-            "metric": "REVENUE",
-            "period_end": "2024-03-31",
-            "period_start": "2024-01-01",
-            "source_line_item": "Net sales",
-            "unit": "USD",
-            "value": "123456.78"
-          }
+      "MaterialityClass": {
+        "enum": [
+          "HIGH",
+          "LOW",
+          "MEDIUM",
+          "NONE"
         ],
-        "properties": {
-          "dimension": {
-            "anyOf": [
-              {
-                "additionalProperties": {
-                  "type": "string"
-                },
-                "type": "object"
-              },
-              {
-                "type": "null"
-              }
-            ],
-            "title": "Dimension"
-          },
-          "label": {
-            "anyOf": [
-              {
-                "type": "string"
-              },
-              {
-                "type": "null"
-              }
-            ],
-            "title": "Label"
-          },
-          "metric": {
-            "title": "Metric",
-            "type": "string"
-          },
-          "period_end": {
-            "format": "date",
-            "title": "Period End",
-            "type": "string"
-          },
-          "period_start": {
-            "format": "date",
-            "title": "Period Start",
-            "type": "string"
-          },
-          "source_line_item": {
-            "anyOf": [
-              {
-                "type": "string"
-              },
-              {
-                "type": "null"
-              }
-            ],
-            "title": "Source Line Item"
-          },
-          "unit": {
-            "title": "Unit",
-            "type": "string"
-          },
-          "value": {
-            "title": "Value",
-            "type": "string"
-          }
-        },
-        "required": [
-          "metric",
-          "period_end",
-          "period_start",
-          "unit",
-          "value"
-        ],
-        "title": "NormalizedFactHTTP",
-        "type": "object"
+        "title": "MaterialityClass",
+        "type": "string"
       },
       "NormalizedStatementHTTP": {
         "additionalProperties": false,
@@ -978,7 +1062,7 @@
           },
           "facts": {
             "items": {
-              "$ref": "#/components/schemas/NormalizedFactHTTP"
+              "$ref": "#/components/schemas/stacklion_api__adapters__schemas__http__edgar_schemas__NormalizedFactHTTP"
             },
             "title": "Facts",
             "type": "array"
@@ -1541,6 +1625,214 @@
         "title": "RestatementSummaryHTTP",
         "type": "object"
       },
+      "RunStatementDQResultHTTP": {
+        "additionalProperties": false,
+        "properties": {
+          "anomaly_count": {
+            "minimum": 0.0,
+            "title": "Anomaly Count",
+            "type": "integer"
+          },
+          "cik": {
+            "title": "Cik",
+            "type": "string"
+          },
+          "dq_run_id": {
+            "title": "Dq Run Id",
+            "type": "string"
+          },
+          "executed_at": {
+            "format": "date-time",
+            "title": "Executed At",
+            "type": "string"
+          },
+          "facts_evaluated": {
+            "minimum": 0.0,
+            "title": "Facts Evaluated",
+            "type": "integer"
+          },
+          "fiscal_period": {
+            "title": "Fiscal Period",
+            "type": "string"
+          },
+          "fiscal_year": {
+            "minimum": 0.0,
+            "title": "Fiscal Year",
+            "type": "integer"
+          },
+          "history_lookback": {
+            "anyOf": [
+              {
+                "minimum": 1.0,
+                "type": "integer"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "History Lookback"
+          },
+          "max_severity": {
+            "anyOf": [
+              {
+                "$ref": "#/components/schemas/MaterialityClass"
+              },
+              {
+                "type": "null"
+              }
+            ]
+          },
+          "rule_set_version": {
+            "title": "Rule Set Version",
+            "type": "string"
+          },
+          "scope_type": {
+            "title": "Scope Type",
+            "type": "string"
+          },
+          "statement_type": {
+            "title": "Statement Type",
+            "type": "string"
+          },
+          "version_sequence": {
+            "minimum": 1.0,
+            "title": "Version Sequence",
+            "type": "integer"
+          }
+        },
+        "required": [
+          "anomaly_count",
+          "cik",
+          "dq_run_id",
+          "executed_at",
+          "facts_evaluated",
+          "fiscal_period",
+          "fiscal_year",
+          "rule_set_version",
+          "scope_type",
+          "statement_type",
+          "version_sequence"
+        ],
+        "title": "RunStatementDQResultHTTP",
+        "type": "object"
+      },
+      "StatementDQOverlayHTTP": {
+        "additionalProperties": false,
+        "properties": {
+          "accounting_standard": {
+            "title": "Accounting Standard",
+            "type": "string"
+          },
+          "anomalies": {
+            "items": {
+              "$ref": "#/components/schemas/DQAnomalyHTTP"
+            },
+            "title": "Anomalies",
+            "type": "array"
+          },
+          "cik": {
+            "title": "Cik",
+            "type": "string"
+          },
+          "currency": {
+            "title": "Currency",
+            "type": "string"
+          },
+          "dq_executed_at": {
+            "anyOf": [
+              {
+                "format": "date-time",
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Dq Executed At"
+          },
+          "dq_rule_set_version": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Dq Rule Set Version"
+          },
+          "dq_run_id": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Dq Run Id"
+          },
+          "fact_quality": {
+            "items": {
+              "$ref": "#/components/schemas/FactQualityHTTP"
+            },
+            "title": "Fact Quality",
+            "type": "array"
+          },
+          "facts": {
+            "items": {
+              "$ref": "#/components/schemas/stacklion_api__adapters__schemas__http__edgar_dq_schemas__NormalizedFactHTTP"
+            },
+            "title": "Facts",
+            "type": "array"
+          },
+          "fiscal_period": {
+            "title": "Fiscal Period",
+            "type": "string"
+          },
+          "fiscal_year": {
+            "minimum": 0.0,
+            "title": "Fiscal Year",
+            "type": "integer"
+          },
+          "max_severity": {
+            "anyOf": [
+              {
+                "$ref": "#/components/schemas/MaterialityClass"
+              },
+              {
+                "type": "null"
+              }
+            ]
+          },
+          "statement_date": {
+            "format": "date",
+            "title": "Statement Date",
+            "type": "string"
+          },
+          "statement_type": {
+            "title": "Statement Type",
+            "type": "string"
+          },
+          "version_sequence": {
+            "minimum": 1.0,
+            "title": "Version Sequence",
+            "type": "integer"
+          }
+        },
+        "required": [
+          "accounting_standard",
+          "cik",
+          "currency",
+          "fiscal_period",
+          "fiscal_year",
+          "statement_date",
+          "statement_type",
+          "version_sequence"
+        ],
+        "title": "StatementDQOverlayHTTP",
+        "type": "object"
+      },
       "StatementType": {
         "enum": [
           "BALANCE_SHEET",
@@ -1667,6 +1959,32 @@
         "title": "SuccessEnvelope",
         "type": "object"
       },
+      "SuccessEnvelope_RunStatementDQResultHTTP_": {
+        "additionalProperties": false,
+        "properties": {
+          "data": {
+            "$ref": "#/components/schemas/RunStatementDQResultHTTP"
+          }
+        },
+        "required": [
+          "data"
+        ],
+        "title": "SuccessEnvelope",
+        "type": "object"
+      },
+      "SuccessEnvelope_StatementDQOverlayHTTP_": {
+        "additionalProperties": false,
+        "properties": {
+          "data": {
+            "$ref": "#/components/schemas/StatementDQOverlayHTTP"
+          }
+        },
+        "required": [
+          "data"
+        ],
+        "title": "SuccessEnvelope",
+        "type": "object"
+      },
       "SystemHealthResult": {
         "additionalProperties": false,
         "properties": {
@@ -1728,6 +2046,207 @@
           "type"
         ],
         "title": "ValidationError",
+        "type": "object"
+      },
+      "stacklion_api__adapters__schemas__http__edgar_dq_schemas__NormalizedFactHTTP": {
+        "additionalProperties": false,
+        "properties": {
+          "accounting_standard": {
+            "title": "Accounting Standard",
+            "type": "string"
+          },
+          "cik": {
+            "title": "Cik",
+            "type": "string"
+          },
+          "dimension_key": {
+            "title": "Dimension Key",
+            "type": "string"
+          },
+          "dimensions": {
+            "additionalProperties": {
+              "type": "string"
+            },
+            "title": "Dimensions",
+            "type": "object"
+          },
+          "fiscal_period": {
+            "title": "Fiscal Period",
+            "type": "string"
+          },
+          "fiscal_year": {
+            "minimum": 0.0,
+            "title": "Fiscal Year",
+            "type": "integer"
+          },
+          "metric_code": {
+            "title": "Metric Code",
+            "type": "string"
+          },
+          "metric_label": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Metric Label"
+          },
+          "period_end": {
+            "format": "date",
+            "title": "Period End",
+            "type": "string"
+          },
+          "period_start": {
+            "anyOf": [
+              {
+                "format": "date",
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Period Start"
+          },
+          "source_line_item": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Source Line Item"
+          },
+          "statement_date": {
+            "format": "date",
+            "title": "Statement Date",
+            "type": "string"
+          },
+          "statement_type": {
+            "title": "Statement Type",
+            "type": "string"
+          },
+          "unit": {
+            "title": "Unit",
+            "type": "string"
+          },
+          "value": {
+            "title": "Value",
+            "type": "string"
+          },
+          "version_sequence": {
+            "minimum": 1.0,
+            "title": "Version Sequence",
+            "type": "integer"
+          }
+        },
+        "required": [
+          "accounting_standard",
+          "cik",
+          "dimension_key",
+          "dimensions",
+          "fiscal_period",
+          "fiscal_year",
+          "metric_code",
+          "period_end",
+          "statement_date",
+          "statement_type",
+          "unit",
+          "value",
+          "version_sequence"
+        ],
+        "title": "NormalizedFactHTTP",
+        "type": "object"
+      },
+      "stacklion_api__adapters__schemas__http__edgar_schemas__NormalizedFactHTTP": {
+        "additionalProperties": false,
+        "examples": [
+          {
+            "dimension": {
+              "segment": "US"
+            },
+            "label": "Revenue",
+            "metric": "REVENUE",
+            "period_end": "2024-03-31",
+            "period_start": "2024-01-01",
+            "source_line_item": "Net sales",
+            "unit": "USD",
+            "value": "123456.78"
+          }
+        ],
+        "properties": {
+          "dimension": {
+            "anyOf": [
+              {
+                "additionalProperties": {
+                  "type": "string"
+                },
+                "type": "object"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Dimension"
+          },
+          "label": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Label"
+          },
+          "metric": {
+            "title": "Metric",
+            "type": "string"
+          },
+          "period_end": {
+            "format": "date",
+            "title": "Period End",
+            "type": "string"
+          },
+          "period_start": {
+            "format": "date",
+            "title": "Period Start",
+            "type": "string"
+          },
+          "source_line_item": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Source Line Item"
+          },
+          "unit": {
+            "title": "Unit",
+            "type": "string"
+          },
+          "value": {
+            "title": "Value",
+            "type": "string"
+          }
+        },
+        "required": [
+          "metric",
+          "period_end",
+          "period_start",
+          "unit",
+          "value"
+        ],
+        "title": "NormalizedFactHTTP",
         "type": "object"
       }
     }
@@ -2509,6 +3028,346 @@
               "application/json": {
                 "schema": {
                   "$ref": "#/components/schemas/PaginatedEnvelope"
+                }
+              }
+            }
+          },
+          "400": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorEnvelope"
+                }
+              }
+            }
+          },
+          "401": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorEnvelope"
+                }
+              }
+            }
+          },
+          "403": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorEnvelope"
+                }
+              }
+            }
+          },
+          "404": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorEnvelope"
+                }
+              }
+            }
+          },
+          "409": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorEnvelope"
+                }
+              }
+            }
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorEnvelope"
+                }
+              }
+            }
+          },
+          "429": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorEnvelope"
+                }
+              }
+            }
+          },
+          "500": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorEnvelope"
+                }
+              }
+            }
+          },
+          "503": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorEnvelope"
+                }
+              }
+            }
+          }
+        },
+        "tags": [
+          "EDGAR Filings"
+        ]
+      }
+    },
+    "/v1/edgar/companies/{cik}/statements/dq/overlay": {
+      "get": {
+        "parameters": [
+          {
+            "in": "path",
+            "name": "cik",
+            "required": true,
+            "schema": {
+              "title": "Cik",
+              "type": "string"
+            }
+          },
+          {
+            "in": "query",
+            "name": "fiscal_period",
+            "required": true,
+            "schema": {
+              "title": "Fiscal Period",
+              "type": "string"
+            }
+          },
+          {
+            "in": "query",
+            "name": "fiscal_year",
+            "required": true,
+            "schema": {
+              "minimum": 1,
+              "title": "Fiscal Year",
+              "type": "integer"
+            }
+          },
+          {
+            "in": "query",
+            "name": "statement_type",
+            "required": true,
+            "schema": {
+              "title": "Statement Type",
+              "type": "string"
+            }
+          },
+          {
+            "in": "query",
+            "name": "version_sequence",
+            "required": true,
+            "schema": {
+              "minimum": 1,
+              "title": "Version Sequence",
+              "type": "integer"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "anyOf": [
+                    {
+                      "$ref": "#/components/schemas/SuccessEnvelope_StatementDQOverlayHTTP_"
+                    },
+                    {
+                      "$ref": "#/components/schemas/ErrorEnvelope"
+                    }
+                  ],
+                  "title": "Response Get  V1 Edgar Companies Cik Statements Dq Overlay"
+                }
+              }
+            }
+          },
+          "400": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorEnvelope"
+                }
+              }
+            }
+          },
+          "401": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorEnvelope"
+                }
+              }
+            }
+          },
+          "403": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorEnvelope"
+                }
+              }
+            }
+          },
+          "404": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorEnvelope"
+                }
+              }
+            }
+          },
+          "409": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorEnvelope"
+                }
+              }
+            }
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorEnvelope"
+                }
+              }
+            }
+          },
+          "429": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorEnvelope"
+                }
+              }
+            }
+          },
+          "500": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorEnvelope"
+                }
+              }
+            }
+          },
+          "503": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorEnvelope"
+                }
+              }
+            }
+          }
+        },
+        "tags": [
+          "EDGAR Filings"
+        ]
+      }
+    },
+    "/v1/edgar/companies/{cik}/statements/dq/run": {
+      "post": {
+        "parameters": [
+          {
+            "in": "path",
+            "name": "cik",
+            "required": true,
+            "schema": {
+              "title": "Cik",
+              "type": "string"
+            }
+          },
+          {
+            "in": "query",
+            "name": "fiscal_period",
+            "required": true,
+            "schema": {
+              "title": "Fiscal Period",
+              "type": "string"
+            }
+          },
+          {
+            "in": "query",
+            "name": "fiscal_year",
+            "required": true,
+            "schema": {
+              "minimum": 1,
+              "title": "Fiscal Year",
+              "type": "integer"
+            }
+          },
+          {
+            "in": "query",
+            "name": "history_lookback",
+            "required": true,
+            "schema": {
+              "minimum": 1,
+              "title": "History Lookback",
+              "type": "integer"
+            }
+          },
+          {
+            "in": "query",
+            "name": "rule_set_version",
+            "required": true,
+            "schema": {
+              "title": "Rule Set Version",
+              "type": "string"
+            }
+          },
+          {
+            "in": "query",
+            "name": "scope_type",
+            "required": true,
+            "schema": {
+              "title": "Scope Type",
+              "type": "string"
+            }
+          },
+          {
+            "in": "query",
+            "name": "statement_type",
+            "required": true,
+            "schema": {
+              "title": "Statement Type",
+              "type": "string"
+            }
+          },
+          {
+            "in": "query",
+            "name": "version_sequence",
+            "required": true,
+            "schema": {
+              "minimum": 1,
+              "title": "Version Sequence",
+              "type": "integer"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "anyOf": [
+                    {
+                      "$ref": "#/components/schemas/SuccessEnvelope_RunStatementDQResultHTTP_"
+                    },
+                    {
+                      "$ref": "#/components/schemas/ErrorEnvelope"
+                    }
+                  ],
+                  "title": "Response Post  V1 Edgar Companies Cik Statements Dq Run"
                 }
               }
             }
@@ -3629,6 +4488,161 @@
                     }
                   ],
                   "title": "Response Get  V1 Fundamentals Normalized-Statements"
+                }
+              }
+            }
+          },
+          "400": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorEnvelope"
+                }
+              }
+            }
+          },
+          "401": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorEnvelope"
+                }
+              }
+            }
+          },
+          "403": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorEnvelope"
+                }
+              }
+            }
+          },
+          "404": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorEnvelope"
+                }
+              }
+            }
+          },
+          "409": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorEnvelope"
+                }
+              }
+            }
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorEnvelope"
+                }
+              }
+            }
+          },
+          "429": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorEnvelope"
+                }
+              }
+            }
+          },
+          "500": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorEnvelope"
+                }
+              }
+            }
+          },
+          "503": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorEnvelope"
+                }
+              }
+            }
+          }
+        },
+        "tags": [
+          "Fundamentals",
+          "Fundamentals"
+        ]
+      }
+    },
+    "/v1/fundamentals/normalized-statements/dq-overlay": {
+      "get": {
+        "parameters": [
+          {
+            "in": "query",
+            "name": "cik",
+            "required": true,
+            "schema": {
+              "title": "Cik",
+              "type": "string"
+            }
+          },
+          {
+            "in": "query",
+            "name": "fiscal_period",
+            "required": true,
+            "schema": {
+              "$ref": "#/components/schemas/FiscalPeriod"
+            }
+          },
+          {
+            "in": "query",
+            "name": "fiscal_year",
+            "required": true,
+            "schema": {
+              "minimum": 1,
+              "title": "Fiscal Year",
+              "type": "integer"
+            }
+          },
+          {
+            "in": "query",
+            "name": "statement_type",
+            "required": true,
+            "schema": {
+              "$ref": "#/components/schemas/StatementType"
+            }
+          },
+          {
+            "in": "query",
+            "name": "version_sequence",
+            "required": true,
+            "schema": {
+              "minimum": 1,
+              "title": "Version Sequence",
+              "type": "integer"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "anyOf": [
+                    {
+                      "$ref": "#/components/schemas/SuccessEnvelope_StatementDQOverlayHTTP_"
+                    },
+                    {
+                      "$ref": "#/components/schemas/ErrorEnvelope"
+                    }
+                  ],
+                  "title": "Response Get  V1 Fundamentals Normalized-Statements Dq-Overlay"
                 }
               }
             }

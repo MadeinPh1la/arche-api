@@ -33,12 +33,13 @@ Notes:
 from __future__ import annotations
 
 from datetime import date
-from types import TracebackType
 from typing import Annotated, Any, cast
 
 from fastapi import Depends, HTTPException, Query, Request, Response, status
 from fastapi.responses import JSONResponse
 
+from stacklion_api.adapters.dependencies.edgar_uow import get_edgar_uow
+from stacklion_api.adapters.presenters.edgar_dq_presenter import present_statement_dq_overlay
 from stacklion_api.adapters.presenters.fundamentals_presenter import (
     present_derived_time_series,
     present_fundamentals_time_series,
@@ -46,6 +47,7 @@ from stacklion_api.adapters.presenters.fundamentals_presenter import (
     present_restatement_delta,
 )
 from stacklion_api.adapters.routers.base_router import BaseRouter
+from stacklion_api.adapters.schemas.http.edgar_dq_schemas import StatementDQOverlayHTTP
 from stacklion_api.adapters.schemas.http.envelopes import (
     ErrorEnvelope,
     ErrorObject,
@@ -75,6 +77,10 @@ from stacklion_api.application.use_cases.statements.get_normalized_statement imp
     GetNormalizedStatementRequest,
     GetNormalizedStatementUseCase,
 )
+from stacklion_api.application.use_cases.statements.get_statement_with_dq_overlay import (
+    GetStatementWithDQOverlayRequest,
+    GetStatementWithDQOverlayUseCase,
+)
 from stacklion_api.domain.enums.canonical_statement_metric import CanonicalStatementMetric
 from stacklion_api.domain.enums.derived_metric import DerivedMetric
 from stacklion_api.domain.enums.edgar import FiscalPeriod, StatementType
@@ -90,57 +96,19 @@ logger = get_json_logger(__name__)
 # v1 Fundamentals router: /v1/fundamentals/...
 router = BaseRouter(version="v1", resource="fundamentals", tags=["Fundamentals"])
 
-
 # --------------------------------------------------------------------------- #
-# UoW dependency – temporary no-op wiring                                     #
+# UoW dependency – EDGAR SQLAlchemy-backed UnitOfWork                         #
 # --------------------------------------------------------------------------- #
-
-
-class _NoopUnitOfWork(UnitOfWork):
-    """Minimal UnitOfWork implementation for fundamentals endpoints.
-
-    This exists so that FastAPI can resolve the dependency and mypy is happy.
-    For the current E6/E7 tests we only hit validation paths that never enter
-    the use cases' `async with uow` blocks, so no repositories are required.
-
-    A proper SQLAlchemy-backed UoW can later replace this wiring once EDGAR
-    modeling endpoints are fully seeded.
-    """
-
-    async def __aenter__(self) -> _NoopUnitOfWork:
-        return self
-
-    async def __aexit__(
-        self,
-        exc_type: type[BaseException] | None,
-        exc: BaseException | None,
-        tb: TracebackType | None,
-    ) -> None:
-        return None
-
-    def get_repository(self, repo_type: type[Any]) -> Any:
-        raise RuntimeError(
-            "Fundamentals router UnitOfWork has no repositories wired yet. "
-            "This is expected for validation/error-path tests. "
-            "Wire a real UoW before enabling happy-path fundamentals endpoints.",
-        )
-
-    async def commit(self) -> None:  # pragma: no cover - not used in tests
-        return None
-
-    async def rollback(self) -> None:  # pragma: no cover - not used in tests
-        return None
 
 
 def get_uow() -> UnitOfWork:
-    """FastAPI dependency that yields a UnitOfWork instance.
+    """FastAPI dependency yielding the EDGAR SQLAlchemy-backed UnitOfWork.
 
-    For now this returns a no-op UnitOfWork sufficient for E6/E7 HTTP tests
-    that exercise only validation / error behavior. EDGAR infra can later
-    override this with a real UnitOfWork via dependency_overrides or by
-    changing this function to construct the concrete UoW.
+    This delegates to the shared EDGAR dependency wiring so that fundamentals
+    endpoints operate on the same fact store and statement repositories as the
+    EDGAR router.
     """
-    return _NoopUnitOfWork()
+    return get_edgar_uow()
 
 
 # --------------------------------------------------------------------------- #
@@ -931,6 +899,160 @@ async def get_normalized_statement(
             http_status=500,
             code="INTERNAL_ERROR",
             message="Normalized statement endpoint failed unexpectedly.",
+            trace_id=trace_id,
+            details={"reason": type(exc).__name__},
+        )
+        return JSONResponse(status_code=500, content=error.model_dump(mode="json"))
+
+
+@router.get(
+    "/normalized-statements/dq-overlay",
+    summary="Normalized statement with data-quality overlay",
+    description=(
+        "Return a normalized EDGAR statement for a given identity tuple, "
+        "combined with fact-level data-quality overlay (latest DQ run, "
+        "fact-quality flags, anomalies). This endpoint is a fundamentals-"
+        "namespaced façade over the EDGAR DQ overlay use case."
+    ),
+    response_model=SuccessEnvelope[StatementDQOverlayHTTP] | ErrorEnvelope,
+    responses=cast("dict[int | str, dict[str, Any]]", BaseRouter.std_error_responses()),
+)
+async def get_normalized_statement_dq_overlay(
+    request: Request,
+    response: Response,
+    uow: Annotated[UnitOfWork, Depends(get_uow)],
+    cik: Annotated[
+        str,
+        Query(
+            ...,
+            description="Central Index Key for the filer.",
+        ),
+    ],
+    statement_type: Annotated[
+        StatementType,
+        Query(
+            ...,
+            description="Statement type (e.g., INCOME_STATEMENT, BALANCE_SHEET).",
+        ),
+    ],
+    fiscal_year: Annotated[
+        int,
+        Query(
+            ...,
+            ge=1,
+            description="Fiscal year associated with the statement (>= 1).",
+        ),
+    ],
+    fiscal_period: Annotated[
+        FiscalPeriod,
+        Query(
+            ...,
+            description="Fiscal period within the year (e.g., FY, Q1, Q2).",
+        ),
+    ],
+    version_sequence: Annotated[
+        int,
+        Query(
+            ...,
+            ge=1,
+            description="Statement version sequence number to overlay.",
+        ),
+    ],
+) -> SuccessEnvelope[StatementDQOverlayHTTP] | ErrorEnvelope | JSONResponse:
+    """HTTP handler for /v1/fundamentals/normalized-statements/dq-overlay."""
+    del request
+    trace_id = response.headers.get("X-Request-ID")
+    normalized_cik = _normalize_cik(cik)
+
+    logger.info(
+        "fundamentals.api.normalized_statement_dq_overlay.start",
+        extra={
+            "cik": normalized_cik,
+            "statement_type": statement_type.value,
+            "fiscal_year": fiscal_year,
+            "fiscal_period": fiscal_period.value,
+            "version_sequence": version_sequence,
+            "trace_id": trace_id,
+        },
+    )
+
+    use_case = GetStatementWithDQOverlayUseCase(uow=uow)
+
+    try:
+        req = GetStatementWithDQOverlayRequest(
+            cik=normalized_cik,
+            statement_type=statement_type,
+            fiscal_year=fiscal_year,
+            fiscal_period=fiscal_period,
+            version_sequence=version_sequence,
+        )
+
+        overlay = await use_case.execute(req)
+        envelope = present_statement_dq_overlay(overlay)
+
+        logger.info(
+            "fundamentals.api.normalized_statement_dq_overlay.success",
+            extra={
+                "cik": normalized_cik,
+                "statement_type": statement_type.value,
+                "fiscal_year": fiscal_year,
+                "fiscal_period": fiscal_period.value,
+                "version_sequence": version_sequence,
+                "dq_run_id": str(envelope.data.dq_run_id) if envelope.data.dq_run_id else None,
+                "max_severity": envelope.data.max_severity,
+                "facts_count": len(envelope.data.facts),
+                "fact_quality_count": len(envelope.data.fact_quality),
+                "anomalies_count": len(envelope.data.anomalies),
+                "trace_id": trace_id,
+            },
+        )
+        return envelope
+
+    except EdgarNotFound as exc:
+        error = _error_envelope(
+            http_status=404,
+            code="EDGAR_STATEMENT_NOT_FOUND",
+            message=str(exc),
+            trace_id=trace_id,
+        )
+        return JSONResponse(status_code=404, content=error.model_dump(mode="json"))
+
+    except EdgarMappingError as exc:
+        error = _error_envelope(
+            http_status=400,
+            code="EDGAR_MAPPING_ERROR",
+            message=str(exc),
+            trace_id=trace_id,
+            details=getattr(exc, "details", None),
+        )
+        return JSONResponse(status_code=400, content=error.model_dump(mode="json"))
+
+    except EdgarIngestionError as exc:
+        error = _error_envelope(
+            http_status=502,
+            code="EDGAR_UPSTREAM_ERROR",
+            message=str(exc),
+            trace_id=trace_id,
+            details=getattr(exc, "details", None),
+        )
+        return JSONResponse(status_code=502, content=error.model_dump(mode="json"))
+
+    except Exception as exc:  # pragma: no cover
+        logger.exception(
+            "fundamentals.api.normalized_statement_dq_overlay.unhandled",
+            extra={
+                "cik": normalized_cik,
+                "statement_type": statement_type.value,
+                "fiscal_year": fiscal_year,
+                "fiscal_period": fiscal_period.value,
+                "version_sequence": version_sequence,
+                "trace_id": trace_id,
+            },
+        )
+        error = _error_envelope(
+            http_status=500,
+            code="INTERNAL_ERROR",
+            message="Normalized statement DQ overlay endpoint failed unexpectedly.",
             trace_id=trace_id,
             details={"reason": type(exc).__name__},
         )
