@@ -1,4 +1,5 @@
-# Copyright (c) Stacklion.
+# src/stacklion_api/infrastructure/external_apis/edgar/client.py
+# Copyright (c)
 # SPDX-License-Identifier: MIT
 """EDGAR Transport Client — resilient, instrumented, async.
 
@@ -13,6 +14,7 @@ This transport is framework-agnostic and provides:
 Endpoints:
     * fetch_company_submissions: submissions/CIK##########.json
     * fetch_recent_filings: currently an alias to submissions.
+    * fetch_xbrl: best-effort XBRL instance document for a filing.
 
 Notes:
     * We normalize CIKs to 10-digit, zero-padded strings.
@@ -76,12 +78,17 @@ class EdgarClient:
         """Initialize the transport client.
 
         Args:
-            settings: Provider settings loaded from environment or DI.
-            http: Optional shared ``httpx.AsyncClient``. If omitted, a client
-                is created and owned by this instance.
-            timeout_s: Optional per-request timeout override in seconds.
-            retry_policy: Optional retry configuration for retryable failures.
-            breaker: Circuit breaker instance to use; created if omitted.
+            settings:
+                Provider settings loaded from environment or DI.
+            http:
+                Optional shared ``httpx.AsyncClient``. If omitted, a client is
+                created and owned by this instance.
+            timeout_s:
+                Optional per-request timeout override in seconds.
+            retry_policy:
+                Optional retry configuration for retryable failures.
+            breaker:
+                Circuit breaker instance to use; created if omitted.
         """
         self._settings = settings
         self._base_url = str(settings.base_url).rstrip("/")
@@ -128,7 +135,7 @@ class EdgarClient:
             await self._client.aclose()
 
     # ------------------------------------------------------------------ #
-    # Public API
+    # Public API                                                         #
     # ------------------------------------------------------------------ #
 
     async def fetch_company_submissions(self, cik: str) -> Mapping[str, Any]:
@@ -148,8 +155,62 @@ class EdgarClient:
         path = f"/submissions/CIK{normalized_cik}.json"
         return await self._get_json(path, endpoint="recent_filings")
 
+    async def fetch_xbrl(self, *, cik: str, accession_id: str) -> bytes:
+        """Fetch primary XBRL instance bytes for a filing.
+
+        This is a best-effort implementation using EDGAR's archive layout
+        conventions. It is sufficient for E10-A and test environments; if the
+        document cannot be retrieved, a clear :class:`EdgarIngestionError` is
+        raised.
+
+        Args:
+            cik:
+                Company CIK (may include non-digit characters; normalized
+                internally).
+            accession_id:
+                EDGAR accession identifier (e.g., ``0000320193-24-000010``).
+
+        Returns:
+            Raw XBRL bytes for the primary instance document.
+
+        Raises:
+            EdgarIngestionError:
+                If the document cannot be retrieved or a non-success status is
+                returned.
+        """
+        normalized_cik = self._normalize_cik(cik)
+        # EDGAR archives conventionally remove dashes in the accession number.
+        acc_no_dashes = accession_id.replace("-", "")
+
+        # Try common XBRL/inline-XBRL extensions in order.
+        candidates = [
+            f"/Archives/edgar/data/{int(normalized_cik)}/{acc_no_dashes}/{acc_no_dashes}.xml",
+            f"/Archives/edgar/data/{int(normalized_cik)}/{acc_no_dashes}/{acc_no_dashes}.xbrl",
+            f"/Archives/edgar/data/{int(normalized_cik)}/{acc_no_dashes}/{acc_no_dashes}.htm",
+            f"/Archives/edgar/data/{int(normalized_cik)}/{acc_no_dashes}/{acc_no_dashes}_htm.xml",
+        ]
+
+        last_error: EdgarIngestionError | None = None
+        for path in candidates:
+            try:
+                return await self._get_bytes(path, endpoint="xbrl_instance")
+            except EdgarNotFound:
+                # Try next candidate.
+                continue
+            except EdgarIngestionError as exc:
+                last_error = exc
+                break
+
+        if last_error is not None:
+            raise last_error
+
+        raise EdgarIngestionError(
+            "XBRL instance document not found in EDGAR archives.",
+            details={"cik": cik, "accession_id": accession_id},
+        )
+
     # ------------------------------------------------------------------ #
-    # Internal helpers
+    # Internal helpers                                                   #
     # ------------------------------------------------------------------ #
 
     @staticmethod
@@ -174,13 +235,18 @@ class EdgarClient:
         """Perform a GET request and return a parsed JSON mapping.
 
         Args:
-            path: Path relative to the EDGAR base URL.
-            endpoint: Logical endpoint name for metrics (e.g., "company_submissions").
+            path:
+                Path relative to the EDGAR base URL.
+            endpoint:
+                Logical endpoint name for metrics (e.g., "company_submissions").
 
         Raises:
-            EdgarNotFound: On 404.
-            EdgarIngestionError: On 4xx/5xx or transport failures.
-            EdgarMappingError: On non-JSON or unexpected payloads.
+            EdgarNotFound:
+                On 404 responses.
+            EdgarIngestionError:
+                On 4xx/5xx or transport failures.
+            EdgarMappingError:
+                On non-JSON or unexpected payloads.
         """
         provider = "edgar"
         url = f"{self._base_url}{path}"
@@ -202,7 +268,7 @@ class EdgarClient:
                 endpoint=endpoint,
                 path=path,
             )
-            return self._handle_response(
+            return self._handle_json_response(
                 response=response,
                 provider=provider,
                 endpoint=endpoint,
@@ -255,6 +321,94 @@ class EdgarClient:
                         reason=error_reason,
                     ).inc()
 
+    async def _get_bytes(self, path: str, *, endpoint: str) -> bytes:
+        """Perform a GET request and return raw bytes.
+
+        Args:
+            path:
+                Path relative to the EDGAR base URL.
+            endpoint:
+                Logical endpoint name for metrics (e.g., "xbrl_instance").
+
+        Raises:
+            EdgarNotFound:
+                On 404 responses.
+            EdgarIngestionError:
+                On 4xx/5xx or transport failures.
+        """
+        provider = "edgar"
+        url = f"{self._base_url}{path}"
+
+        headers: dict[str, str] = {}
+        request_id = get_request_id()
+        trace_id = get_trace_id()
+        if request_id:
+            headers.setdefault("X-Request-ID", request_id)
+        if trace_id:
+            headers.setdefault("x-trace-id", trace_id)
+
+        async def _call() -> bytes:
+            """Execute a single HTTP GET and return raw bytes."""
+            response = await self._perform_request(
+                url=url,
+                headers=headers,
+                provider=provider,
+                endpoint=endpoint,
+                path=path,
+            )
+            return self._handle_bytes_response(
+                response=response,
+                provider=provider,
+                endpoint=endpoint,
+                path=path,
+            )
+
+        def _retry_predicate(exc_or_result: Exception | bytes) -> bool:
+            """Return True for retryable conditions only."""
+            if isinstance(exc_or_result, EdgarIngestionError):
+                with suppress(Exception):
+                    self._retries_total.labels(
+                        provider, endpoint, type(exc_or_result).__name__
+                    ).inc()
+                return True
+
+            if isinstance(
+                exc_or_result,
+                (httpx.TimeoutException, httpx.TransportError),
+            ):
+                with suppress(Exception):
+                    self._retries_total.labels(
+                        provider, endpoint, type(exc_or_result).__name__
+                    ).inc()
+                return True
+
+            return False
+
+        start = time.perf_counter()
+        error_reason: str | None = None
+
+        try:
+            async with traced("edgar.http", provider=provider, endpoint=endpoint, path=path):
+                return await retry_async(_call, policy=self._retry, retry_on=_retry_predicate)
+        except (EdgarNotFound, EdgarIngestionError) as exc:
+            error_reason = type(exc).__name__
+            raise
+        finally:
+            elapsed = time.perf_counter() - start
+            outcome = "error" if error_reason else "success"
+            with suppress(Exception):
+                self._latency.labels(
+                    provider=provider,
+                    endpoint=endpoint,
+                    outcome=outcome,
+                ).observe(elapsed)
+                if error_reason:
+                    self._errors.labels(
+                        provider=provider,
+                        endpoint=endpoint,
+                        reason=error_reason,
+                    ).inc()
+
     async def _perform_request(
         self,
         *,
@@ -286,7 +440,7 @@ class EdgarClient:
                 details={"endpoint": endpoint, "path": path, "error": str(exc)},
             ) from exc
 
-    def _handle_response(  # noqa: C901
+    def _handle_json_response(  # noqa: C901
         self,
         *,
         response: httpx.Response,
@@ -359,6 +513,62 @@ class EdgarClient:
             )
 
         return payload
+
+    def _handle_bytes_response(
+        self,
+        *,
+        response: httpx.Response,
+        provider: str,
+        endpoint: str,
+        path: str,
+    ) -> bytes:
+        """Map an HTTP response into raw bytes or domain error."""
+        with suppress(Exception):
+            self._status_total.labels(provider, endpoint, str(response.status_code)).inc()
+
+        if response.status_code == 304:
+            with suppress(Exception):
+                self._not_modified_total.labels(provider, endpoint).inc()
+            return b""
+
+        if response.status_code == 404:
+            raise EdgarNotFound(
+                "EDGAR resource not found.",
+                details={"endpoint": endpoint, "path": path, "status": 404},
+            )
+
+        if response.status_code == 429:
+            retry_after = self._parse_retry_after(response.headers.get("Retry-After"))
+            if retry_after is not None:
+                asyncio.run(asyncio.sleep(retry_after))  # pragma: no cover
+            raise EdgarIngestionError(
+                "EDGAR rate limited.",
+                details={
+                    "endpoint": endpoint,
+                    "path": path,
+                    "status": 429,
+                    "retry_after_s": retry_after,
+                },
+            )
+
+        if 400 <= response.status_code < 500:
+            raise EdgarIngestionError(
+                "EDGAR bad request.",
+                details={"endpoint": endpoint, "path": path, "status": response.status_code},
+            )
+
+        if response.status_code >= 500:
+            raise EdgarIngestionError(
+                "EDGAR upstream unavailable.",
+                details={"endpoint": endpoint, "path": path, "status": response.status_code},
+            )
+
+        with suppress(Exception):
+            length = response.headers.get("Content-Length")
+            size = int(length) if length and length.isdigit() else len(response.content)
+            self._resp_bytes.labels(provider, endpoint).observe(float(size))
+
+        return response.content
 
     @staticmethod
     def _parse_retry_after(val: str | None) -> float | None:

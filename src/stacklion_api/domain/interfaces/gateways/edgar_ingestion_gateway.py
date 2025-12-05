@@ -1,24 +1,28 @@
 # src/stacklion_api/domain/interfaces/gateways/edgar_ingestion_gateway.py
-# Copyright (c) Stacklion.
+# Copyright (c)
 # SPDX-License-Identifier: MIT
-"""EDGAR ingestion gateway interface.
+"""Domain-level EDGAR ingestion gateway protocol.
 
 Purpose:
-- Define a provider-agnostic interface for fetching and normalizing EDGAR filings
-  and financial statement versions from external transports (EDGAR APIs, mirrors).
-- Hide transport, pagination, and rate-limiting concerns behind a stable domain
-  contract.
+    Define the contract that application use-cases rely on for EDGAR data:
 
-Layer: domain
+        * Company identity lookup.
+        * Filing metadata retrieval.
+        * Construction of metadata-only statement versions.
+        * XBRL instance retrieval.
+        * Optional fact-level (provider-specific) access.
 
-Notes:
-- Implementations live in the adapters/infrastructure layers (e.g., HTTP clients,
-  batch ingestors) and must translate transport errors into domain exceptions.
+Implementations:
+    Concrete implementations live in the adapters layer, for example
+    :class:`stacklion_api.adapters.gateways.edgar_gateway.HttpEdgarIngestionGateway`.
+
+Layer:
+    domain/interfaces/gateways
 """
 
 from __future__ import annotations
 
-from collections.abc import Sequence
+from collections.abc import Mapping, Sequence
 from datetime import date
 from typing import Protocol
 
@@ -26,33 +30,46 @@ from stacklion_api.domain.entities.edgar_company import EdgarCompanyIdentity
 from stacklion_api.domain.entities.edgar_filing import EdgarFiling
 from stacklion_api.domain.entities.edgar_statement_version import EdgarStatementVersion
 from stacklion_api.domain.enums.edgar import FilingType, StatementType
+from stacklion_api.domain.services.edgar_normalization import EdgarFact
 
 
 class EdgarIngestionGateway(Protocol):
-    """Protocol for EDGAR ingestion gateways.
+    """Protocol for EDGAR ingestion providers.
 
-    Implementations are responsible for:
-      - Fetching raw EDGAR data via HTTP, S3, etc.
-      - Validating and mapping it into domain entities.
-      - Translating transport/validation errors into domain exceptions.
+    Implementations are responsible for translating upstream EDGAR payloads
+    (JSON / HTML / XBRL) into domain entities and value objects.
 
-    All methods must be deterministic for identical inputs and must not leak
-    transport-specific details into the domain layer.
+    Methods are intentionally high-level and tailored to application
+    use-cases rather than raw HTTP endpoints.
     """
 
     async def fetch_company_identity(self, cik: str) -> EdgarCompanyIdentity:
         """Fetch and normalize the company identity for a given CIK.
 
         Args:
-            cik: Central Index Key assigned by the SEC.
+            cik:
+                Central Index Key for the filer. May contain non-digit
+                characters; implementations are expected to normalize it.
 
         Returns:
-            Normalized company identity for the filer.
+            An :class:`EdgarCompanyIdentity` describing the filer.
+        """
 
-        Raises:
-            EdgarNotFound: If the CIK does not correspond to a known filer.
-            EdgarIngestionError: On transport or upstream failures.
-            EdgarMappingError: If the upstream payload cannot be mapped safely.
+    async def fetch_recent_filings(self, *, cik: str, limit: int = 100) -> Mapping[str, object]:
+        """Fetch the raw recent-filings JSON payload for a company.
+
+        This is primarily used by staging/ingest UCs that work against the
+        submissions JSON structure.
+
+        Args:
+            cik:
+                Central Index Key for the filer (pre-normalization).
+            limit:
+                Optional upper bound on the number of filings to return in the
+                normalized payload.
+
+        Returns:
+            A mapping representing the normalized "recent filings" payload.
         """
 
     async def fetch_filings_for_company(
@@ -67,21 +84,23 @@ class EdgarIngestionGateway(Protocol):
         """Fetch filings for a company within a date range.
 
         Args:
-            company: Company identity for which to fetch filings.
-            filing_types: Filing types to include (e.g., 10-K, 10-Q).
-            from_date: Inclusive start date for filing_date.
-            to_date: Inclusive end date for filing_date.
-            include_amendments: Whether to include amendment filings.
-            max_results: Optional cap on number of filings to return. Implementations
-                must document deterministic ordering (e.g., filing_date desc, then
-                accession_id asc).
+            company:
+                Company identity for which to fetch filings.
+            filing_types:
+                Filing types to include (e.g., 10-K, 10-Q). An empty sequence
+                means "all supported types."
+            from_date:
+                Inclusive lower bound on ``filing_date``.
+            to_date:
+                Inclusive upper bound on ``filing_date``.
+            include_amendments:
+                Whether to include amendment forms (e.g., 10-K/A).
+            max_results:
+                Optional upper bound on the number of filings to return.
 
         Returns:
-            A sequence of normalized filing entities.
-
-        Raises:
-            EdgarIngestionError: On transport or upstream failures.
-            EdgarMappingError: If responses cannot be mapped safely.
+            A sequence of :class:`EdgarFiling` entities, typically sorted in
+            descending order by (filing_date, accession_id).
         """
 
     async def fetch_statement_versions_for_filing(
@@ -89,17 +108,55 @@ class EdgarIngestionGateway(Protocol):
         filing: EdgarFiling,
         statement_types: Sequence[StatementType],
     ) -> Sequence[EdgarStatementVersion]:
-        """Fetch and normalize financial statement versions for a given filing.
+        """Construct metadata-only statement versions for a filing.
+
+        Implementations should not inspect XBRL facts here; the intent is to
+        build "skeleton" statement versions that can later be enriched by the
+        XBRL normalization pipeline.
 
         Args:
-            filing: Filing for which to retrieve statement versions.
-            statement_types: Statement types to include (income, balance sheet,
-                cash flow).
+            filing:
+                Filing metadata entity.
+            statement_types:
+                Statement types to construct versions for. An empty sequence
+                should typically result in an empty list.
 
         Returns:
-            A sequence of statement version entities associated with the filing.
+            A sequence of :class:`EdgarStatementVersion` entities with
+            metadata filled and ``normalized_payload`` set to ``None``.
+        """
+
+    async def fetch_xbrl_for_filing(self, *, cik: str, accession_id: str) -> bytes:
+        """Fetch primary XBRL or Inline XBRL instance bytes for a filing.
+
+        Args:
+            cik:
+                Central Index Key for the filer.
+            accession_id:
+                EDGAR accession identifier for the filing (e.g.,
+                "0000320193-24-000010").
+
+        Returns:
+            Raw XBRL or Inline XBRL document bytes suitable for parsing.
 
         Raises:
-            EdgarIngestionError: On transport or upstream failures.
-            EdgarMappingError: If responses cannot be mapped safely.
+            EdgarIngestionError:
+                Implementations should surface transport- or EDGAR-specific
+                failures as domain-level ingestion errors.
+        """
+
+    async def fetch_facts_for_filing(self, accession_id: str) -> Sequence[EdgarFact]:
+        """Fetch provider-specific fact records for a filing.
+
+        This is an optional hook for legacy or alternate fact-level ingestion
+        approaches. In the EDGAR XBRL normalization path, applications should
+        prefer :meth:`fetch_xbrl_for_filing` + the XBRL parser gateway.
+
+        Args:
+            accession_id:
+                EDGAR accession identifier for the filing.
+
+        Returns:
+            A sequence of :class:`EdgarFact` records describing raw,
+            provider-specific facts for the filing.
         """
