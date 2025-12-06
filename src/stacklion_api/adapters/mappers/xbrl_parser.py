@@ -11,7 +11,16 @@ Layer:
     adapters/mappers
 
 Notes:
-    - E10-A supports a minimal subset of common XBRL shapes.
+    - Instance parsing covers:
+        * Contexts (entity, period, dimensions).
+        * Units.
+        * Simple numeric facts.
+    - E10-B extends this adapter with **in-document linkbase parsing**:
+        * labelLink → XBRLLabel, grouped by concept.
+        * presentationLink → XBRLPresentationArc chains by extended link role.
+    - External taxonomy packages / linkbaseRef resolution are deliberately
+      out-of-scope for this phase; only linkbase XML embedded in the filing
+      is parsed.
     - The parser is intentionally conservative and may skip unsupported nodes
       rather than failing aggressively.
 """
@@ -29,9 +38,22 @@ from stacklion_api.domain.entities.xbrl_document import (
     XBRLDimension,
     XBRLDocument,
     XBRLFact,
+    XBRLLabel,
+    XBRLLinkbaseNetworks,
     XBRLPeriod,
+    XBRLPresentationArc,
     XBRLUnit,
 )
+
+# Namespace constants used in XBRL / linkbase documents.
+_XBRLI_NS = "{http://www.xbrl.org/2003/instance}"
+_LINK_NS = "{http://www.xbrl.org/2003/linkbase}"
+_XLINK_HREF = "{http://www.w3.org/1999/xlink}href"
+_XLINK_LABEL = "{http://www.w3.org/1999/xlink}label"
+_XLINK_ROLE = "{http://www.w3.org/1999/xlink}role"
+_XLINK_TYPE = "{http://www.w3.org/1999/xlink}type"
+_XLINK_FROM = "{http://www.w3.org/1999/xlink}from"
+_XLINK_TO = "{http://www.w3.org/1999/xlink}to"
 
 
 def _concept_qname(elem: Element) -> str:
@@ -61,6 +83,48 @@ def _concept_qname(elem: Element) -> str:
             return f"ifrs-full:{local}"
         return local
     return tag
+
+
+def _concept_qname_from_href(href: str) -> str | None:
+    """Best-effort concept QName extraction from a linkbase href.
+
+    Typical href shapes seen in GAAP linkbases:
+
+        * "us-gaap-2024-01-31.xsd#us-gaap_Revenues"
+        * "foo.xsd#Revenues"
+        * "foo.xsd#us-gaap:Revenues"
+
+    We try, in order:
+
+        * Fragment with an explicit prefix ("us-gaap:Revenues") → use as-is.
+        * Fragment of the form "us-gaap_Revenues" → rewrite first "_" as ":".
+        * Otherwise return the fragment unchanged.
+
+    Args:
+        href:
+            xlink:href attribute from a link:loc element.
+
+    Returns:
+        A QName string or None if it cannot be determined.
+    """
+    if "#" not in href:
+        return None
+
+    fragment = href.split("#", 1)[1]
+    fragment = fragment.strip()
+    if not fragment:
+        return None
+
+    if ":" in fragment:
+        # Already looks like a QName.
+        return fragment
+
+    if "_" in fragment:
+        prefix, local = fragment.split("_", 1)
+        if prefix and local:
+            return f"{prefix}:{local}"
+
+    return fragment or None
 
 
 class XBRLParser:
@@ -94,12 +158,14 @@ class XBRLParser:
         contexts = self._parse_contexts(root)
         units = self._parse_units(root)
         facts = self._parse_facts(root)
+        linkbases = self._parse_linkbases(root)
 
         return XBRLDocument(
             accession_id=accession_id,
             contexts=contexts,
             units=units,
             facts=tuple(facts),
+            linkbases=linkbases,
         )
 
     # ------------------------------------------------------------------ #
@@ -116,18 +182,17 @@ class XBRLParser:
         Returns:
             Mapping from context ID to :class:`XBRLContext` instances.
         """
-        ns = "{http://www.xbrl.org/2003/instance}"
         contexts: dict[str, XBRLContext] = {}
 
-        for ctx_elem in root.findall(f".//{ns}context"):
+        for ctx_elem in root.findall(f".//{_XBRLI_NS}context"):
             ctx_id = ctx_elem.attrib.get("id")
             if not ctx_id:
                 continue
 
-            identifier_elem = ctx_elem.find(f".//{ns}identifier")
+            identifier_elem = ctx_elem.find(f".//{_XBRLI_NS}identifier")
             entity_id = (identifier_elem.text or "").strip() if identifier_elem is not None else ""
 
-            period_elem = ctx_elem.find(f"{ns}period")
+            period_elem = ctx_elem.find(f"{_XBRLI_NS}period")
             period = (
                 self._parse_period(period_elem)
                 if period_elem is not None
@@ -140,7 +205,7 @@ class XBRLParser:
             )
 
             dimensions: list[XBRLDimension] = []
-            segment_elem = ctx_elem.find(f"{ns}segment")
+            segment_elem = ctx_elem.find(f"{_XBRLI_NS}segment")
             if segment_elem is not None:
                 for dim_elem in segment_elem:
                     dim_qname = dim_elem.attrib.get("dimension")
@@ -172,9 +237,7 @@ class XBRLParser:
         Returns:
             Parsed :class:`XBRLPeriod` instance.
         """
-        ns = "{http://www.xbrl.org/2003/instance}"
-
-        instant_elem = elem.find(f"{ns}instant")
+        instant_elem = elem.find(f"{_XBRLI_NS}instant")
         if instant_elem is not None:
             instant_text = (instant_elem.text or "").strip()
             if instant_text:
@@ -186,8 +249,8 @@ class XBRLParser:
                     end_date=None,
                 )
 
-        start_elem = elem.find(f"{ns}startDate")
-        end_elem = elem.find(f"{ns}endDate")
+        start_elem = elem.find(f"{_XBRLI_NS}startDate")
+        end_elem = elem.find(f"{_XBRLI_NS}endDate")
         start: date | None = None
         end: date | None = None
 
@@ -221,15 +284,14 @@ class XBRLParser:
         Returns:
             Mapping from unit ID to :class:`XBRLUnit` instances.
         """
-        ns = "{http://www.xbrl.org/2003/instance}"
         units: dict[str, XBRLUnit] = {}
 
-        for unit_elem in root.findall(f".//{ns}unit"):
+        for unit_elem in root.findall(f".//{_XBRLI_NS}unit"):
             unit_id = unit_elem.attrib.get("id")
             if not unit_id:
                 continue
 
-            measure_elem = unit_elem.find(f".//{ns}measure")
+            measure_elem = unit_elem.find(f".//{_XBRLI_NS}measure")
             measure_text = (measure_elem.text or "").strip() if measure_elem is not None else ""
             measure = measure_text or "pure"
 
@@ -244,7 +306,7 @@ class XBRLParser:
     def _parse_facts(self, root: Element) -> list[XBRLFact]:
         """Parse XBRL facts from the instance tree.
 
-        This E10-A implementation focuses on simple, top-level numeric facts
+        This implementation focuses on simple, top-level numeric facts
         and ignores tuples, footnotes, and complex typed dimensions.
 
         Args:
@@ -259,7 +321,7 @@ class XBRLParser:
         xsi_nil_attr = "{http://www.w3.org/2001/XMLSchema-instance}nil"
 
         # Only top-level children in the instance namespace or with a prefix
-        # are considered candidate facts in E10-A.
+        # are considered candidate facts here.
         for elem in root:
             tag = elem.tag
             if "}" not in tag:
@@ -304,6 +366,133 @@ class XBRLParser:
             )
 
         return facts
+
+    # ------------------------------------------------------------------ #
+    # Linkbase parsing (E10-B)                                          #
+    # ------------------------------------------------------------------ #
+
+    def _parse_linkbases(self, root: Element) -> XBRLLinkbaseNetworks:
+        """Parse label and presentation linkbase networks from the document.
+
+        Behavior:
+            - Parses all embedded link:labelLink and link:presentationLink
+              elements.
+            - Resolves concept QNames from loc href fragments.
+            - Resolves labels via labelArc (loc → label resource).
+            - Builds deterministic presentation arcs keyed by extended link role.
+
+        Args:
+            root:
+                Root XML element of the XBRL (or Inline XBRL) document.
+
+        Returns:
+            XBRLLinkbaseNetworks instance; empty if no linkbase content exists.
+        """
+        labels_by_concept = self._parse_label_linkbases(root)
+        presentation_arcs = self._parse_presentation_linkbases(root)
+
+        # Normalize to immutable structures expected by the domain.
+        frozen_labels: dict[str, tuple[XBRLLabel, ...]] = {
+            concept: tuple(labels) for concept, labels in labels_by_concept.items()
+        }
+
+        return XBRLLinkbaseNetworks(
+            labels_by_concept=frozen_labels,
+            presentation_arcs=tuple(presentation_arcs),
+        )
+
+    def _parse_label_linkbases(self, root: Element) -> dict[str, list[XBRLLabel]]:
+        """Parse label linkbases into a mapping of concept → labels."""
+        result: dict[str, list[XBRLLabel]] = {}
+
+        for label_link in root.findall(f".//{_LINK_NS}labelLink"):
+            # Map locator labels → concept QNames.
+            loc_concepts: dict[str, str] = {}
+            for loc in label_link.findall(f"{_LINK_NS}loc"):
+                loc_label = loc.attrib.get(_XLINK_LABEL)
+                href = loc.attrib.get(_XLINK_HREF, "")
+                concept_qname = _concept_qname_from_href(href) if href else None
+                if loc_label and concept_qname:
+                    loc_concepts[loc_label] = concept_qname
+
+            # Map label resource labels → (role, text).
+            label_resources: dict[str, tuple[str, str]] = {}
+            for label in label_link.findall(f"{_LINK_NS}label"):
+                if label.attrib.get(_XLINK_TYPE) != "resource":
+                    continue
+
+                res_label = label.attrib.get(_XLINK_LABEL)
+                role = label.attrib.get(_XLINK_ROLE, "")
+                text = (label.text or "").strip()
+                if res_label and text:
+                    label_resources[res_label] = (role, text)
+
+            # Connect locs to label resources via labelArc.
+            for arc in label_link.findall(f"{_LINK_NS}labelArc"):
+                from_label = arc.attrib.get(_XLINK_FROM)
+                to_label = arc.attrib.get(_XLINK_TO)
+                if not from_label or not to_label:
+                    continue
+
+                concept_qname = loc_concepts.get(from_label)
+                label_meta = label_resources.get(to_label)
+                if not concept_qname or not label_meta:
+                    continue
+
+                role, text = label_meta
+                label_obj = XBRLLabel(
+                    concept_qname=concept_qname,
+                    role=role,
+                    text=text,
+                )
+                result.setdefault(concept_qname, []).append(label_obj)
+
+        return result
+
+    def _parse_presentation_linkbases(self, root: Element) -> list[XBRLPresentationArc]:
+        """Parse presentation linkbases into a flat list of arcs."""
+        arcs: list[XBRLPresentationArc] = []
+
+        for pres_link in root.findall(f".//{_LINK_NS}presentationLink"):
+            role = pres_link.attrib.get(_XLINK_ROLE, "")
+
+            # Map locator labels → concept QNames.
+            loc_concepts: dict[str, str] = {}
+            for loc in pres_link.findall(f"{_LINK_NS}loc"):
+                loc_label = loc.attrib.get(_XLINK_LABEL)
+                href = loc.attrib.get(_XLINK_HREF, "")
+                concept_qname = _concept_qname_from_href(href) if href else None
+                if loc_label and concept_qname:
+                    loc_concepts[loc_label] = concept_qname
+
+            for arc in pres_link.findall(f"{_LINK_NS}presentationArc"):
+                from_label = arc.attrib.get(_XLINK_FROM)
+                to_label = arc.attrib.get(_XLINK_TO)
+                if not from_label or not to_label:
+                    continue
+
+                parent_qname = loc_concepts.get(from_label)
+                child_qname = loc_concepts.get(to_label)
+                if not parent_qname or not child_qname:
+                    continue
+
+                order_raw = arc.attrib.get("order", "0")
+                try:
+                    order = float(order_raw)
+                except ValueError:
+                    # Bad order values are ignored rather than failing parsing.
+                    continue
+
+                arcs.append(
+                    XBRLPresentationArc(
+                        role=role,
+                        parent_qname=parent_qname,
+                        child_qname=child_qname,
+                        order=order,
+                    )
+                )
+
+        return arcs
 
 
 __all__ = ["XBRLParser"]

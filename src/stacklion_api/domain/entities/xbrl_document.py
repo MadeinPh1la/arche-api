@@ -11,6 +11,7 @@ Purpose:
         * Contexts (entity + period + dimensions).
         * Units.
         * Facts.
+        * Linkbase networks (labels, presentation arcs).
         * The overall XBRLDocument container.
 
 Design:
@@ -21,10 +22,15 @@ Design:
 
 from __future__ import annotations
 
+import math
 from collections.abc import Mapping, Sequence
-from dataclasses import dataclass
+from dataclasses import dataclass, field
 from datetime import date
 from decimal import ROUND_HALF_UP, Decimal, InvalidOperation
+
+# --------------------------------------------------------------------------- #
+# Core instance structures                                                    #
+# --------------------------------------------------------------------------- #
 
 
 @dataclass(frozen=True)
@@ -183,7 +189,7 @@ class XBRLFact:
         * ``raw_value`` is parsed as a Decimal.
         * If ``decimals`` is provided, the value is quantized using
           ROUND_HALF_UP to the specified number of decimal places.
-        * ``precision`` is ignored in E10-A.
+        * ``precision`` is ignored in E10-A/B.
 
         Returns:
             Parsed Decimal value, optionally quantized, or None for nil facts.
@@ -215,6 +221,96 @@ class XBRLFact:
         return value
 
 
+# --------------------------------------------------------------------------- #
+# Linkbase entities (E10-B)                                                   #
+# --------------------------------------------------------------------------- #
+
+
+@dataclass(frozen=True)
+class XBRLLabel:
+    """XBRL label for a concept.
+
+    Attributes:
+        concept_qname:
+            QName of the concept this label describes (e.g., "us-gaap:Revenues").
+        role:
+            Label role URI (e.g., standard, terse, verbose).
+        text:
+            Human-readable label text as extracted from the linkbase.
+    """
+
+    concept_qname: str
+    role: str
+    text: str
+
+    def __post_init__(self) -> None:
+        """Validate that concept, role, and text are non-empty."""
+        if not self.concept_qname.strip():
+            raise ValueError("XBRLLabel.concept_qname must not be empty.")
+        if not self.role.strip():
+            raise ValueError("XBRLLabel.role must not be empty.")
+        if not self.text.strip():
+            raise ValueError("XBRLLabel.text must not be empty.")
+
+
+@dataclass(frozen=True)
+class XBRLPresentationArc:
+    """XBRL presentation linkbase arc.
+
+    Attributes:
+        role:
+            Extended link role URI for this presentation network.
+        parent_qname:
+            Parent concept QName in the presentation tree.
+        child_qname:
+            Child concept QName in the presentation tree.
+        order:
+            Numeric presentation order, used for deterministic sorting.
+    """
+
+    role: str
+    parent_qname: str
+    child_qname: str
+    order: float
+
+    def __post_init__(self) -> None:
+        """Validate that fields are non-empty and order is finite."""
+        if not self.role.strip():
+            raise ValueError("XBRLPresentationArc.role must not be empty.")
+        if not self.parent_qname.strip():
+            raise ValueError("XBRLPresentationArc.parent_qname must not be empty.")
+        if not self.child_qname.strip():
+            raise ValueError("XBRLPresentationArc.child_qname must not be empty.")
+        if not math.isfinite(self.order):
+            raise ValueError("XBRLPresentationArc.order must be a finite number.")
+
+
+@dataclass(frozen=True)
+class XBRLLinkbaseNetworks:
+    """Aggregated XBRL linkbase networks for an instance.
+
+    Attributes:
+        labels_by_concept:
+            Mapping from concept QName → tuple of labels for that concept.
+        presentation_arcs:
+            Tuple of presentation arcs across all extended link roles.
+    """
+
+    labels_by_concept: Mapping[str, Sequence[XBRLLabel]] = field(default_factory=dict)
+    presentation_arcs: Sequence[XBRLPresentationArc] = field(default_factory=tuple)
+
+    def __post_init__(self) -> None:
+        """Normalize collections to immutable structures and validate keys."""
+        normalized_labels: dict[str, tuple[XBRLLabel, ...]] = {}
+        for concept, labels in self.labels_by_concept.items():
+            if not concept.strip():
+                raise ValueError("XBRLLinkbaseNetworks labels_by_concept keys must not be empty.")
+            normalized_labels[concept] = tuple(labels)
+
+        object.__setattr__(self, "labels_by_concept", normalized_labels)
+        object.__setattr__(self, "presentation_arcs", tuple(self.presentation_arcs))
+
+
 @dataclass(frozen=True)
 class XBRLDocument:
     """Parsed XBRL instance document.
@@ -228,15 +324,31 @@ class XBRLDocument:
             Mapping of unit ID → XBRLUnit.
         facts:
             Sequence of XBRLFact instances contained in the document.
+        linkbases:
+            Optional XBRLLinkbaseNetworks for labels and presentation arcs.
     """
 
     accession_id: str
     contexts: Mapping[str, XBRLContext]
     units: Mapping[str, XBRLUnit]
     facts: Sequence[XBRLFact]
+    linkbases: XBRLLinkbaseNetworks | None = None
 
     def __post_init__(self) -> None:
         """Validate that the accession identifier is non-empty."""
         if not self.accession_id.strip():
             raise ValueError("XBRLDocument.accession_id must not be empty.")
         # contexts/units/facts may legitimately be empty for edge cases.
+
+
+__all__ = [
+    "XBRLPeriod",
+    "XBRLDimension",
+    "XBRLContext",
+    "XBRLUnit",
+    "XBRLFact",
+    "XBRLLabel",
+    "XBRLPresentationArc",
+    "XBRLLinkbaseNetworks",
+    "XBRLDocument",
+]

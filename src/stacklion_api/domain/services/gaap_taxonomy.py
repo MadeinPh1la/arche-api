@@ -7,6 +7,10 @@ Purpose:
     Provide a pure-domain representation of a minimal GAAP taxonomy used for
     validating XBRL facts and, where appropriate, resolving canonical metrics.
 
+    In E10-B, this module is extended with a linkbase view that can project
+    GAAP presentation trees and labels from XBRL linkbase networks to support
+    structural normalization.
+
 Layer:
     domain/services
 
@@ -15,16 +19,20 @@ Notes:
     - E10-A only covers Tier 1 concepts used by the canonical metric registry
       in the EDGAR normalization engine.
     - Validation is deliberately minimal and focused on period type and units.
+    - Linkbase views in E10-B are read-only and side-effect free.
 """
 
 from __future__ import annotations
 
-from collections.abc import Mapping, Sequence
+from collections import defaultdict
+from collections.abc import Iterable, Mapping, Sequence
 from dataclasses import dataclass
 
 from stacklion_api.domain.entities.xbrl_document import (
     XBRLContext,
     XBRLFact,
+    XBRLLinkbaseNetworks,
+    XBRLPresentationArc,
     XBRLUnit,
 )
 from stacklion_api.domain.enums.canonical_statement_metric import CanonicalStatementMetric
@@ -142,6 +150,160 @@ class GAAPTaxonomy:
                         "actual_measure": unit.measure,
                     },
                 )
+
+
+# --------------------------------------------------------------------------- #
+# Linkbase view (E10-B)                                                       #
+# --------------------------------------------------------------------------- #
+
+
+@dataclass(frozen=True)
+class PresentationNode:
+    """Node in a GAAP presentation tree.
+
+    Attributes:
+        concept_qname:
+            Concept QName represented by this node.
+        children:
+            Child nodes in GAAP presentation order.
+    """
+
+    concept_qname: str
+    children: tuple[PresentationNode, ...]
+
+    def __post_init__(self) -> None:
+        """Ensure children are stored as an immutable tuple."""
+        object.__setattr__(self, "children", tuple(self.children))
+
+
+class GaapTaxonomyView:
+    """Read-only view over GAAP linkbase networks for a single document.
+
+    This view exposes higher-level operations on top of raw linkbase networks:
+
+        * Resolving concept labels given preferred roles.
+        * Building presentation trees for a given extended link role.
+
+    It is deliberately side-effect free and safe to cache per XBRL document.
+    """
+
+    def __init__(self, linkbases: XBRLLinkbaseNetworks) -> None:
+        """Initialize the view from an XBRLLinkbaseNetworks instance.
+
+        Args:
+            linkbases:
+                Linkbase networks extracted from an XBRL document.
+        """
+        self._linkbases = linkbases
+        self._presentation_by_role = self._build_presentation_index(linkbases.presentation_arcs)
+
+    @staticmethod
+    def _build_presentation_index(
+        arcs: Iterable[XBRLPresentationArc],
+    ) -> Mapping[str, list[XBRLPresentationArc]]:
+        """Build an index of presentation arcs keyed by extended link role.
+
+        Args:
+            arcs:
+                Iterable of XBRLPresentationArc instances.
+
+        Returns:
+            Mapping from role URI → list of arcs for that role, sorted by
+            (parent_qname, order, child_qname) for deterministic behavior.
+        """
+        by_role: dict[str, list[XBRLPresentationArc]] = defaultdict(list)
+        for arc in arcs:
+            by_role[arc.role].append(arc)
+
+        for _role, arcs_for_role in by_role.items():
+            arcs_for_role.sort(key=lambda a: (a.parent_qname, a.order, a.child_qname))
+
+        return by_role
+
+    # ------------------------------- Labels -------------------------------- #
+
+    def get_best_label(
+        self, concept_qname: str, preferred_roles: Sequence[str] | None = None
+    ) -> str | None:
+        """Return the best label for a concept, preferring the given roles.
+
+        Args:
+            concept_qname:
+                QName of the concept whose label is requested.
+            preferred_roles:
+                Optional sequence of label role URIs to prefer, in order
+                (e.g., standard label, terse, verbose). If not provided, any
+                available label will be returned.
+
+        Returns:
+            The chosen label text, or None if no labels exist for the concept.
+        """
+        labels = self._linkbases.labels_by_concept.get(concept_qname)
+        if not labels:
+            return None
+
+        roles: list[str] = list(preferred_roles or ())
+        # Fallback sentinel: accept any role if preferred roles miss.
+        roles.append("")
+
+        for role in roles:
+            for label in labels:
+                if not role or label.role == role:
+                    return label.text
+
+        # Fallback: first label as-is.
+        return labels[0].text
+
+    # --------------------------- Presentation trees ------------------------ #
+
+    def build_presentation_tree(self, role: str) -> tuple[PresentationNode, ...]:
+        """Build a presentation tree for a given extended link role.
+
+        The resulting tree represents the GAAP structure for a statement,
+        ordered by GAAP presentation order.
+
+        Args:
+            role:
+                Extended link role URI identifying the presentation network.
+
+        Returns:
+            Tuple of PresentationNode instances representing the roots of
+            the presentation tree for the role. The tree is deterministic
+            given the underlying arcs.
+        """
+        arcs = self._presentation_by_role.get(role, [])
+        if not arcs:
+            return ()
+
+        children_by_parent: dict[str, list[XBRLPresentationArc]] = defaultdict(list)
+        parents: set[str] = set()
+        children: set[str] = set()
+
+        for arc in arcs:
+            parents.add(arc.parent_qname)
+            children.add(arc.child_qname)
+            children_by_parent[arc.parent_qname].append(arc)
+
+        # Roots are parents that never appear as children.
+        roots = sorted(parents - children)
+
+        # Sort children for each parent by presentation order.
+        for _parent, arcs_for_parent in children_by_parent.items():
+            arcs_for_parent.sort(key=lambda a: a.order)
+
+        def build_node(concept: str) -> PresentationNode:
+            child_arcs = children_by_parent.get(concept, [])
+            return PresentationNode(
+                concept_qname=concept,
+                children=tuple(build_node(arc.child_qname) for arc in child_arcs),
+            )
+
+        return tuple(build_node(root) for root in roots)
+
+
+# --------------------------------------------------------------------------- #
+# Minimal taxonomy builder (E10-A)                                            #
+# --------------------------------------------------------------------------- #
 
 
 def build_minimal_gaap_taxonomy() -> GAAPTaxonomy:

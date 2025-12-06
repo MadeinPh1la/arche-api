@@ -38,6 +38,7 @@ from stacklion_api.adapters.presenters.base_presenter import (
     PresentResult,
 )
 from stacklion_api.adapters.schemas.http.edgar_schemas import (
+    DQAnomalyHTTP,
     EdgarDerivedMetricsCatalogHTTP,
     EdgarDerivedMetricSpecHTTP,
     EdgarDerivedMetricsPointHTTP,
@@ -46,15 +47,20 @@ from stacklion_api.adapters.schemas.http.edgar_schemas import (
     EdgarStatementVersionHTTP,
     EdgarStatementVersionListHTTP,
     EdgarStatementVersionSummaryHTTP,
+    FactQualityHTTP,
     MetricViewHTTP,
     MetricViewsCatalogHTTP,
+    NormalizedFactHTTP,
     NormalizedStatementHTTP,
+    PersistNormalizedFactsResultHTTP,
     RestatementDeltaHTTP,
     RestatementLedgerEntryHTTP,
     RestatementLedgerHTTP,
     RestatementMetricDeltaHTTP,
     RestatementMetricTimelineHTTP,
     RestatementSummaryHTTP,
+    RunStatementDQResultHTTP,
+    StatementDQOverlayHTTP,
 )
 from stacklion_api.adapters.schemas.http.envelopes import (
     PaginatedEnvelope,
@@ -72,6 +78,14 @@ from stacklion_api.application.schemas.dto.edgar import (
     RestatementSummaryDTO,
 )
 from stacklion_api.application.schemas.dto.edgar_derived import EdgarDerivedMetricsPointDTO
+from stacklion_api.application.schemas.dto.edgar_dq import (
+    DQAnomalyDTO,
+    FactQualityDTO,
+    NormalizedFactDTO,
+    PersistNormalizedFactsResultDTO,
+    RunStatementDQResultDTO,
+    StatementDQOverlayDTO,
+)
 from stacklion_api.domain.enums.edgar import StatementType
 from stacklion_api.domain.services.derived_metrics_engine import DerivedMetricSpec
 from stacklion_api.domain.services.metric_views import MetricView
@@ -633,6 +647,68 @@ class EdgarPresenter(BasePresenter[SuccessEnvelope[Any]]):
         return self.present_success(data=payload, trace_id=trace_id)
 
     # ------------------------------------------------------------------
+    # Data-quality: mapping helpers
+    # ------------------------------------------------------------------
+
+    @staticmethod
+    def _map_normalized_fact_dto_to_http(dto: NormalizedFactDTO) -> NormalizedFactHTTP:
+        """Map a NormalizedFactDTO into the HTTP schema.
+
+        Args:
+            dto: Application-layer normalized fact DTO.
+
+        Returns:
+            NormalizedFactHTTP: HTTP-facing fact schema instance.
+        """
+        # period_start may be null for instant facts; fall back to period_end
+        # to keep the wire contract non-nullable and deterministic.
+        period_start = dto.period_start or dto.period_end
+        dimension = dto.dimensions or None
+
+        return NormalizedFactHTTP(
+            metric=dto.metric_code,
+            label=dto.metric_label,
+            unit=dto.unit,
+            period_start=period_start,
+            period_end=dto.period_end,
+            value=dto.value,
+            dimension=dimension,
+            source_line_item=dto.source_line_item,
+        )
+
+    @staticmethod
+    def _map_fact_quality_dto_to_http(dto: FactQualityDTO) -> FactQualityHTTP:
+        """Map a FactQualityDTO into the HTTP schema."""
+        return FactQualityHTTP(
+            cik=dto.cik,
+            statement_type=dto.statement_type.value,
+            fiscal_year=dto.fiscal_year,
+            fiscal_period=dto.fiscal_period.value,
+            version_sequence=dto.version_sequence,
+            metric=dto.metric_code,
+            dimension_key=dto.dimension_key,
+            severity=dto.severity.value,
+            is_present=dto.is_present,
+            is_non_negative=dto.is_non_negative,
+            is_consistent_with_history=dto.is_consistent_with_history,
+            has_known_issue=dto.has_known_issue,
+            details=dto.details or {},
+        )
+
+    @staticmethod
+    def _map_dq_anomaly_dto_to_http(dto: DQAnomalyDTO) -> DQAnomalyHTTP:
+        """Map a DQAnomalyDTO into the HTTP schema."""
+        return DQAnomalyHTTP(
+            dq_run_id=dto.dq_run_id,
+            metric=dto.metric_code,
+            dimension_key=dto.dimension_key,
+            rule_code=dto.rule_code,
+            severity=dto.severity.value,
+            message=dto.message,
+            details=dto.details or {},
+        )
+
+    # ------------------------------------------------------------------
     # Derived metrics time series
     # ------------------------------------------------------------------
 
@@ -840,6 +916,191 @@ class EdgarPresenter(BasePresenter[SuccessEnvelope[Any]]):
                 "trace_id": trace_id,
                 "metrics_count": len(items),
                 "metric_codes": [spec.metric.value for spec in sorted_specs],
+            },
+        )
+
+        return self.present_success(data=payload, trace_id=trace_id)
+
+    # ------------------------------------------------------------------
+    # Fact store: persistence result
+    # ------------------------------------------------------------------
+
+    def present_persist_normalized_facts_result(
+        self,
+        *,
+        dto: PersistNormalizedFactsResultDTO,
+        trace_id: str | None = None,
+    ) -> PresentResult[SuccessEnvelope[PersistNormalizedFactsResultHTTP]]:
+        """Present the result of persisting normalized facts for a statement.
+
+        Args:
+            dto: Application-layer result DTO.
+            trace_id: Optional request correlation identifier.
+
+        Returns:
+            PresentResult containing SuccessEnvelope[PersistNormalizedFactsResultHTTP].
+        """
+        payload = PersistNormalizedFactsResultHTTP(
+            cik=dto.cik,
+            statement_type=dto.statement_type.value,
+            fiscal_year=dto.fiscal_year,
+            fiscal_period=dto.fiscal_period.value,
+            version_sequence=dto.version_sequence,
+            facts_persisted=dto.facts_persisted,
+        )
+
+        _LOGGER.info(
+            "edgar_presenter_persist_normalized_facts_result",
+            extra={
+                "trace_id": trace_id,
+                "cik": dto.cik,
+                "statement_type": dto.statement_type.value,
+                "fiscal_year": dto.fiscal_year,
+                "fiscal_period": dto.fiscal_period.value,
+                "version_sequence": dto.version_sequence,
+                "facts_persisted": dto.facts_persisted,
+            },
+        )
+
+        return self.present_success(data=payload, trace_id=trace_id)
+
+    # ------------------------------------------------------------------
+    # Data-quality: run result
+    # ------------------------------------------------------------------
+
+    def present_run_statement_dq_result(
+        self,
+        *,
+        dto: RunStatementDQResultDTO,
+        trace_id: str | None = None,
+    ) -> PresentResult[SuccessEnvelope[RunStatementDQResultHTTP]]:
+        """Present the result summary of a statement-level DQ run.
+
+        Args:
+            dto: Application-layer RunStatementDQResultDTO.
+            trace_id: Optional request correlation identifier.
+
+        Returns:
+            PresentResult containing SuccessEnvelope[RunStatementDQResultHTTP].
+        """
+        payload = RunStatementDQResultHTTP(
+            dq_run_id=dto.dq_run_id,
+            cik=dto.cik,
+            statement_type=dto.statement_type.value,
+            fiscal_year=dto.fiscal_year,
+            fiscal_period=dto.fiscal_period.value,
+            version_sequence=dto.version_sequence,
+            rule_set_version=dto.rule_set_version,
+            scope_type=dto.scope_type,
+            history_lookback=dto.history_lookback,
+            executed_at=dto.executed_at,
+            facts_evaluated=dto.facts_evaluated,
+            anomaly_count=dto.anomaly_count,
+            max_severity=dto.max_severity.value if dto.max_severity is not None else None,
+        )
+
+        _LOGGER.info(
+            "edgar_presenter_run_statement_dq_result",
+            extra={
+                "trace_id": trace_id,
+                "dq_run_id": dto.dq_run_id,
+                "cik": dto.cik,
+                "statement_type": dto.statement_type.value,
+                "fiscal_year": dto.fiscal_year,
+                "fiscal_period": dto.fiscal_period.value,
+                "version_sequence": dto.version_sequence,
+                "rule_set_version": dto.rule_set_version,
+                "scope_type": dto.scope_type,
+                "history_lookback": dto.history_lookback,
+                "facts_evaluated": dto.facts_evaluated,
+                "anomaly_count": dto.anomaly_count,
+                "max_severity": dto.max_severity.value if dto.max_severity else None,
+            },
+        )
+
+        return self.present_success(data=payload, trace_id=trace_id)
+
+    # ------------------------------------------------------------------
+    # Data-quality: statement-level overlay
+    # ------------------------------------------------------------------
+
+    def present_statement_dq_overlay(
+        self,
+        *,
+        dto: StatementDQOverlayDTO,
+        trace_id: str | None = None,
+    ) -> PresentResult[SuccessEnvelope[StatementDQOverlayHTTP]]:
+        """Present a statement-level fact + DQ overlay.
+
+        Args:
+            dto:
+                Application-layer StatementDQOverlayDTO.
+            trace_id:
+                Optional request correlation identifier.
+
+        Returns:
+            PresentResult containing SuccessEnvelope[StatementDQOverlayHTTP].
+        """
+        # Defensive deterministic ordering:
+        #  - facts by (metric_code, period_end, dimension_key)
+        #  - fact_quality by (metric_code, dimension_key)
+        #  - anomalies by (severity desc, rule_code, metric, dimension_key)
+        facts_sorted = sorted(
+            dto.facts,
+            key=lambda f: (f.metric_code, f.period_end, f.dimension_key),
+        )
+        fact_quality_sorted = sorted(
+            dto.fact_quality,
+            key=lambda fq: (fq.metric_code, fq.dimension_key),
+        )
+        anomalies_sorted = sorted(
+            dto.anomalies,
+            key=lambda a: (
+                a.severity.value,
+                a.rule_code,
+                a.metric_code or "",
+                a.dimension_key or "",
+            ),
+            reverse=True,
+        )
+
+        facts_http = [self._map_normalized_fact_dto_to_http(f) for f in facts_sorted]
+        fact_quality_http = [self._map_fact_quality_dto_to_http(fq) for fq in fact_quality_sorted]
+        anomalies_http = [self._map_dq_anomaly_dto_to_http(a) for a in anomalies_sorted]
+
+        payload = StatementDQOverlayHTTP(
+            cik=dto.cik,
+            statement_type=dto.statement_type.value,
+            fiscal_year=dto.fiscal_year,
+            fiscal_period=dto.fiscal_period.value,
+            version_sequence=dto.version_sequence,
+            accounting_standard=dto.accounting_standard.value,
+            statement_date=dto.statement_date,
+            currency=dto.currency,
+            dq_run_id=dto.dq_run_id,
+            dq_rule_set_version=dto.dq_rule_set_version,
+            dq_executed_at=dto.dq_executed_at,
+            max_severity=dto.max_severity.value if dto.max_severity is not None else None,
+            facts=facts_http,
+            fact_quality=fact_quality_http,
+            anomalies=anomalies_http,
+        )
+
+        _LOGGER.info(
+            "edgar_presenter_statement_dq_overlay",
+            extra={
+                "trace_id": trace_id,
+                "cik": dto.cik,
+                "statement_type": dto.statement_type.value,
+                "fiscal_year": dto.fiscal_year,
+                "fiscal_period": dto.fiscal_period.value,
+                "version_sequence": dto.version_sequence,
+                "dq_run_id": dto.dq_run_id,
+                "dq_rule_set_version": dto.dq_rule_set_version,
+                "facts": len(facts_http),
+                "fact_quality_records": len(fact_quality_http),
+                "anomalies": len(anomalies_http),
+                "max_severity": dto.max_severity.value if dto.max_severity else None,
             },
         )
 

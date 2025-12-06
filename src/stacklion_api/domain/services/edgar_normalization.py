@@ -8,6 +8,12 @@ Purpose:
     EDGAR-style facts into a CanonicalStatementPayload suitable for downstream
     modeling and analytics.
 
+    Phase E10-B introduces GAAP linkbase-aware structural normalization at the
+    XBRL layer (statement layout, labels, section ordering). This module
+    remains focused on canonical metric resolution and payload construction;
+    it assumes that any linkbase-driven ordering or labeling has already been
+    applied upstream when shaping the input facts.
+
 Layer:
     domain
 
@@ -170,7 +176,9 @@ class NormalizationContext:
         facts:
             Sequence of EDGAR facts relevant to this statement. Upstream
             mapping is responsible for supplying facts filtered to the
-            appropriate company and filing.
+            appropriate company and filing and for applying any GAAP
+            linkbase-driven ordering or labeling when building higher-level
+            statement views.
     """
 
     cik: str

@@ -37,6 +37,7 @@ from stacklion_api.domain.enums.edgar import (
     AccountingStandard,
     FilingType,
     FiscalPeriod,
+    MaterialityClass,
     StatementType,
 )
 
@@ -947,6 +948,339 @@ class RestatementMetricTimelineHTTP(BaseHTTPSchema):
     timeline_severity: str
 
 
+# --------------------------------------------------------------------------- #
+# Data-quality overlays and results                                          #
+# --------------------------------------------------------------------------- #
+
+
+class FactQualityHTTP(BaseHTTPSchema):
+    """HTTP schema for fact-level data-quality evaluation.
+
+    This projects the application-layer FactQualityDTO into a transport-facing
+    shape, keeping identity fields explicit for panel-style consumers.
+
+    Attributes:
+        cik:
+            Central Index Key for the filer.
+        statement_type:
+            Statement type for the underlying statement version.
+        fiscal_year:
+            Fiscal year associated with the statement.
+        fiscal_period:
+            Fiscal period within the year (e.g., FY, Q1, Q2).
+        version_sequence:
+            Version sequence of the normalized statement.
+        metric:
+            Canonical metric code (e.g., "REVENUE").
+        dimension_key:
+            Deterministic key for the dimensional slice (e.g., segment).
+        severity:
+            MaterialityClass severity for this fact under applied DQ rules.
+        is_present:
+            Whether the fact is present in the normalized payload.
+        is_non_negative:
+            Whether the fact satisfies non-negativity checks, when applicable.
+        is_consistent_with_history:
+            Whether the fact is consistent with historical values, when
+            applicable.
+        has_known_issue:
+            Whether the fact is associated with a known issue.
+        details:
+            Optional machine-readable rule details (stringified key/value).
+    """
+
+    model_config = ConfigDict(
+        title="FactQualityHTTP",
+        extra="forbid",
+    )
+
+    cik: str = Field(..., description="Central Index Key for the filer.")
+    statement_type: StatementType = Field(
+        ...,
+        description="Statement type for the underlying statement version.",
+    )
+    fiscal_year: int = Field(
+        ...,
+        ge=1,
+        description="Fiscal year associated with the statement.",
+    )
+    fiscal_period: FiscalPeriod = Field(
+        ...,
+        description="Fiscal period within the year (e.g., FY, Q1, Q2).",
+    )
+    version_sequence: int = Field(
+        ...,
+        ge=1,
+        description="Version sequence of the normalized statement.",
+    )
+    metric: str = Field(
+        ...,
+        description="Canonical metric code (e.g., REVENUE, NET_INCOME).",
+    )
+    dimension_key: str = Field(
+        ...,
+        description="Deterministic key for the dimensional slice.",
+    )
+    severity: MaterialityClass = Field(
+        ...,
+        description="MaterialityClass severity for this fact under applied DQ rules.",
+    )
+    is_present: bool = Field(
+        ...,
+        description="Whether the fact is present in the normalized payload.",
+    )
+    is_non_negative: bool | None = Field(
+        default=None,
+        description=(
+            "Whether the fact satisfies non-negativity checks, when applicable. "
+            "Null when the rule did not apply."
+        ),
+    )
+    is_consistent_with_history: bool | None = Field(
+        default=None,
+        description=(
+            "Whether the fact is consistent with historical values. "
+            "Null when history-based rules were not evaluated."
+        ),
+    )
+    has_known_issue: bool = Field(
+        ...,
+        description="Whether the fact is associated with a known or flagged issue.",
+    )
+    details: dict[str, str] | None = Field(
+        default=None,
+        description="Optional machine-readable rule details for this fact.",
+    )
+
+
+class DQAnomalyHTTP(BaseHTTPSchema):
+    """HTTP schema for a single data-quality rule anomaly."""
+
+    model_config = ConfigDict(
+        title="DQAnomalyHTTP",
+        extra="forbid",
+    )
+
+    dq_run_id: str = Field(
+        ...,
+        description="Identifier for the DQ run that produced this anomaly.",
+    )
+    metric: str | None = Field(
+        default=None,
+        description=(
+            "Canonical metric code affected by the anomaly, or null for "
+            "statement-wide anomalies."
+        ),
+    )
+    dimension_key: str | None = Field(
+        default=None,
+        description=("Dimensional slice affected by the anomaly, or null for " "global anomalies."),
+    )
+    rule_code: str = Field(
+        ...,
+        description="Stable rule code that triggered the anomaly.",
+    )
+    severity: MaterialityClass = Field(
+        ...,
+        description="MaterialityClass severity classification for the anomaly.",
+    )
+    message: str = Field(
+        ...,
+        description="Human-readable description of the anomaly.",
+    )
+    details: dict[str, str] | None = Field(
+        default=None,
+        description="Optional machine-readable payload with additional context.",
+    )
+
+
+class StatementDQOverlayHTTP(BaseHTTPSchema):
+    """HTTP schema for a statement-level fact + DQ overlay.
+
+    This projects the StatementDQOverlayDTO into a transport-facing shape
+    suitable for modeling clients: statement identity + facts + fact-quality
+    + anomalies.
+    """
+
+    model_config = ConfigDict(
+        title="StatementDQOverlayHTTP",
+        extra="forbid",
+    )
+
+    cik: str = Field(..., description="Central Index Key for the filer.")
+    statement_type: StatementType = Field(
+        ...,
+        description="Statement type (e.g., INCOME_STATEMENT, BALANCE_SHEET).",
+    )
+    fiscal_year: int = Field(
+        ...,
+        ge=1,
+        description="Fiscal year associated with the statement.",
+    )
+    fiscal_period: FiscalPeriod = Field(
+        ...,
+        description="Fiscal period within the year (e.g., FY, Q1, Q2).",
+    )
+    version_sequence: int = Field(
+        ...,
+        ge=1,
+        description="Version sequence of the normalized statement.",
+    )
+
+    accounting_standard: AccountingStandard = Field(
+        ...,
+        description="Accounting standard (e.g., US_GAAP, IFRS).",
+    )
+    statement_date: date = Field(
+        ...,
+        description="Reporting period end date for the statement.",
+    )
+    currency: str = Field(
+        ...,
+        description="ISO 4217 currency code for monetary values (e.g., USD).",
+    )
+
+    dq_run_id: str | None = Field(
+        default=None,
+        description="Latest DQ run identifier for this statement, if any.",
+    )
+    dq_rule_set_version: str | None = Field(
+        default=None,
+        description="Version identifier for the DQ rule set applied.",
+    )
+    dq_executed_at: datetime | None = Field(
+        default=None,
+        description="Timestamp when the latest DQ run executed.",
+    )
+    max_severity: MaterialityClass | None = Field(
+        default=None,
+        description=(
+            "Maximum MaterialityClass severity across fact-quality and anomalies "
+            "for the latest DQ run, or null when no DQ data exists."
+        ),
+    )
+
+    facts: list[NormalizedFactHTTP] = Field(
+        default_factory=list,
+        description="Normalized facts belonging to this statement.",
+    )
+    fact_quality: list[FactQualityHTTP] = Field(
+        default_factory=list,
+        description="Fact-level data-quality records for this statement.",
+    )
+    anomalies: list[DQAnomalyHTTP] = Field(
+        default_factory=list,
+        description="Rule-level anomalies associated with the latest DQ run.",
+    )
+
+
+class PersistNormalizedFactsResultHTTP(BaseHTTPSchema):
+    """HTTP schema for the result of persisting facts for a statement."""
+
+    model_config = ConfigDict(
+        title="PersistNormalizedFactsResultHTTP",
+        extra="forbid",
+    )
+
+    cik: str = Field(..., description="Central Index Key for the filer.")
+    statement_type: StatementType = Field(
+        ...,
+        description="Statement type for which facts were persisted.",
+    )
+    fiscal_year: int = Field(
+        ...,
+        ge=1,
+        description="Fiscal year associated with the statement.",
+    )
+    fiscal_period: FiscalPeriod = Field(
+        ...,
+        description="Fiscal period within the year (e.g., FY, Q1, Q2).",
+    )
+    version_sequence: int = Field(
+        ...,
+        ge=1,
+        description="Version sequence of the statement for which facts were persisted.",
+    )
+    facts_persisted: int = Field(
+        ...,
+        ge=0,
+        description="Number of facts persisted for this statement identity.",
+    )
+
+
+class RunStatementDQResultHTTP(BaseHTTPSchema):
+    """HTTP schema for the result of running data-quality for a statement."""
+
+    model_config = ConfigDict(
+        title="RunStatementDQResultHTTP",
+        extra="forbid",
+    )
+
+    dq_run_id: str = Field(
+        ...,
+        description="Identifier of the DQ run that was executed.",
+    )
+    cik: str = Field(
+        ...,
+        description="Central Index Key for the filer.",
+    )
+    statement_type: StatementType = Field(
+        ...,
+        description="Statement type evaluated by the DQ run.",
+    )
+    fiscal_year: int = Field(
+        ...,
+        ge=1,
+        description="Fiscal year associated with the evaluated statement.",
+    )
+    fiscal_period: FiscalPeriod = Field(
+        ...,
+        description="Fiscal period associated with the evaluated statement.",
+    )
+    version_sequence: int = Field(
+        ...,
+        ge=1,
+        description="Version sequence of the evaluated statement.",
+    )
+
+    rule_set_version: str = Field(
+        ...,
+        description="DQ rule-set version applied during the run.",
+    )
+    scope_type: str = Field(
+        ...,
+        description="Scope of the DQ run (e.g., STATEMENT, COMPANY).",
+    )
+    history_lookback: int | None = Field(
+        default=None,
+        ge=0,
+        description="Number of historical points inspected for history-based rules.",
+    )
+
+    executed_at: datetime = Field(
+        ...,
+        description="Timestamp at which the DQ run completed.",
+    )
+
+    facts_evaluated: int = Field(
+        ...,
+        ge=0,
+        description="Number of facts evaluated by this DQ run.",
+    )
+    anomaly_count: int = Field(
+        ...,
+        ge=0,
+        description="Number of anomalies produced by this DQ run.",
+    )
+    max_severity: MaterialityClass | None = Field(
+        default=None,
+        description=(
+            "Maximum MaterialityClass severity across all fact-quality records "
+            "and anomalies for this run, or null when no records exist."
+        ),
+    )
+
+
 __all__ = [
     "EdgarFilingHTTP",
     "EdgarStatementVersionSummaryHTTP",
@@ -966,4 +1300,9 @@ __all__ = [
     "RestatementLedgerEntryHTTP",
     "RestatementLedgerHTTP",
     "RestatementMetricTimelineHTTP",
+    "FactQualityHTTP",
+    "DQAnomalyHTTP",
+    "StatementDQOverlayHTTP",
+    "PersistNormalizedFactsResultHTTP",
+    "RunStatementDQResultHTTP",
 ]

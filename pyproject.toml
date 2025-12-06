@@ -32,6 +32,8 @@ dependencies = [
   "python-jose[cryptography]>=3.3",
   "prometheus-client>=0.20",
   "python-dateutil>=2.9",
+    "grimp>=3.4,<4.0",
+    "defusedxml",
 ]
 
 [project.optional-dependencies]
@@ -45,6 +47,8 @@ dev = [
   "fakeredis>=2.23",
   "python-dotenv>=1.0",
     "grimp>=3.4,<4.0",
+    "defusedxml",
+
 
 
   # quality
