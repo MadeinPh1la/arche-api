@@ -13,12 +13,15 @@ stacklion_api
 │   ├── gateways
 │   │   ├── __init__.py
 │   │   ├── edgar_gateway.py
-│   │   └── marketstack_gateway.py
+│   │   ├── marketstack_gateway.py
+│   │   └── xbrl_parser_gateway.py
 │   ├── mappers
-│   │   └── __init__.py
+│   │   ├── __init__.py
+│   │   └── xbrl_parser.py
 │   ├── presenters
 │   │   ├── __init__.py
 │   │   ├── base_presenter.py
+│   │   ├── edgar_dq_presenter.py
 │   │   ├── edgar_presenter.py
 │   │   ├── fundamentals_presenter.py
 │   │   ├── market_data_presenter.py
@@ -32,7 +35,8 @@ stacklion_api
 │   │   ├── edgar_statements_repository.py
 │   │   ├── idempotency_repository.py
 │   │   ├── market_data_repository.py
-│   │   └── staging_repository.py
+│   │   ├── staging_repository.py
+│   │   └── xbrl_mapping_overrides_repository.py
 │   ├── routers
 │   │   ├── __init__.py
 │   │   ├── api_router.py
@@ -51,6 +55,7 @@ stacklion_api
 │   │   ├── http
 │   │   │   ├── __init__.py
 │   │   │   ├── base.py
+│   │   │   ├── edgar_dq_schemas.py
 │   │   │   ├── edgar_schemas.py
 │   │   │   ├── envelopes.py
 │   │   │   ├── fundamentals.py
@@ -83,13 +88,16 @@ stacklion_api
 │   ├── services
 │   │   ├── risk_services
 │   │   │   └── __init__.py
-│   │   └── __init__.py
+│   │   ├── __init__.py
+│   │   └── xbrl_mapping_overrides.py
 │   ├── use_cases
 │   │   ├── external_apis
 │   │   │   ├── edgar
 │   │   │   │   ├── __init__.py
 │   │   │   │   ├── ingest_edgar_filing.py
 │   │   │   │   ├── ingest_edgar_filings.py
+│   │   │   │   ├── parse_xbrl_file.py
+│   │   │   │   ├── process_xbrl_for_filing.py
 │   │   │   │   └── sync_recent_filings.py
 │   │   │   ├── marketstack
 │   │   │   │   ├── __init__.py
@@ -116,7 +124,9 @@ stacklion_api
 │   │   │   ├── get_restatement_ledger.py
 │   │   │   ├── get_restatement_timeline.py
 │   │   │   ├── get_statement_with_dq_overlay.py
+│   │   │   ├── normalize_xbrl_statement.py
 │   │   │   ├── persist_normalized_facts_for_statement.py
+│   │   │   ├── process_xbrl_for_filing.py
 │   │   │   └── run_statement_dq.py
 │   │   ├── valuation
 │   │   │   └── __init__.py
@@ -153,7 +163,8 @@ stacklion_api
 │   │   ├── quote.py
 │   │   ├── restatement_delta.py
 │   │   ├── restatement_metric_timeline.py
-│   │   └── statement_quality.py
+│   │   ├── statement_quality.py
+│   │   └── xbrl_document.py
 │   ├── enums
 │   │   ├── __init__.py
 │   │   ├── canonical_statement_metric.py
@@ -169,7 +180,8 @@ stacklion_api
 │   │   ├── gateways
 │   │   │   ├── __init__.py
 │   │   │   ├── edgar_ingestion_gateway.py
-│   │   │   └── market_data_gateway.py
+│   │   │   ├── market_data_gateway.py
+│   │   │   └── xbrl_parser_gateway.py
 │   │   ├── repositories
 │   │   │   ├── __init__.py
 │   │   │   ├── edgar_dq_repository.py
@@ -177,7 +189,8 @@ stacklion_api
 │   │   │   ├── edgar_statements_repository.py
 │   │   │   ├── idempotency_repository.py
 │   │   │   ├── market_data_repository.py
-│   │   │   └── staging_repository.py
+│   │   │   ├── staging_repository.py
+│   │   │   └── xbrl_mapping_overrides_repository.py
 │   │   └── __init__.py
 │   ├── services
 │   │   ├── __init__.py
@@ -185,9 +198,11 @@ stacklion_api
 │   │   ├── edgar_normalization.py
 │   │   ├── fact_dq_engine.py
 │   │   ├── fact_store_service.py
+│   │   ├── gaap_taxonomy.py
 │   │   ├── metric_views.py
 │   │   ├── restatement_timeline.py
-│   │   └── statement_ledger_delta_engine.py
+│   │   ├── statement_ledger_delta_engine.py
+│   │   └── xbrl_mapping_overrides.py
 │   ├── validators
 │   │   └── __init__.py
 │   ├── value_objects

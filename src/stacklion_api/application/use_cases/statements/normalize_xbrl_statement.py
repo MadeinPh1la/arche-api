@@ -19,6 +19,9 @@ import logging
 from collections.abc import Sequence
 from dataclasses import dataclass
 
+from stacklion_api.application.services.xbrl_mapping_overrides import (
+    XBRLMappingOverridesService,
+)
 from stacklion_api.application.uow import UnitOfWork
 from stacklion_api.domain.entities.edgar_statement_version import EdgarStatementVersion
 from stacklion_api.domain.entities.xbrl_document import (
@@ -36,6 +39,7 @@ from stacklion_api.domain.services.edgar_normalization import (
     EdgarFact,
     NormalizationContext,
 )
+from stacklion_api.domain.services.xbrl_mapping_overrides import MappingOverrideRule
 
 logger = logging.getLogger(__name__)
 
@@ -124,6 +128,11 @@ class NormalizeXBRLStatementUseCase:
             Unit-of-work used to manage statement persistence.
         statements_repo_type:
             Repository key/interface for resolving the statements repository.
+        overrides_service:
+            Optional XBRL mapping overrides application service. When provided,
+            override rules are collected for the concepts present in the XBRL
+            facts and passed into the normalization engine. When omitted, no
+            overrides are applied.
     """
 
     def __init__(
@@ -133,6 +142,7 @@ class NormalizeXBRLStatementUseCase:
         statements_repo_type: type[EdgarStatementsRepositoryProtocol] = (
             EdgarStatementsRepositoryProtocol
         ),
+        overrides_service: XBRLMappingOverridesService | None = None,
     ) -> None:
         """Initialize the use case with collaborators.
 
@@ -142,10 +152,14 @@ class NormalizeXBRLStatementUseCase:
             statements_repo_type:
                 Repository key/interface for resolving the statements
                 repository from the unit-of-work.
+            overrides_service:
+                Optional overrides service used to fetch XBRL mapping override
+                rules. When ``None``, override evaluation is skipped.
         """
         self._uow = uow
         self._statements_repo_type = statements_repo_type
         self._normalizer = CanonicalStatementNormalizer()
+        self._overrides_service = overrides_service
 
     async def execute(self, req: NormalizeXBRLStatementRequest) -> NormalizeXBRLStatementResult:
         """Execute normalization for a single statement version.
@@ -265,6 +279,22 @@ class NormalizeXBRLStatementUseCase:
                     normalized=False,
                 )
 
+            # Collect override rules if an overrides service is configured.
+            taxonomy = "US_GAAP_MIN_E10A"
+            override_rules: tuple[MappingOverrideRule, ...] = ()
+            enable_override_trace = False
+
+            if self._overrides_service is not None:
+                override_rules = await self._collect_override_rules(
+                    overrides_service=self._overrides_service,
+                    edgar_facts=tuple(edgar_facts),
+                    taxonomy=taxonomy,
+                    cik=cik,
+                )
+                # Keep tracing off for this use case for now; callers that need
+                # traces should use the filing-level E10 pipeline.
+                enable_override_trace = False
+
             context = NormalizationContext(
                 cik=cik,
                 statement_type=version.statement_type,
@@ -274,9 +304,11 @@ class NormalizeXBRLStatementUseCase:
                 fiscal_period=version.fiscal_period,
                 currency=version.currency,
                 accession_id=version.accession_id,
-                taxonomy="US_GAAP_MIN_E10A",
+                taxonomy=taxonomy,
                 version_sequence=version.version_sequence,
                 facts=tuple(edgar_facts),
+                override_rules=override_rules,
+                enable_override_trace=enable_override_trace,
             )
 
             normalization_result = self._normalizer.normalize(context)
@@ -460,3 +492,51 @@ class NormalizeXBRLStatementUseCase:
             )
 
         return edgar_facts
+
+    async def _collect_override_rules(
+        self,
+        *,
+        overrides_service: XBRLMappingOverridesService,
+        edgar_facts: Sequence[EdgarFact],
+        taxonomy: str,
+        cik: str,
+    ) -> tuple[MappingOverrideRule, ...]:
+        """Collect override rules for the concepts present in the facts.
+
+        Behavior:
+            * Aggregates rules across all unique concept QNames.
+            * Deduplicates by rule_id while preserving deterministic order.
+        """
+        if not edgar_facts:
+            return ()
+
+        concepts = sorted({f.concept for f in edgar_facts})
+        rules: list[MappingOverrideRule] = []
+
+        for concept in concepts:
+            concept_rules = await overrides_service.list_rules_for_concept(
+                concept=concept,
+                taxonomy=taxonomy,
+            )
+            rules.extend(concept_rules)
+
+        # Deduplicate by rule_id while preserving first occurrence.
+        seen: set[str] = set()
+        deduped: list[MappingOverrideRule] = []
+        for rule in rules:
+            if rule.rule_id in seen:
+                continue
+            seen.add(rule.rule_id)
+            deduped.append(rule)
+
+        logger.info(
+            "edgar.normalize_xbrl_statement.override_rules_loaded",
+            extra={
+                "cik": cik,
+                "taxonomy": taxonomy,
+                "concepts": concepts,
+                "rules_loaded": len(deduped),
+            },
+        )
+
+        return tuple(deduped)

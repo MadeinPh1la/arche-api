@@ -1,17 +1,23 @@
 # src/stacklion_api/infrastructure/database/models/ref.py
-# Copyright (c) Stacklion.
+# Copyright (c)
 # SPDX-License-Identifier: MIT
-"""Reference data models: exchanges, companies, symbols."""
+"""Reference data models: exchanges, companies, symbols, and mapping overrides."""
 
 from __future__ import annotations
 
 from datetime import date
 from uuid import UUID
 
-from sqlalchemy import Boolean, Date, ForeignKey, String
+from sqlalchemy import Boolean, Date, ForeignKey, Integer, String
 from sqlalchemy.orm import Mapped, mapped_column
 
-from stacklion_api.infrastructure.database.models.base import Base
+from stacklion_api.infrastructure.database.models.base import (
+    AuditActorMixin,
+    Base,
+    IdentityMixin,
+    JSONBType,
+    TimestampMixin,
+)
 
 
 class Exchange(Base):
@@ -50,3 +56,55 @@ class Symbol(Base):
     is_primary: Mapped[bool] = mapped_column(Boolean, default=False)
     listed_from: Mapped[date | None] = mapped_column(Date, nullable=True)
     listed_to: Mapped[date | None] = mapped_column(Date, nullable=True)
+
+
+class EdgarXBRLMappingOverride(IdentityMixin, TimestampMixin, AuditActorMixin, Base):
+    """Ref-table backing XBRL mapping override rules.
+
+    Schema:
+        ref.edgar_xbrl_mapping_overrides
+
+    Purpose:
+        Persist override rules used by the domain-level XBRL mapping override
+        engine. This table is treated as reference/configuration data and is
+        typically managed out-of-band (admin tooling, migrations, or static
+        bootstrap).
+
+    Notes:
+        - ``scope`` stores the OverrideScope enum name (e.g. "GLOBAL").
+        - ``target_metric`` stores CanonicalStatementMetric.name when present.
+        - ``match_dimensions`` is a JSONB object representing axis → member.
+    """
+
+    __tablename__ = "edgar_xbrl_mapping_overrides"
+    __table_args__ = ({"schema": "ref"},)
+
+    # IdentityMixin provides:
+    #   id: UUID primary key
+
+    scope: Mapped[str] = mapped_column(String(16), nullable=False, index=True)
+
+    source_concept: Mapped[str] = mapped_column(String(256), nullable=False)
+    source_taxonomy: Mapped[str | None] = mapped_column(String(64), nullable=True)
+
+    match_cik: Mapped[str | None] = mapped_column(String(10), nullable=True, index=True)
+    match_industry_code: Mapped[str | None] = mapped_column(
+        String(32),
+        nullable=True,
+        index=True,
+    )
+    match_analyst_id: Mapped[str | None] = mapped_column(
+        String(64),
+        nullable=True,
+        index=True,
+    )
+
+    match_dimensions: Mapped[dict[str, str]] = mapped_column(
+        JSONBType,
+        nullable=False,
+        default=dict,
+    )
+
+    target_metric: Mapped[str | None] = mapped_column(String(64), nullable=True)
+    is_suppression: Mapped[bool] = mapped_column(Boolean, nullable=False, default=False)
+    priority: Mapped[int] = mapped_column(Integer, nullable=False, default=0)

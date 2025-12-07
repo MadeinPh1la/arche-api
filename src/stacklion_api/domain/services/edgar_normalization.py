@@ -1,5 +1,5 @@
 # src/stacklion_api/domain/services/edgar_normalization.py
-# Copyright (c) Stacklion.
+# Copyright (c)
 # SPDX-License-Identifier: MIT
 """EDGAR canonical statement normalization engine.
 
@@ -13,6 +13,11 @@ Purpose:
     remains focused on canonical metric resolution and payload construction;
     it assumes that any linkbase-driven ordering or labeling has already been
     applied upstream when shaping the input facts.
+
+    Phase E10-C extends the normalization context with optional metadata
+    required by the XBRL mapping override engine (industry, analyst profile,
+    and override rules) and integrates a deterministic override evaluation
+    step into metric resolution.
 
 Layer:
     domain
@@ -42,7 +47,7 @@ from dataclasses import dataclass
 from datetime import date
 from decimal import Decimal, InvalidOperation
 from enum import Enum, auto
-from typing import Final
+from typing import TYPE_CHECKING, Final
 
 from stacklion_api.domain.entities.canonical_statement_payload import (
     CanonicalStatementPayload,
@@ -56,6 +61,12 @@ from stacklion_api.domain.enums.edgar import (
     StatementType,
 )
 from stacklion_api.domain.exceptions.edgar import EdgarMappingError
+from stacklion_api.domain.services.xbrl_mapping_overrides import (
+    XBRLMappingOverrideEngine,
+)
+
+if TYPE_CHECKING:
+    from stacklion_api.domain.services.xbrl_mapping_overrides import MappingOverrideRule
 
 # ---------------------------------------------------------------------------
 # Public constants
@@ -139,6 +150,12 @@ class CanonicalMetricRecord:
             Confidence level for the mapping (HIGH, MEDIUM, LOW).
         source_fact_ids:
             Fact identifiers that contributed to this metric (usually 1).
+
+    Notes:
+        Phase E10-C keeps this record focused on value + provenance. Override
+        metadata (scope, rule id, debug trace) is handled by the override
+        engine and may be surfaced via a separate summary structure in a
+        later micro-phase.
     """
 
     metric: CanonicalStatementMetric
@@ -179,6 +196,19 @@ class NormalizationContext:
             appropriate company and filing and for applying any GAAP
             linkbase-driven ordering or labeling when building higher-level
             statement views.
+        industry_code:
+            Optional industry or sector classification for the company.
+            Introduced in Phase E10-C to support industry-scoped overrides.
+        analyst_profile_id:
+            Optional analyst or configuration profile identifier for
+            analyst-scoped overrides.
+        override_rules:
+            Optional override rules to be considered by the XBRL mapping
+            override engine. When empty, no override evaluation is performed.
+        enable_override_trace:
+            When True and override_rules are provided, the override engine
+            will produce a structured trace. The normalizer does not persist
+            or log this trace; callers are responsible for any side effects.
     """
 
     cik: str
@@ -192,6 +222,10 @@ class NormalizationContext:
     taxonomy: str
     version_sequence: int
     facts: Sequence[EdgarFact]
+    industry_code: str | None = None
+    analyst_profile_id: str | None = None
+    override_rules: Sequence[MappingOverrideRule] = ()
+    enable_override_trace: bool = False
 
 
 @dataclass(frozen=True)
@@ -210,6 +244,12 @@ class NormalizationResult:
         warnings:
             Human-readable warnings about partial mappings, missing metrics,
             or non-fatal anomalies. Intended for logging and diagnostics.
+
+    Notes:
+        Override metadata and debug traces are handled by the separate
+        XBRLMappingOverrideEngine in Phase E10-C and are not yet surfaced
+        through this result type. This preserves compatibility for callers
+        relying on the E6/E9 payload contract.
     """
 
     payload: CanonicalStatementPayload
@@ -226,14 +266,6 @@ class EdgarNormalizationError(EdgarMappingError):
 # Canonical metric registry (Tier 1)
 # ---------------------------------------------------------------------------
 
-# NOTE:
-# -----
-# This Tier 1 registry is intentionally small and focused on high-signal
-# modeling metrics. It can be extended in later phases without changing
-# existing keys. The keys here assume CanonicalStatementMetric already
-# declares corresponding members.
-#
-# The tuples are ordered: the first concept has highest priority.
 _CANONICAL_METRIC_REGISTRY: Mapping[CanonicalStatementMetric, tuple[str, ...]] = {
     # Income statement
     CanonicalStatementMetric.REVENUE: (
@@ -288,20 +320,14 @@ _CANONICAL_METRIC_REGISTRY: Mapping[CanonicalStatementMetric, tuple[str, ...]] =
 
 
 class CanonicalStatementNormalizer:
-    """Canonical EDGAR statement normalization engine.
+    """Canonical EDGAR statement normalization engine."""
 
-    This engine performs the core mapping from EDGAR facts to a
-    CanonicalStatementPayload according to a canonical metric registry and
-    deterministic selection rules.
-
-    Typical usage:
-
-        context = NormalizationContext(...)
-        normalizer = CanonicalStatementNormalizer()
-        result = normalizer.normalize(context)
-    """
-
-    def __init__(self, payload_version: str = NORMALIZED_PAYLOAD_VERSION) -> None:
+    def __init__(
+        self,
+        *,
+        payload_version: str = NORMALIZED_PAYLOAD_VERSION,
+        override_engine: XBRLMappingOverrideEngine | None = None,
+    ) -> None:
         """Initialize the normalizer.
 
         Args:
@@ -309,37 +335,16 @@ class CanonicalStatementNormalizer:
                 Version string to stamp onto the NormalizationResult. This
                 allows callers to override the version identifier in tests or
                 future engine variants.
+            override_engine:
+                Optional override engine used in Phase E10-C to apply
+                XBRL mapping overrides. When None, override evaluation is
+                disabled even if override rules are provided.
         """
         self._payload_version = payload_version
+        self._override_engine = override_engine
 
     def normalize(self, context: NormalizationContext) -> NormalizationResult:
-        """Normalize EDGAR facts into a canonical statement payload.
-
-        Behavior:
-            - Validates the normalization context.
-            - Filters facts deterministically by concept and unit.
-            - Selects at most one fact per canonical metric, preferring:
-                * Matching reporting currency (context.currency).
-                * Concepts with higher priority in the registry.
-            - Parses numeric values into Decimal without additional scaling.
-            - Omits missing metrics and records warnings.
-            - Raises EdgarNormalizationError on irreconcilable data.
-
-        Args:
-            context:
-                NormalizationContext containing statement metadata and
-                pre-filtered EDGAR facts.
-
-        Returns:
-            NormalizationResult with a CanonicalStatementPayload and
-            canonical metric records.
-
-        Raises:
-            EdgarNormalizationError:
-                If normalization fails in a way that would produce an
-                inconsistent or misleading payload (e.g., invalid context
-                metadata, unparseable numeric values).
-        """
+        """Normalize EDGAR facts into a canonical statement payload."""
         _validate_context(context)
 
         metric_records: dict[CanonicalStatementMetric, CanonicalMetricRecord] = {}
@@ -350,15 +355,17 @@ class CanonicalStatementNormalizer:
         for fact in context.facts:
             facts_by_concept[fact.concept].append(fact)
 
-        for metric, concepts in _CANONICAL_METRIC_REGISTRY.items():
+        for registry_metric, concepts in _CANONICAL_METRIC_REGISTRY.items():
             record, warning = self._resolve_metric(
-                metric=metric,
+                registry_metric=registry_metric,
                 concepts=concepts,
                 context=context,
                 facts_by_concept=facts_by_concept,
             )
             if record is not None:
-                metric_records[metric] = record
+                # Use the record's metric as the key to allow override-based
+                # remapping between canonical metrics.
+                metric_records[record.metric] = record
             if warning is not None:
                 warnings.append(warning)
 
@@ -389,35 +396,12 @@ class CanonicalStatementNormalizer:
     def _resolve_metric(
         self,
         *,
-        metric: CanonicalStatementMetric,
+        registry_metric: CanonicalStatementMetric,
         concepts: Sequence[str],
         context: NormalizationContext,
         facts_by_concept: Mapping[str, Sequence[EdgarFact]],
     ) -> tuple[CanonicalMetricRecord | None, str | None]:
-        """Resolve a single canonical metric from the available facts.
-
-        Selection rules:
-            - Consider concepts in registry order; the first concept that
-              yields at least one usable fact "wins".
-            - Within that concept, prefer facts with unit matching the
-              reporting currency (for monetary metrics).
-            - If multiple facts remain, pick the one with the latest period
-              end date or instant date; ties are broken deterministically by
-              fact_id.
-
-        Args:
-            metric:
-                Canonical metric to resolve.
-            concepts:
-                Ordered list of candidate XBRL concepts.
-            context:
-                NormalizationContext with statement metadata.
-            facts_by_concept:
-                Mapping of concept → list of EdgarFact instances.
-
-        Returns:
-            A tuple of (CanonicalMetricRecord or None, warning or None).
-        """
+        """Resolve a single canonical metric from the available facts."""
         for concept in concepts:
             candidates = list(facts_by_concept.get(concept, ()))
             if not candidates:
@@ -445,7 +429,7 @@ class CanonicalStatementNormalizer:
                 raise EdgarNormalizationError(
                     "Failed to parse numeric value for canonical metric.",
                     details={
-                        "metric": metric.name,
+                        "metric": registry_metric.name,
                         "concept": concept,
                         "fact_id": chosen.fact_id,
                         "value": chosen.value,
@@ -453,8 +437,33 @@ class CanonicalStatementNormalizer:
                     },
                 ) from exc
 
+            # Apply override engine, if configured and rules present.
+            effective_metric = registry_metric
+            if self._override_engine is not None and context.override_rules:
+                decision, _trace = self._override_engine.apply(
+                    concept=concept,
+                    taxonomy=context.taxonomy,
+                    fact_dimensions=chosen.dimensions,
+                    cik=context.cik,
+                    industry_code=context.industry_code,
+                    analyst_id=context.analyst_profile_id,
+                    base_metric=registry_metric,
+                    rules=context.override_rules,
+                    debug=context.enable_override_trace,
+                )
+
+                if decision.final_metric is None:
+                    warning = (
+                        f"canonical metric {registry_metric.name} suppressed by override; "
+                        f"scope={decision.applied_scope.name if decision.applied_scope else 'NONE'}, "
+                        f"rule_id={decision.applied_rule_id}"
+                    )
+                    return None, warning
+
+                effective_metric = decision.final_metric
+
             record = CanonicalMetricRecord(
-                metric=metric,
+                metric=effective_metric,
                 value=value,
                 unit=_canonicalize_unit(chosen.unit),
                 confidence=MetricConfidence.HIGH,
@@ -464,7 +473,7 @@ class CanonicalStatementNormalizer:
 
         # No candidate facts found for any concept for this metric.
         warning = (
-            f"canonical metric {metric.name} could not be resolved; "
+            f"canonical metric {registry_metric.name} could not be resolved; "
             "no candidate facts found for registered concepts."
         )
         return None, warning
@@ -476,18 +485,7 @@ class CanonicalStatementNormalizer:
 
 
 def _validate_context(context: NormalizationContext) -> None:
-    """Validate the normalization context at the domain level.
-
-    Validation rules:
-        - cik must be non-empty.
-        - currency must be non-empty and trimmed.
-        - fiscal_year must be > 0.
-        - taxonomy must be non-empty.
-        - version_sequence must be > 0.
-
-    Raises:
-        EdgarNormalizationError: If any invariant is violated.
-    """
+    """Validate the normalization context at the domain level."""
     if not context.cik or not context.cik.strip():
         raise EdgarNormalizationError("cik must be a non-empty string.")
 
@@ -507,28 +505,7 @@ def _validate_context(context: NormalizationContext) -> None:
 
 
 def _parse_decimal(value: str, decimals: int | None) -> Decimal:
-    """Parse a numeric string into a Decimal with deterministic rules.
-
-    Behavior:
-        - Attempts to parse the given value string into a Decimal.
-        - If ``decimals`` is provided and >= 0, the resulting Decimal is
-          quantized to that many decimal places.
-        - If ``decimals`` is None or < 0, the value is returned as-is
-          (no additional scaling), reflecting that EDGAR decimals are often
-          a precision hint rather than a scaling directive.
-
-    Args:
-        value:
-            Numeric string to parse.
-        decimals:
-            Optional decimals hint from EDGAR/XBRL.
-
-    Returns:
-        Parsed Decimal instance.
-
-    Raises:
-        EdgarNormalizationError: If the value cannot be parsed as Decimal.
-    """
+    """Parse a numeric string into a Decimal with deterministic rules."""
     try:
         dec = Decimal(value)
     except (InvalidOperation, ValueError) as exc:
@@ -545,20 +522,7 @@ def _parse_decimal(value: str, decimals: int | None) -> Decimal:
 
 
 def _canonicalize_unit(unit: str) -> str:
-    """Canonicalize a unit string into a stable identifier.
-
-    Behavior:
-        - Strips whitespace and uppercases the unit.
-        - For common units, normalizes aliases into a canonical form.
-        - Leaves unknown units as-is after trimming/uppercasing.
-
-    Args:
-        unit:
-            Raw unit string from EDGAR/XBRL.
-
-    Returns:
-        Canonical unit identifier.
-    """
+    """Canonicalize a unit string into a stable identifier."""
     cleaned = unit.strip().upper()
     if cleaned in {"USD", "US DOLLAR", "US$", "$"}:
         return "USD"

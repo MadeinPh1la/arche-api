@@ -28,6 +28,9 @@ from stacklion_api.adapters.repositories.edgar_filings_repository import (
 from stacklion_api.adapters.repositories.edgar_statements_repository import (
     EdgarStatementsRepository,
 )
+from stacklion_api.adapters.repositories.xbrl_mapping_overrides_repository import (
+    SqlAlchemyXBRLMappingOverridesRepository,
+)
 from stacklion_api.application.uow import UnitOfWork
 from stacklion_api.domain.interfaces.repositories.edgar_dq_repository import (
     EdgarDQRepository as EdgarDQRepositoryProtocol,
@@ -37,6 +40,9 @@ from stacklion_api.domain.interfaces.repositories.edgar_facts_repository import 
 )
 from stacklion_api.domain.interfaces.repositories.edgar_statements_repository import (
     EdgarStatementsRepository as EdgarStatementsRepositoryProtocol,
+)
+from stacklion_api.domain.interfaces.repositories.xbrl_mapping_overrides_repository import (
+    XBRLMappingOverridesRepository as XBRLMappingOverridesRepositoryPort,
 )
 
 
@@ -81,6 +87,12 @@ class SqlAlchemyUnitOfWork(UnitOfWork):
             EdgarFactsRepository: lambda s: EdgarFactsRepository(session=s),
             EdgarDQRepositoryProtocol: lambda s: EdgarDQRepository(session=s),
             EdgarDQRepository: lambda s: EdgarDQRepository(session=s),
+            XBRLMappingOverridesRepositoryPort: lambda s: SqlAlchemyXBRLMappingOverridesRepository(
+                session=s,
+            ),
+            SqlAlchemyXBRLMappingOverridesRepository: lambda s: SqlAlchemyXBRLMappingOverridesRepository(
+                session=s,
+            ),
         }
 
         self._repo_factories: dict[type[Any], Callable[[AsyncSession], Any]] = {
