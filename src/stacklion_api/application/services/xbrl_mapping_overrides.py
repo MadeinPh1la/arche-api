@@ -46,7 +46,7 @@ class XBRLMappingOverridesService:
 
     Typical usage from a normalization use-case::
 
-        service = XBRLMappingOverridesService(repo)
+        service = XBRLMappingOverridesService(repository=repo)
         decision, trace = await service.apply_overrides(
             concept=concept,
             taxonomy=taxonomy,

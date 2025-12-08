@@ -9,8 +9,15 @@ Purpose:
     into a canonical statement payload, and update the statement version in
     place with Model A semantics.
 
-Layer:
-    application/use_cases/statements
+    When XBRL mapping override rules are configured and an
+    XBRLMappingOverridesService is provided, all mapped facts are passed
+    through the domain-level XBRLMappingOverrideEngine before being added to
+    the canonical payload. Overrides are applied in a deterministic hierarchy:
+
+        GLOBAL < INDUSTRY < COMPANY < ANALYST
+
+    Suppression rules prevent the affected facts from entering the
+    normalized payload entirely.
 """
 
 from __future__ import annotations
@@ -122,6 +129,12 @@ class NormalizeXBRLStatementUseCase:
           version in place with version_source = "EDGAR_XBRL_NORMALIZED".
         * If the version already has a normalized_payload, the use case is
           idempotent and returns without modification.
+        * When an XBRLMappingOverridesService is configured, it collects all
+          relevant MappingOverrideRule instances for concepts present in the
+          XBRL facts and passes them into the CanonicalStatementNormalizer.
+          The normalizer applies the override hierarchy
+          (GLOBAL < INDUSTRY < COMPANY < ANALYST) and may remap or suppress
+          individual facts before they contribute to the canonical payload.
 
     Args:
         uow:

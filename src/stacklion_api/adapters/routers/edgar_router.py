@@ -657,8 +657,8 @@ async def get_statement_versions_for_filing(
         bool,
         Query(
             description=(
-                "Whether to request long-form normalized payloads. "
-                "Currently accepted but normalized_payload is always null."
+                "Whether to include long-form normalized payloads derived from "
+                "statement versions. When false, normalized_payload is always null."
             ),
         ),
     ] = False,

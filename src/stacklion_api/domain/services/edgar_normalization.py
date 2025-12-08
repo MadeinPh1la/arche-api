@@ -17,7 +17,12 @@ Purpose:
     Phase E10-C extends the normalization context with optional metadata
     required by the XBRL mapping override engine (industry, analyst profile,
     and override rules) and integrates a deterministic override evaluation
-    step into metric resolution.
+    step into metric resolution. Overrides are applied using the precedence
+    hierarchy:
+
+        GLOBAL < INDUSTRY < COMPANY < ANALYST
+
+    and can either remap a canonical metric or suppress it entirely.
 
 Layer:
     domain
@@ -205,6 +210,12 @@ class NormalizationContext:
         override_rules:
             Optional override rules to be considered by the XBRL mapping
             override engine. When empty, no override evaluation is performed.
+            When non-empty, all candidate metrics derived from registry
+            concepts are passed through the override engine using the
+            precedence:
+
+                GLOBAL < INDUSTRY < COMPANY < ANALYST
+
         enable_override_trace:
             When True and override_rules are provided, the override engine
             will produce a structured trace. The normalizer does not persist
@@ -320,7 +331,18 @@ _CANONICAL_METRIC_REGISTRY: Mapping[CanonicalStatementMetric, tuple[str, ...]] =
 
 
 class CanonicalStatementNormalizer:
-    """Canonical EDGAR statement normalization engine."""
+    """Canonical EDGAR statement normalization engine.
+
+    When override rules are supplied in the NormalizationContext, the
+    normalizer passes each resolved canonical metric through the
+    XBRLMappingOverrideEngine using the precedence hierarchy:
+
+        GLOBAL < INDUSTRY < COMPANY < ANALYST
+
+    If a winning override rule is suppressive, the metric is omitted from the
+    final payload; otherwise, the metric may be remapped to a different
+    CanonicalStatementMetric before aggregation.
+    """
 
     def __init__(
         self,
@@ -337,11 +359,11 @@ class CanonicalStatementNormalizer:
                 future engine variants.
             override_engine:
                 Optional override engine used in Phase E10-C to apply
-                XBRL mapping overrides. When None, override evaluation is
-                disabled even if override rules are provided.
+                XBRL mapping overrides. When None, a new
+                :class:`XBRLMappingOverrideEngine` instance is constructed.
         """
         self._payload_version = payload_version
-        self._override_engine = override_engine
+        self._override_engine = override_engine or XBRLMappingOverrideEngine()
 
     def normalize(self, context: NormalizationContext) -> NormalizationResult:
         """Normalize EDGAR facts into a canonical statement payload."""
@@ -437,9 +459,9 @@ class CanonicalStatementNormalizer:
                     },
                 ) from exc
 
-            # Apply override engine, if configured and rules present.
+            # Apply override engine when rules are provided.
             effective_metric = registry_metric
-            if self._override_engine is not None and context.override_rules:
+            if context.override_rules:
                 decision, _trace = self._override_engine.apply(
                     concept=concept,
                     taxonomy=context.taxonomy,

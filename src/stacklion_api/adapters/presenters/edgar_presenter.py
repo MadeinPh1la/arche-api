@@ -72,6 +72,7 @@ from stacklion_api.application.schemas.dto.edgar import (
     EdgarFilingDTO,
     EdgarStatementVersionDTO,
     GetRestatementLedgerResultDTO,
+    NormalizedStatementPayloadDTO,
     RestatementLedgerEntryDTO,
     RestatementMetricDeltaDTO,
     RestatementMetricTimelineDTO,
@@ -210,6 +211,38 @@ class EdgarPresenter(BasePresenter[SuccessEnvelope[Any]]):
     # ------------------------------------------------------------------
 
     @staticmethod
+    def _map_normalized_payload_dto_to_http(
+        dto: NormalizedStatementPayloadDTO,
+    ) -> NormalizedStatementHTTP:
+        """Map a NormalizedStatementPayloadDTO into the HTTP schema.
+
+        Args:
+            dto: Application-layer normalized statement payload DTO.
+
+        Returns:
+            NormalizedStatementHTTP: HTTP-facing normalized payload schema.
+        """
+        # HTTP schema exposes a flattened metrics map; internal DTO keeps
+        # core/extra split. Merge them for the wire contract.
+        merged_metrics: dict[str, str] = {}
+        merged_metrics.update(dto.core_metrics)
+        merged_metrics.update(dto.extra_metrics)
+
+        return NormalizedStatementHTTP(
+            cik=dto.cik,
+            statement_type=dto.statement_type,
+            accounting_standard=dto.accounting_standard,
+            statement_date=dto.statement_date,
+            fiscal_year=dto.fiscal_year,
+            fiscal_period=dto.fiscal_period,
+            currency=dto.currency,
+            unit_multiplier=dto.unit_multiplier,
+            source_accession_id=dto.source_accession_id,
+            source_taxonomy=dto.source_taxonomy,
+            source_version_sequence=dto.source_version_sequence,
+        )
+
+    @staticmethod
     def _map_statement_dto_to_summary(
         dto: EdgarStatementVersionDTO,
     ) -> EdgarStatementVersionSummaryHTTP:
@@ -248,11 +281,19 @@ class EdgarPresenter(BasePresenter[SuccessEnvelope[Any]]):
 
         Args:
             dto: Statement version DTO.
-            normalized_payload: Optional normalized payload; currently None.
+            normalized_payload:
+                Optional pre-mapped normalized payload. When None, the DTO's
+                `normalized_payload` field (if present) will be used.
 
         Returns:
             EdgarStatementVersionHTTP: HTTP-facing full schema.
         """
+        effective_payload = normalized_payload
+        if effective_payload is None and dto.normalized_payload is not None:
+            effective_payload = EdgarPresenter._map_normalized_payload_dto_to_http(
+                dto.normalized_payload,
+            )
+
         return EdgarStatementVersionHTTP(
             accession_id=dto.accession_id,
             cik=dto.cik,
@@ -270,7 +311,7 @@ class EdgarPresenter(BasePresenter[SuccessEnvelope[Any]]):
             filing_type=dto.filing_type,
             filing_date=dto.filing_date,
             accepted_at=dto.accepted_at,
-            normalized_payload=normalized_payload,
+            normalized_payload=effective_payload,
             normalized_payload_version=dto.normalized_payload_version,
         )
 
@@ -359,13 +400,19 @@ class EdgarPresenter(BasePresenter[SuccessEnvelope[Any]]):
             reverse=True,
         )
 
-        items = [
-            self._map_statement_dto_to_full(
-                dto=v,
-                normalized_payload=None,  # Future work; contract reserved.
+        items: list[EdgarStatementVersionHTTP] = []
+        for v in sorted_versions:
+            if include_normalized and v.normalized_payload is not None:
+                normalized_http = self._map_normalized_payload_dto_to_http(v.normalized_payload)
+            else:
+                normalized_http = None
+
+            items.append(
+                self._map_statement_dto_to_full(
+                    dto=v,
+                    normalized_payload=normalized_http,
+                )
             )
-            for v in sorted_versions
-        ]
 
         payload = EdgarStatementVersionListHTTP(filing=filing_http, items=items)
 
