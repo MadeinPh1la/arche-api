@@ -108,3 +108,56 @@ class EdgarXBRLMappingOverride(IdentityMixin, TimestampMixin, AuditActorMixin, B
     target_metric: Mapped[str | None] = mapped_column(String(64), nullable=True)
     is_suppression: Mapped[bool] = mapped_column(Boolean, nullable=False, default=False)
     priority: Mapped[int] = mapped_column(Integer, nullable=False, default=0)
+
+
+class EdgarXBRLMappingOverrideHistory(
+    IdentityMixin,
+    TimestampMixin,
+    AuditActorMixin,
+    Base,
+):
+    """Append-only history for XBRL mapping override rules.
+
+    Schema:
+        ref.edgar_xbrl_mapping_overrides_history
+
+    Purpose:
+        Capture immutable snapshots of override rules across their lifecycle,
+        including creations, updates, and deprecations.
+
+    Notes:
+        - Each change to the primary override row creates a new history record.
+        - The combination (override_id, version_sequence) is unique and
+          determines ordering.
+    """
+
+    __tablename__ = "edgar_xbrl_mapping_overrides_history"
+    __table_args__ = ({"schema": "ref"},)
+
+    override_id: Mapped[UUID] = mapped_column(
+        ForeignKey("ref.edgar_xbrl_mapping_overrides.id"),
+        nullable=False,
+        index=True,
+    )
+
+    version_sequence: Mapped[int] = mapped_column(Integer, nullable=False)
+    is_active: Mapped[bool] = mapped_column(Boolean, nullable=False, default=True)
+    deprecation_reason: Mapped[str | None] = mapped_column(String(256), nullable=True)
+
+    scope: Mapped[str] = mapped_column(String(16), nullable=False)
+    source_concept: Mapped[str] = mapped_column(String(256), nullable=False)
+    source_taxonomy: Mapped[str | None] = mapped_column(String(64), nullable=True)
+
+    match_cik: Mapped[str | None] = mapped_column(String(10), nullable=True)
+    match_industry_code: Mapped[str | None] = mapped_column(String(32), nullable=True)
+    match_analyst_id: Mapped[str | None] = mapped_column(String(64), nullable=True)
+
+    match_dimensions: Mapped[dict[str, str]] = mapped_column(
+        JSONBType,
+        nullable=False,
+        default=dict,
+    )
+
+    target_metric: Mapped[str | None] = mapped_column(String(64), nullable=True)
+    is_suppression: Mapped[bool] = mapped_column(Boolean, nullable=False, default=False)
+    priority: Mapped[int] = mapped_column(Integer, nullable=False, default=0)

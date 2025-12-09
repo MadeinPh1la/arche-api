@@ -138,8 +138,8 @@ class SqlAlchemyXBRLMappingOverridesRepository(
             target_metric = CanonicalStatementMetric[str(raw_target_metric)]
 
         return MappingOverrideRule(
-            # Migration/model uses override_id as the primary key.
-            rule_id=str(row.override_id),
+            # Use the ORM primary key as the stable rule identifier.
+            rule_id=str(row.id),
             scope=scope,
             source_concept=row.source_concept,
             source_taxonomy=row.source_taxonomy,
