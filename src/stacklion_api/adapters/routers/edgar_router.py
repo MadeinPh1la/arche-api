@@ -23,6 +23,9 @@ Endpoints (all under /v1/edgar):
         → SuccessEnvelope with restatement delta between two versions.
     - GET /v1/edgar/statements/restatements/ledger
         → SuccessEnvelope with restatement ledger over version history.
+    - GET /v1/edgar/companies/{cik}/statements/overrides/trace
+        → SuccessEnvelope with override observability trace for a statement.
+
 
 Design:
     * Router handles HTTP validation and error mapping to envelopes.
@@ -46,11 +49,17 @@ from stacklion_api.adapters.presenters.edgar_dq_presenter import (
     present_run_statement_dq,
     present_statement_dq_overlay,
 )
+from stacklion_api.adapters.presenters.edgar_overrides_presenter import (
+    present_statement_override_trace,
+)
 from stacklion_api.adapters.presenters.edgar_presenter import EdgarPresenter
 from stacklion_api.adapters.routers.base_router import BaseRouter, PageParams
 from stacklion_api.adapters.schemas.http.edgar_dq_schemas import (
     RunStatementDQResultHTTP,
     StatementDQOverlayHTTP,
+)
+from stacklion_api.adapters.schemas.http.edgar_overrides_schemas import (
+    StatementOverrideTraceHTTP,
 )
 from stacklion_api.adapters.schemas.http.edgar_schemas import (
     EdgarDerivedMetricsCatalogHTTP,
@@ -69,6 +78,10 @@ from stacklion_api.adapters.schemas.http.envelopes import (
 )
 from stacklion_api.application.schemas.dto.edgar import EdgarFilingDTO
 from stacklion_api.application.uow import UnitOfWork
+from stacklion_api.application.use_cases.statements.get_statement_override_trace import (
+    GetStatementOverrideTraceRequest,
+    GetStatementOverrideTraceUseCase,
+)
 from stacklion_api.application.use_cases.statements.get_statement_with_dq_overlay import (
     GetStatementWithDQOverlayRequest,
     GetStatementWithDQOverlayUseCase,
@@ -1993,6 +2006,206 @@ async def get_statement_dq_overlay(
             http_status=503,
             code="EDGAR_UNAVAILABLE",
             message="DQ overlay service is temporarily unavailable.",
+            trace_id=trace_id,
+            details={"reason": type(exc).__name__},
+        )
+        return JSONResponse(status_code=503, content=error.model_dump(mode="json"))
+
+
+# ---------------------------------------------------------------------------
+# Routes: XBRL mapping override observability
+# ---------------------------------------------------------------------------
+
+
+@router.get(
+    "/companies/{cik}/statements/overrides/trace",
+    response_model=SuccessEnvelope[StatementOverrideTraceHTTP] | ErrorEnvelope,
+    status_code=status.HTTP_200_OK,
+    responses=cast("dict[int | str, dict[str, Any]]", BaseRouter.std_error_responses()),
+    summary="Inspect XBRL mapping overrides for a statement identity",
+    description=(
+        "Return an override observability trace for a specific normalized "
+        "statement identity, optionally filtered to a GAAP/IFRS concept, "
+        "canonical metric code, and/or dimension key.\n\n"
+        "The trace describes how each override rule contributed to suppression "
+        "and remap behavior for the evaluated slice."
+    ),
+)
+async def get_statement_override_trace(
+    request: Request,
+    response: Response,
+    uow: Annotated[UnitOfWork, Depends(get_edgar_uow)],
+    cik: Annotated[
+        str,
+        Path(
+            description="Company CIK as digits.",
+            examples=["0000320193"],
+        ),
+    ],
+    statement_type: Annotated[
+        str,
+        Query(
+            description=(
+                "Statement type " "(INCOME_STATEMENT, BALANCE_SHEET, CASH_FLOW_STATEMENT)."
+            ),
+            examples=["INCOME_STATEMENT"],
+        ),
+    ],
+    fiscal_year: Annotated[
+        int,
+        Query(
+            ge=1,
+            description="Fiscal year for the statement identity (>= 1).",
+            examples=[2024],
+        ),
+    ],
+    fiscal_period: Annotated[
+        str,
+        Query(
+            description="Fiscal period code (e.g., FY, Q1, Q2, Q3, Q4).",
+            examples=["FY"],
+        ),
+    ],
+    version_sequence: Annotated[
+        int,
+        Query(
+            ge=1,
+            description="Version sequence number for this statement identity (>= 1).",
+            examples=[1],
+        ),
+    ],
+    gaap_concept: Annotated[
+        str | None,
+        Query(
+            description=("Optional GAAP/IFRS concept filter for the trace " "(e.g. Revenues)."),
+        ),
+    ] = None,
+    canonical_metric_code: Annotated[
+        str | None,
+        Query(
+            description=("Optional canonical metric code filter (e.g. REVENUE, NET_INCOME)."),
+        ),
+    ] = None,
+    dimension_key: Annotated[
+        str | None,
+        Query(
+            description=(
+                "Optional dimension key filter (e.g. segment or other dimensional slice)."
+            ),
+        ),
+    ] = None,
+) -> SuccessEnvelope[StatementOverrideTraceHTTP] | ErrorEnvelope | JSONResponse:
+    """Retrieve a statement-level XBRL override observability trace."""
+    del request
+    trace_id = response.headers.get("X-Request-ID")
+    normalized_cik = _normalize_cik(cik)
+
+    # Manual enum parsing → 400 envelopes instead of FastAPI 422.
+    try:
+        typed_statement_type = StatementType(statement_type)
+    except ValueError:
+        error = _error_envelope(
+            http_status=400,
+            code="VALIDATION_ERROR",
+            message="Invalid statement_type.",
+            trace_id=trace_id,
+            details={"statement_type": statement_type},
+        )
+        return JSONResponse(status_code=400, content=error.model_dump(mode="json"))
+
+    try:
+        typed_fiscal_period = FiscalPeriod(fiscal_period)
+    except ValueError:
+        error = _error_envelope(
+            http_status=400,
+            code="VALIDATION_ERROR",
+            message="Invalid fiscal_period.",
+            trace_id=trace_id,
+            details={"fiscal_period": fiscal_period},
+        )
+        return JSONResponse(status_code=400, content=error.model_dump(mode="json"))
+
+    logger.info(
+        "edgar.api.get_statement_override_trace.start",
+        extra={
+            "cik": normalized_cik,
+            "statement_type": typed_statement_type.value,
+            "fiscal_year": fiscal_year,
+            "fiscal_period": typed_fiscal_period.value,
+            "version_sequence": version_sequence,
+            "gaap_concept": gaap_concept,
+            "canonical_metric_code": canonical_metric_code,
+            "dimension_key": dimension_key,
+            "trace_id": trace_id,
+        },
+    )
+
+    use_case = GetStatementOverrideTraceUseCase(uow=uow)
+
+    try:
+        req_obj = GetStatementOverrideTraceRequest(
+            cik=normalized_cik,
+            statement_type=typed_statement_type,
+            fiscal_year=fiscal_year,
+            fiscal_period=typed_fiscal_period,
+            version_sequence=version_sequence,
+            gaap_concept=gaap_concept,
+            canonical_metric_code=canonical_metric_code,
+            dimension_key=dimension_key,
+        )
+
+        dto = await use_case.execute(req_obj)
+        envelope = present_statement_override_trace(dto)
+
+        logger.info(
+            "edgar.api.get_statement_override_trace.success",
+            extra={
+                "cik": normalized_cik,
+                "statement_type": typed_statement_type.value,
+                "fiscal_year": fiscal_year,
+                "fiscal_period": typed_fiscal_period.value,
+                "version_sequence": version_sequence,
+                "gaap_concept": gaap_concept,
+                "canonical_metric_code": canonical_metric_code,
+                "dimension_key": dimension_key,
+                "trace_id": trace_id,
+            },
+        )
+
+        return envelope
+
+    except EdgarIngestionError as exc:
+        error = _error_envelope(
+            http_status=404,
+            code="EDGAR_STATEMENT_NOT_FOUND",
+            message=str(exc),
+            trace_id=trace_id,
+            details=getattr(exc, "details", None),
+        )
+        return JSONResponse(status_code=404, content=error.model_dump(mode="json"))
+
+    except EdgarMappingError as exc:
+        error = _error_envelope(
+            http_status=500,
+            code="EDGAR_MAPPING_ERROR",
+            message=str(exc),
+            trace_id=trace_id,
+            details=getattr(exc, "details", None),
+        )
+        return JSONResponse(status_code=500, content=error.model_dump(mode="json"))
+
+    except Exception as exc:  # pragma: no cover - defensive
+        logger.exception(
+            "edgar.api.get_statement_override_trace.unhandled",
+            extra={
+                "cik": normalized_cik,
+                "trace_id": trace_id,
+            },
+        )
+        error = _error_envelope(
+            http_status=503,
+            code="EDGAR_UNAVAILABLE",
+            message="Override observability service is temporarily unavailable.",
             trace_id=trace_id,
             details={"reason": type(exc).__name__},
         )

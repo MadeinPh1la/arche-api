@@ -37,6 +37,7 @@ from stacklion_api.application.schemas.dto.edgar import (
 from stacklion_api.application.schemas.dto.edgar_derived import (
     EdgarDerivedMetricsPointDTO,
 )
+from stacklion_api.application.schemas.dto.xbrl_overrides import StatementOverrideTraceDTO
 from stacklion_api.application.use_cases.statements.compute_restatement_delta import (
     ComputeRestatementDeltaRequest,
 )
@@ -48,6 +49,9 @@ from stacklion_api.application.use_cases.statements.get_restatement_ledger impor
 )
 from stacklion_api.application.use_cases.statements.get_restatement_timeline import (
     GetRestatementTimelineRequest,
+)
+from stacklion_api.application.use_cases.statements.get_statement_override_trace import (
+    GetStatementOverrideTraceRequest,
 )
 from stacklion_api.domain.entities.edgar_derived_timeseries import (
     DerivedMetricsTimeSeriesPoint,
@@ -240,6 +244,19 @@ class GetRestatementLedgerUseCase(Protocol):
         ...
 
 
+class GetStatementOverrideTraceUseCase(Protocol):
+    """Protocol for the override observability trace use case."""
+
+    async def execute(
+        self,
+        *,
+        req: GetStatementOverrideTraceRequest,
+        observability: Any,
+    ) -> StatementOverrideTraceDTO:
+        """Execute the override trace use case."""
+        ...
+
+
 class EdgarController(BaseController):
     """Controller orchestrating EDGAR filings, statements, and derived metrics."""
 
@@ -253,6 +270,7 @@ class EdgarController(BaseController):
         compute_restatement_delta_uc: ComputeRestatementDeltaUseCase | None = None,
         get_restatement_ledger_uc: GetRestatementLedgerUseCase | None = None,
         get_restatement_timeline_uc: GetRestatementTimelineUseCase | None = None,
+        get_statement_override_trace_uc: GetStatementOverrideTraceUseCase | None = None,
     ) -> None:
         """Initialize the controller with its use-cases.
 
@@ -274,6 +292,9 @@ class EdgarController(BaseController):
             get_restatement_timeline_uc:
                 Optional use-case producing a hop-aligned restatement metric
                 timeline across a statement's version history.
+            get_statement_override_trace_uc:
+                Optional use-case providing override observability traces for
+                normalized statement identities.
         """
         self._list_filings_uc = list_filings_uc
         self._get_filing_uc = get_filing_uc
@@ -283,6 +304,7 @@ class EdgarController(BaseController):
         self._compute_restatement_delta_uc = compute_restatement_delta_uc
         self._get_restatement_ledger_uc = get_restatement_ledger_uc
         self._get_restatement_timeline_uc = get_restatement_timeline_uc
+        self._get_statement_override_trace_uc = get_statement_override_trace_uc
 
     # ------------------------------------------------------------------
     # Filings
@@ -728,3 +750,46 @@ class EdgarController(BaseController):
         )
 
         return await self._get_restatement_timeline_uc.execute(req)
+
+    # ------------------------------------------------------------------
+    # Override Trace
+    # ------------------------------------------------------------------
+
+    async def get_statement_override_trace(
+        self,
+        *,
+        cik: str,
+        statement_type: StatementType,
+        fiscal_year: int,
+        fiscal_period: FiscalPeriod,
+        version_sequence: int,
+        gaap_concept: str | None = None,
+        canonical_metric_code: str | None = None,
+        dimension_key: str | None = None,
+        observability: Any,
+    ) -> StatementOverrideTraceDTO:
+        """Return override observability trace for a statement.
+
+        This assumes `observability` is a StatementOverrideObservability
+        already computed for the same statement identity.
+        """
+        if self._get_statement_override_trace_uc is None:
+            raise RuntimeError(
+                "GetStatementOverrideTraceUseCase is not wired on EdgarController.",
+            )
+
+        req = GetStatementOverrideTraceRequest(
+            cik=cik.strip(),
+            statement_type=statement_type,
+            fiscal_year=fiscal_year,
+            fiscal_period=fiscal_period,
+            version_sequence=version_sequence,
+            gaap_concept=gaap_concept,
+            canonical_metric_code=canonical_metric_code,
+            dimension_key=dimension_key,
+        )
+
+        return await self._get_statement_override_trace_uc.execute(
+            req=req,
+            observability=observability,
+        )
