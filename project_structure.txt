@@ -22,6 +22,7 @@ stacklion_api
 │   │   ├── __init__.py
 │   │   ├── base_presenter.py
 │   │   ├── edgar_dq_presenter.py
+│   │   ├── edgar_overrides_presenter.py
 │   │   ├── edgar_presenter.py
 │   │   ├── fundamentals_presenter.py
 │   │   ├── market_data_presenter.py
@@ -56,6 +57,7 @@ stacklion_api
 │   │   │   ├── __init__.py
 │   │   │   ├── base.py
 │   │   │   ├── edgar_dq_schemas.py
+│   │   │   ├── edgar_overrides_schemas.py
 │   │   │   ├── edgar_schemas.py
 │   │   │   ├── envelopes.py
 │   │   │   ├── fundamentals.py
@@ -83,7 +85,8 @@ stacklion_api
 │   │   │   ├── edgar_derived.py
 │   │   │   ├── edgar_dq.py
 │   │   │   ├── fundamentals.py
-│   │   │   └── quotes.py
+│   │   │   ├── quotes.py
+│   │   │   └── xbrl_overrides.py
 │   │   └── __init__.py
 │   ├── services
 │   │   ├── risk_services
@@ -123,6 +126,7 @@ stacklion_api
 │   │   │   ├── get_restatement_delta_between_versions.py
 │   │   │   ├── get_restatement_ledger.py
 │   │   │   ├── get_restatement_timeline.py
+│   │   │   ├── get_statement_override_trace.py
 │   │   │   ├── get_statement_with_dq_overlay.py
 │   │   │   ├── normalize_xbrl_statement.py
 │   │   │   ├── persist_normalized_facts_for_statement.py
@@ -164,7 +168,9 @@ stacklion_api
 │   │   ├── restatement_delta.py
 │   │   ├── restatement_metric_timeline.py
 │   │   ├── statement_quality.py
-│   │   └── xbrl_document.py
+│   │   ├── xbrl_document.py
+│   │   ├── xbrl_override_admin.py
+│   │   └── xbrl_override_observability.py
 │   ├── enums
 │   │   ├── __init__.py
 │   │   ├── canonical_statement_metric.py
@@ -190,7 +196,8 @@ stacklion_api
 │   │   │   ├── idempotency_repository.py
 │   │   │   ├── market_data_repository.py
 │   │   │   ├── staging_repository.py
-│   │   │   └── xbrl_mapping_overrides_repository.py
+│   │   │   ├── xbrl_mapping_overrides_repository.py
+│   │   │   └── xbrl_overrides_admin_repository.py
 │   │   └── __init__.py
 │   ├── services
 │   │   ├── __init__.py
@@ -202,7 +209,9 @@ stacklion_api
 │   │   ├── metric_views.py
 │   │   ├── restatement_timeline.py
 │   │   ├── statement_ledger_delta_engine.py
-│   │   └── xbrl_mapping_overrides.py
+│   │   ├── xbrl_mapping_overrides.py
+│   │   ├── xbrl_override_observability.py
+│   │   └── xbrl_override_validator.py
 │   ├── validators
 │   │   └── __init__.py
 │   ├── value_objects
