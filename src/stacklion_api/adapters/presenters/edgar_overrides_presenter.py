@@ -24,18 +24,33 @@ from stacklion_api.application.schemas.dto.xbrl_overrides import (
     OverrideRuleApplicationDTO,
     StatementOverrideTraceDTO,
 )
+from stacklion_api.domain.services.xbrl_mapping_overrides import OverrideScope
 from stacklion_api.infrastructure.logging.logger import get_json_logger
 
 _LOGGER = get_json_logger(__name__)
+
+
+def _scope_to_wire(scope_code: int) -> str:
+    """Convert an OverrideScope integer code to a string for the wire.
+
+    Falls back to ``str(scope_code)`` if the code is unknown, to preserve
+    forward-compatibility instead of raising.
+    """
+    try:
+        return OverrideScope(scope_code).name
+    except ValueError:  # pragma: no cover - defensive
+        return str(scope_code)
 
 
 def _map_override_rule_dto_to_http(
     dto: OverrideRuleApplicationDTO,
 ) -> OverrideRuleApplicationHTTP:
     """Map an OverrideRuleApplicationDTO to its HTTP schema."""
+    scope_str = _scope_to_wire(dto.scope)
+
     return OverrideRuleApplicationHTTP(
         rule_id=dto.rule_id,
-        scope=dto.scope,
+        scope=scope_str,
         priority=dto.priority,
         action=dto.action,
         source_concept=dto.source_concept,
@@ -50,12 +65,18 @@ def _map_override_rule_dto_to_http(
 def _sort_rules_for_wire(
     rules: Iterable[OverrideRuleApplicationDTO],
 ) -> list[OverrideRuleApplicationDTO]:
-    """Deterministically sort override rule applications for wire stability."""
+    """Deterministically sort override rule applications for wire stability.
+
+    Ordering:
+        * scope (ascending numeric code)
+        * priority (descending business priority, so higher wins)
+        * rule_id (ascending lexicographic)
+    """
     return sorted(
         rules,
         key=lambda r: (
             r.scope,
-            r.priority,
+            -r.priority,
             r.rule_id,
         ),
     )
@@ -69,7 +90,7 @@ def present_statement_override_trace(
     The rules collection is sorted deterministically by:
 
         * scope (ascending)
-        * priority (ascending)
+        * priority (descending; higher values win)
         * rule_id (ascending)
     """
     sorted_rules = _sort_rules_for_wire(dto.rules)

@@ -60,7 +60,7 @@ class OverrideTraceEntryDTO:
 
     Attributes:
         rule_id:
-            Stable identifier of the evaluated rule.
+            Stable identifier of the evaluated rule (string ID, e.g. UUID).
         scope:
             Scope the rule operates on (e.g., "GLOBAL", "INDUSTRY", "COMPANY",
             "ANALYST"), represented as an integer code aligned with
@@ -89,7 +89,7 @@ class OverrideTraceEntryDTO:
             Priority used to resolve conflicts between overlapping rules.
     """
 
-    rule_id: int
+    rule_id: str
     scope: int | None
     matched: bool
     is_suppression: bool
@@ -114,7 +114,8 @@ class OverrideRuleApplicationDTO:
             "ANALYST"), represented as an integer code aligned with
             OverrideScope.
         priority:
-            Priority used to resolve conflicts between overlapping rules.
+            Priority used to resolve conflicts between overlapping rules. Higher
+            values win within the same scope when multiple rules match.
         action:
             High-level action for the rule (e.g., "REMAP", "SUPPRESS").
         source_concept:

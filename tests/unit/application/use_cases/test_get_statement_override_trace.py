@@ -305,7 +305,7 @@ async def test_execute_happy_path_filters_and_maps_to_dto(
     trace_entries = dto.traces["REVENUE"]
     assert len(trace_entries) == 1
     trace = trace_entries[0]
-    assert trace.rule_id == 123
+    assert trace.rule_id == "123"
     assert trace.scope == OverrideScope.GLOBAL.value
     assert trace.base_metric == "REVENUE"
     assert trace.final_metric == "REVENUE"

@@ -1178,18 +1178,8 @@
             "type": "string"
           },
           "contributes_to_metrics": {
-            "anyOf": [
-              {
-                "additionalProperties": {
-                  "type": "integer"
-                },
-                "type": "object"
-              },
-              {
-                "type": "null"
-              }
-            ],
-            "title": "Contributes To Metrics"
+            "title": "Contributes To Metrics",
+            "type": "boolean"
           },
           "is_effective": {
             "title": "Is Effective",
@@ -1255,6 +1245,7 @@
         },
         "required": [
           "action",
+          "contributes_to_metrics",
           "is_effective",
           "priority",
           "rule_id",

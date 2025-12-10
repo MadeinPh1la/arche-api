@@ -27,7 +27,10 @@ class OverrideRuleApplicationHTTP(BaseModel):
     priority: int = Field(
         ...,
         ge=0,
-        description="Priority of the rule within its scope (lower is applied earlier).",
+        description=(
+            "Priority of the rule within its scope. Higher values win when multiple "
+            "rules at the same scope match."
+        ),
     )
 
     action: str = Field(
@@ -57,11 +60,11 @@ class OverrideRuleApplicationHTTP(BaseModel):
         description="Optional human-readable explanation of why the rule did or did not apply.",
     )
 
-    contributes_to_metrics: dict[str, int] | None = Field(
-        default=None,
+    contributes_to_metrics: bool = Field(
+        ...,
         description=(
-            "Optional mapping from canonical metric code to the number of facts "
-            "impacted by this rule for that metric."
+            "Whether this rule contributes to at least one canonical metric in the "
+            "evaluated slice."
         ),
     )
 

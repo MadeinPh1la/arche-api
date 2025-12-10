@@ -443,7 +443,7 @@ def _map_observability_to_dto(
                 OverrideTraceEntryDTO(
                     # Domain annotates rule_id as str, tests + DTO want int.
                     # Normalize via int() to satisfy both runtime + mypy.
-                    rule_id=int(entry.rule_id),
+                    rule_id=str(entry.rule_id),
                     scope=entry.scope.value if entry.scope is not None else None,
                     matched=entry.matched,
                     is_suppression=entry.is_suppression,
