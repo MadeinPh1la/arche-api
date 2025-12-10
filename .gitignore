@@ -46,6 +46,7 @@ artifacts
 artifacts/*
 audit_report.json
 coverage.xml
+project_structure.txt
 
 # Ignore native build artifacts
 /build/

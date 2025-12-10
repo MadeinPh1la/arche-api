@@ -201,6 +201,7 @@ stacklion_api
 │   │   └── __init__.py
 │   ├── services
 │   │   ├── __init__.py
+│   │   ├── canonical_metric_registry.py
 │   │   ├── derived_metrics_engine.py
 │   │   ├── edgar_normalization.py
 │   │   ├── fact_dq_engine.py
