@@ -41,6 +41,9 @@ from stacklion_api.domain.exceptions.edgar import EdgarMappingError
 from stacklion_api.domain.interfaces.repositories.edgar_statements_repository import (
     EdgarStatementsRepository as EdgarStatementsRepositoryProtocol,
 )
+from stacklion_api.domain.services.canonical_metric_registry import (
+    get_tier1_metrics_for_statement_type,
+)
 
 logger = logging.getLogger(__name__)
 
@@ -70,6 +73,12 @@ class GetFundamentalsTimeSeriesRequest:
         to_date:
             Inclusive upper bound for statement_date. When None, defaults to
             today's date.
+        use_tier1_only:
+            When True and ``metrics`` is None, restricts the fundamentals
+            time series to the Tier-1 canonical metrics for the requested
+            statement type, as defined by the canonical metric registry.
+            When False (default), all metrics present in each payload's
+            ``core_metrics`` are considered when ``metrics`` is None.
     """
 
     ciks: Sequence[str]
@@ -78,6 +87,7 @@ class GetFundamentalsTimeSeriesRequest:
     frequency: str = "annual"
     from_date: date | None = None
     to_date: date | None = None
+    use_tier1_only: bool = False
 
 
 class GetFundamentalsTimeSeriesUseCase:
@@ -174,9 +184,12 @@ class GetFundamentalsTimeSeriesUseCase:
                 )
                 all_payloads.extend(company_payloads)
 
-        metric_filter: Iterable[CanonicalStatementMetric] | None = (
-            tuple(req.metrics) if req.metrics is not None else None
-        )
+        if req.metrics is not None:
+            metric_filter: Iterable[CanonicalStatementMetric] | None = tuple(req.metrics)
+        elif req.use_tier1_only:
+            metric_filter = get_tier1_metrics_for_statement_type(req.statement_type)
+        else:
+            metric_filter = None
 
         series = build_fundamentals_timeseries(
             payloads=all_payloads,

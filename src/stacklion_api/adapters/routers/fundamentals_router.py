@@ -235,6 +235,16 @@ async def get_fundamentals_time_series(
             ),
         ),
     ] = None,
+    use_tier1_only: Annotated[
+        bool,
+        Query(
+            description=(
+                "When true and `metrics` is omitted, restrict the fundamentals "
+                "time series to the Tier-1 canonical metrics for the requested "
+                "statement_type, as defined by the canonical metric registry."
+            ),
+        ),
+    ] = False,
     page: Annotated[
         int,
         Query(
@@ -280,6 +290,7 @@ async def get_fundamentals_time_series(
             "frequency": frequency,
             "from_date": from_date.isoformat() if from_date else None,
             "to_date": to_date.isoformat() if to_date else None,
+            "use_tier1_only": use_tier1_only,
             "page": page,
             "page_size": page_size,
             "trace_id": trace_id,
@@ -296,6 +307,7 @@ async def get_fundamentals_time_series(
             frequency=frequency,
             from_date=from_date,
             to_date=to_date,
+            use_tier1_only=use_tier1_only,
         )
 
         series = await use_case.execute(req)

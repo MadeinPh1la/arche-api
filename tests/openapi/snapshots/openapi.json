@@ -5422,6 +5422,16 @@
               ],
               "title": "To"
             }
+          },
+          {
+            "in": "query",
+            "name": "use_tier1_only",
+            "required": false,
+            "schema": {
+              "default": false,
+              "title": "Use Tier1 Only",
+              "type": "boolean"
+            }
           }
         ],
         "responses": {
