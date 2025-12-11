@@ -23,6 +23,7 @@ from __future__ import annotations
 
 from collections.abc import Mapping, Sequence
 from dataclasses import dataclass
+from datetime import date
 from decimal import Decimal
 from typing import Any
 
@@ -383,6 +384,62 @@ ReconciliationRule = (
     | SegmentRollupReconciliationRule
 )
 
+
+@dataclass(slots=True)
+class StatementAlignmentResult:
+    """Domain entity representing a single statement alignment result.
+
+    This entity is produced by the reconciliation/stitching engine and is
+    structurally compatible with the StatementAlignmentRecord protocol used
+    by the alignment repository.
+
+    Attributes:
+        cik: Issuer CIK for the statement.
+        statement_type: Type of statement (e.g., INCOME_STATEMENT, BALANCE_SHEET).
+        fiscal_year: Fiscal year of the statement.
+        fiscal_period: Fiscal period code (e.g., "FY", "Q1").
+        statement_date: Statement date (period end).
+        version_sequence: Monotonic version sequence for restatements.
+        fye_date: Company fiscal year-end date, if known.
+        is_53_week_year: Whether the fiscal year is a 53-week year.
+        period_start: Period start date, if inferred.
+        period_end: Period end date, if inferred/overridden.
+        alignment_status: Status string (e.g., "ALIGNED", "PARTIAL", "MISSING").
+        is_partial_period: Whether this period is partial vs. full.
+        is_off_cycle_period: Whether this period is off the regular filing cycle.
+        is_irregular_calendar: Whether an irregular calendar was detected.
+        details: Optional structured metadata for diagnostics.
+    """
+
+    cik: str
+    statement_type: StatementType
+    fiscal_year: int
+    fiscal_period: str
+    statement_date: date
+    version_sequence: int
+
+    fye_date: date | None = None
+    is_53_week_year: bool = False
+    period_start: date | None = None
+    period_end: date | None = None
+    alignment_status: str = "ALIGNED"
+    is_partial_period: bool = False
+    is_off_cycle_period: bool = False
+    is_irregular_calendar: bool = False
+    details: dict[str, Any] | None = None
+
+    def __post_init__(self) -> None:
+        """Enforce basic invariants for alignment results.
+
+        Raises:
+            ValueError: If core identity fields are missing or invalid.
+        """
+        if not self.cik:
+            raise ValueError("cik must be non-empty for StatementAlignmentResult.")
+        if self.version_sequence < 1:
+            raise ValueError("version_sequence must be >= 1 for StatementAlignmentResult.")
+
+
 __all__ = [
     "ReconciliationRuleId",
     "StatementReconciliationContext",
@@ -393,4 +450,5 @@ __all__ = [
     "CalendarReconciliationRule",
     "SegmentRollupReconciliationRule",
     "ReconciliationRule",
+    "StatementAlignmentResult",
 ]

@@ -25,6 +25,9 @@ from stacklion_api.adapters.repositories.edgar_facts_repository import EdgarFact
 from stacklion_api.adapters.repositories.edgar_filings_repository import (
     EdgarFilingsRepository,
 )
+from stacklion_api.adapters.repositories.edgar_statement_alignment_repository import (
+    SqlAlchemyEdgarStatementAlignmentRepository,
+)
 from stacklion_api.adapters.repositories.edgar_statements_repository import (
     EdgarStatementsRepository,
 )
@@ -37,6 +40,9 @@ from stacklion_api.domain.interfaces.repositories.edgar_dq_repository import (
 )
 from stacklion_api.domain.interfaces.repositories.edgar_facts_repository import (
     EdgarFactsRepository as EdgarFactsRepositoryProtocol,
+)
+from stacklion_api.domain.interfaces.repositories.edgar_statement_alignment_repository import (
+    EdgarStatementAlignmentRepository as EdgarStatementAlignmentRepositoryPort,
 )
 from stacklion_api.domain.interfaces.repositories.edgar_statements_repository import (
     EdgarStatementsRepository as EdgarStatementsRepositoryProtocol,
@@ -77,20 +83,32 @@ class SqlAlchemyUnitOfWork(UnitOfWork):
         self._session_factory = session_factory
         self._session: AsyncSession | None = None
 
-        # Default wiring: interface → implementation, plus direct concrete key
-        # for backwards compatibility.
+        # Default wiring: interface → implementation, plus direct concrete keys
+        # for backwards compatibility in call sites.
         default_factories: dict[type[Any], Callable[[AsyncSession], Any]] = {
+            # Filings
             EdgarFilingsRepository: lambda s: EdgarFilingsRepository(session=s),
+            # Statements
             EdgarStatementsRepositoryProtocol: lambda s: EdgarStatementsRepository(session=s),
             EdgarStatementsRepository: lambda s: EdgarStatementsRepository(session=s),
+            # Facts
             EdgarFactsRepositoryProtocol: lambda s: EdgarFactsRepository(session=s),
             EdgarFactsRepository: lambda s: EdgarFactsRepository(session=s),
+            # DQ
             EdgarDQRepositoryProtocol: lambda s: EdgarDQRepository(session=s),
             EdgarDQRepository: lambda s: EdgarDQRepository(session=s),
+            # XBRL mapping overrides
             XBRLMappingOverridesRepositoryPort: lambda s: SqlAlchemyXBRLMappingOverridesRepository(
                 session=s,
             ),
             SqlAlchemyXBRLMappingOverridesRepository: lambda s: SqlAlchemyXBRLMappingOverridesRepository(
+                session=s,
+            ),
+            # Statement alignment
+            EdgarStatementAlignmentRepositoryPort: lambda s: SqlAlchemyEdgarStatementAlignmentRepository(
+                session=s,
+            ),
+            SqlAlchemyEdgarStatementAlignmentRepository: lambda s: SqlAlchemyEdgarStatementAlignmentRepository(
                 session=s,
             ),
         }

@@ -392,3 +392,96 @@ class EdgarDQAnomaly(Base):
         nullable=False,
         server_default=text("now()"),
     )
+
+
+class EdgarStatementAlignment(Base):
+    """Statement-level alignment and calendar metadata (sec.edgar_statement_alignment).
+
+    Captures derived calendar attributes and stitching/alignment status for
+    a specific `sec.statement_versions` row. Designed to support deterministic
+    timelines and reconciliation reporting without re-running stitching logic.
+    """
+
+    __tablename__ = "edgar_statement_alignment"
+    __table_args__ = (
+        UniqueConstraint(
+            "statement_version_id",
+            name="uq_edgar_statement_alignment_statement_version",
+        ),
+        Index(
+            "ix_edgar_statement_alignment_identity",
+            "cik",
+            "statement_type",
+            "fiscal_year",
+            "fiscal_period",
+            "version_sequence",
+        ),
+        {"schema": "sec"},
+    )  # type: ignore[assignment]
+
+    alignment_id: Mapped[UUID] = mapped_column(primary_key=True)
+
+    statement_version_id: Mapped[UUID] = mapped_column(
+        ForeignKey("sec.statement_versions.statement_version_id"),
+        nullable=False,
+    )
+    company_id: Mapped[UUID] = mapped_column(
+        ForeignKey("ref.companies.company_id"),
+        nullable=False,
+    )
+
+    # Denormalized identity columns to mirror fact store querying patterns.
+    cik: Mapped[str] = mapped_column(String(10), nullable=False)
+    statement_type: Mapped[str] = mapped_column(String(32), nullable=False)
+    fiscal_year: Mapped[int] = mapped_column(Integer, nullable=False)
+    fiscal_period: Mapped[str] = mapped_column(String(8), nullable=False)
+    statement_date: Mapped[date] = mapped_column(Date, nullable=False)
+    version_sequence: Mapped[int] = mapped_column(Integer, nullable=False)
+
+    # Calendar / period metadata.
+    fye_date: Mapped[date | None] = mapped_column(Date, nullable=True)
+    is_53_week_year: Mapped[bool] = mapped_column(
+        Boolean,
+        nullable=False,
+        default=False,
+        server_default=text("false"),
+    )
+    period_start: Mapped[date | None] = mapped_column(Date, nullable=True)
+    period_end: Mapped[date | None] = mapped_column(Date, nullable=True)
+
+    # Alignment / stitching status across IS/BS/CF.
+    alignment_status: Mapped[str] = mapped_column(String(32), nullable=False)
+
+    # Flags for irregular / partial periods.
+    is_partial_period: Mapped[bool] = mapped_column(
+        Boolean,
+        nullable=False,
+        default=False,
+        server_default=text("false"),
+    )
+    is_off_cycle_period: Mapped[bool] = mapped_column(
+        Boolean,
+        nullable=False,
+        default=False,
+        server_default=text("false"),
+    )
+    is_irregular_calendar: Mapped[bool] = mapped_column(
+        Boolean,
+        nullable=False,
+        default=False,
+        server_default=text("false"),
+    )
+
+    # Optional diagnostic payload (e.g., stitching notes, inferred calendar).
+    details: Mapped[dict[str, Any] | None] = mapped_column(JSON, nullable=True)
+
+    created_at: Mapped[datetime] = mapped_column(
+        DateTime(timezone=True),
+        nullable=False,
+        server_default=text("now()"),
+    )
+    updated_at: Mapped[datetime] = mapped_column(
+        DateTime(timezone=True),
+        nullable=False,
+        server_default=text("now()"),
+    )
