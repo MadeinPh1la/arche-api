@@ -89,7 +89,6 @@ build
 .mypy_cache
 .env
 .pre-commit-config.yaml
-alembic.ini
 
 # Build artifacts
 *.egg-info/
