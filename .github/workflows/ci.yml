@@ -149,9 +149,26 @@ jobs:
           exit 1
 
       - name: Run Alembic migrations
-        working-directory: ${{ github.workspace }}
         run: |
-          python -m alembic -c alembic.ini upgrade head
+          python - << 'PY'
+          import os
+
+          from alembic.config import Config
+          from alembic import command
+
+          # Ensure we are at repo root (GitHub sets this to the checkout path)
+          root = os.environ.get("GITHUB_WORKSPACE", ".")
+          os.chdir(root)
+
+          cfg = Config("alembic.ini")
+
+          # Be absolutely explicit for CI. This sidesteps any weirdness
+          # with how the CLI or config parser resolves script_location.
+          cfg.set_main_option("script_location", "migrations")
+
+          # DATABASE_URL is already in env; env.py reads it.
+          command.upgrade(cfg, "head")
+          PY
 
       - name: CI harness (black • ruff • mypy • pytest)
         run: bash scripts/ci.sh
