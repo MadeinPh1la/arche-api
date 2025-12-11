@@ -138,14 +138,20 @@ jobs:
       - name: Wait for Postgres (belt & suspenders)
         run: |
           for i in {1..30}; do
-            pg_isready -h 127.0.0.1 -p 5432 -d stacklion_test -U stacklion && break
-            echo "Postgres not ready yet, retrying..."
+            if pg_isready -h 127.0.0.1 -p 5432 -d stacklion_test -U stacklion; then
+              echo "Postgres is ready."
+              exit 0
+            fi
+            echo "Postgres not ready yet, retrying... ($i/30)"
             sleep 1
           done
+          echo "Postgres did not become ready in time."
+          exit 1
 
       - name: Run Alembic migrations
+        working-directory: ${{ github.workspace }}
         run: |
-          alembic upgrade head
+          python -m alembic -c alembic.ini upgrade head
 
       - name: CI harness (black • ruff • mypy • pytest)
         run: bash scripts/ci.sh
