@@ -19,6 +19,7 @@ jobs:
     name: Lint • Type • Test (Py${{ matrix.python-version }})
     runs-on: ubuntu-latest
     timeout-minutes: 20
+
     strategy:
       fail-fast: false
       matrix:
@@ -31,7 +32,8 @@ jobs:
           POSTGRES_USER: stacklion
           POSTGRES_PASSWORD: stacklion
           POSTGRES_DB: stacklion_test
-        ports: [ "5432:5432" ]
+        ports:
+          - "5432:5432"
         options: >-
           --health-cmd="pg_isready -U stacklion -d stacklion_test"
           --health-interval=10s
@@ -40,7 +42,8 @@ jobs:
 
       redis:
         image: redis:7
-        ports: [ "6379:6379" ]
+        ports:
+          - "6379:6379"
         options: >-
           --health-cmd="redis-cli ping || exit 1"
           --health-interval=10s
@@ -136,87 +139,13 @@ jobs:
         run: |
           for i in {1..30}; do
             pg_isready -h 127.0.0.1 -p 5432 -d stacklion_test -U stacklion && break
+            echo "Postgres not ready yet, retrying..."
             sleep 1
           done
 
-      - name: Bootstrap test database schema (minimal tables for tests)
+      - name: Run Alembic migrations
         run: |
-          python - << 'PY'
-          import asyncio
-          import os
-
-          from sqlalchemy import text
-          from sqlalchemy.ext.asyncio import create_async_engine
-
-          async def main() -> None:
-              database_url = os.environ["DATABASE_URL"]
-              engine = create_async_engine(database_url)
-
-              async with engine.begin() as conn:
-                  # Ensure staging schema exists
-                  await conn.execute(text("CREATE SCHEMA IF NOT EXISTS staging"))
-
-                  # Minimal md_intraday_bars_parent table for intraday bar tests
-                  await conn.execute(
-                      text(
-                          """
-                          CREATE TABLE IF NOT EXISTS md_intraday_bars_parent (
-                              symbol_id UUID NOT NULL,
-                              ts TIMESTAMPTZ NOT NULL,
-                              open NUMERIC(20, 8) NOT NULL,
-                              high NUMERIC(20, 8) NOT NULL,
-                              low NUMERIC(20, 8) NOT NULL,
-                              close NUMERIC(20, 8) NOT NULL,
-                              volume NUMERIC(38, 0) NOT NULL,
-                              provider VARCHAR NOT NULL,
-                              PRIMARY KEY (symbol_id, ts)
-                          )
-                          """
-                      )
-                  )
-
-                  # Minimal staging.ingest_runs table for ingest use case tests
-                  await conn.execute(
-                      text(
-                          """
-                          CREATE TABLE IF NOT EXISTS staging.ingest_runs (
-                              run_id UUID PRIMARY KEY,
-                              source VARCHAR NOT NULL,
-                              endpoint VARCHAR NOT NULL,
-                              key VARCHAR NOT NULL,
-                              started_at TIMESTAMPTZ NOT NULL,
-                              finished_at TIMESTAMPTZ,
-                              result VARCHAR,
-                              error_reason VARCHAR
-                          )
-                          """
-                      )
-                  )
-
-                  # Minimal staging.raw_payloads table for ingest staging payloads
-                  await conn.execute(
-                      text(
-                          """
-                          CREATE TABLE IF NOT EXISTS staging.raw_payloads (
-                              payload_id UUID PRIMARY KEY,
-                              source VARCHAR NOT NULL,
-                              endpoint VARCHAR NOT NULL,
-                              symbol_or_cik VARCHAR NOT NULL,
-                              as_of TIMESTAMPTZ,
-                              window_from TIMESTAMPTZ,
-                              window_to TIMESTAMPTZ,
-                              etag VARCHAR,
-                              received_at TIMESTAMPTZ NOT NULL,
-                              payload JSON NOT NULL
-                          )
-                          """
-                      )
-                  )
-
-              await engine.dispose()
-
-          asyncio.run(main())
-          PY
+          alembic upgrade head
 
       - name: CI harness (black • ruff • mypy • pytest)
         run: bash scripts/ci.sh
