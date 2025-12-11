@@ -18,7 +18,7 @@ from typing import Any
 from uuid import uuid4
 
 import pytest
-from sqlalchemy import select
+from sqlalchemy import select, text
 from sqlalchemy.ext.asyncio import (
     AsyncEngine,
     AsyncSession,
@@ -55,8 +55,12 @@ async def alignment_session() -> AsyncGenerator[AsyncSession, None]:
     )
     engine: AsyncEngine = create_async_engine(database_url, future=True)
 
-    # Ensure minimal schema exists for these tests.
+    # Ensure minimal schemas and tables exist for these tests.
     async with engine.begin() as conn:
+        # Create namespaced schemas explicitly to match production layout.
+        await conn.execute(text("CREATE SCHEMA IF NOT EXISTS ref"))
+        await conn.execute(text("CREATE SCHEMA IF NOT EXISTS sec"))
+
         # ref.companies
         await conn.run_sync(Company.__table__.create, checkfirst=True)
         # sec.filings
@@ -66,7 +70,11 @@ async def alignment_session() -> AsyncGenerator[AsyncSession, None]:
         # sec.edgar_statement_alignment
         await conn.run_sync(EdgarStatementAlignment.__table__.create, checkfirst=True)
 
-    session_factory = async_sessionmaker(engine, expire_on_commit=False, class_=AsyncSession)
+    session_factory = async_sessionmaker(
+        engine,
+        expire_on_commit=False,
+        class_=AsyncSession,
+    )
 
     async with session_factory() as session:
         try:
@@ -225,7 +233,9 @@ async def test_upsert_alignment_inserts_row(alignment_session: AsyncSession) -> 
 
 
 @pytest.mark.anyio
-async def test_upsert_alignments_updates_existing_row(alignment_session: AsyncSession) -> None:
+async def test_upsert_alignments_updates_existing_row(
+    alignment_session: AsyncSession,
+) -> None:
     """upsert_alignments() must update an existing row, not duplicate it."""
     company, (sv1, _) = await _seed_company_and_versions(alignment_session)
     repo = SqlAlchemyEdgarStatementAlignmentRepository(alignment_session)
