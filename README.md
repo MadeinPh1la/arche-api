@@ -1,4 +1,4 @@
-# Stacklion API
+# Arche API
 
 ### The financial data layer for modern finance teams
 
@@ -14,7 +14,7 @@
 
 ## Overview
 
-**Stacklion API** unifies corporate fundamentals, market data, portfolio analytics, and risk intelligence into one high-integrity data platform.
+**Arche API** unifies corporate fundamentals, market data, portfolio analytics, and risk intelligence into one high-integrity data platform.
 It is designed for developers, quants, and fintech teams who demand verified, versioned, and strongly typed financial data—served through a single, governed API.
 
 ---
@@ -152,7 +152,7 @@ git push origin feature/<scope>/<summary>
 ### Core Server
 
 Licensed under the **Business Source License 1.1 (BSL 1.1)**
-© 2025 Northern Lion Labs LLC
+© 2025 Protos Systems LLC
 Production or commercial use requires a commercial agreement.
 After **2028-10-15**, it automatically converts to the **Apache 2.0 License**.
 
@@ -166,15 +166,8 @@ See [`LICENSE`](LICENSE), [`COMMERCIAL.md`](COMMERCIAL.md), and [`NOTICE`](NOTIC
 
 ## Contact
 
-**Northern Lion Labs LLC**
-Website: [https://stacklion.io](https://stacklion.io)
-Email: [support@northernlion.io](mailto:support@northernlion.io) · [licensing@northernlionlabs.com](mailto:licensing@northernlionlabs.com)
-GitHub: [@MadeinPh1la](https://github.com/MadeinPh1la) · [@NorthernLionLabs](https://github.com/NorthernLionLabs)
+**Protos Systems LLC**
 
 ---
 
-**Stacklion API — Built for accuracy, auditability, and performance in modern finance.**
-
----
-
-Would you like me to also generate the short `README.md` variant for the SDK repos (`stacklion-sdk-python` and `stacklion-sdk-js`) so all public repos have consistent branding and structure?
+**Arche API — Built for accuracy, auditability, and performance in modern finance.**

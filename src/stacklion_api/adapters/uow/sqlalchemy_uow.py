@@ -25,6 +25,9 @@ from stacklion_api.adapters.repositories.edgar_facts_repository import EdgarFact
 from stacklion_api.adapters.repositories.edgar_filings_repository import (
     EdgarFilingsRepository,
 )
+from stacklion_api.adapters.repositories.edgar_reconciliation_checks_repository import (
+    SqlAlchemyEdgarReconciliationChecksRepository,
+)
 from stacklion_api.adapters.repositories.edgar_statement_alignment_repository import (
     SqlAlchemyEdgarStatementAlignmentRepository,
 )
@@ -40,6 +43,9 @@ from stacklion_api.domain.interfaces.repositories.edgar_dq_repository import (
 )
 from stacklion_api.domain.interfaces.repositories.edgar_facts_repository import (
     EdgarFactsRepository as EdgarFactsRepositoryProtocol,
+)
+from stacklion_api.domain.interfaces.repositories.edgar_reconciliation_checks_repository import (
+    EdgarReconciliationChecksRepository as EdgarReconciliationChecksRepositoryPort,
 )
 from stacklion_api.domain.interfaces.repositories.edgar_statement_alignment_repository import (
     EdgarStatementAlignmentRepository as EdgarStatementAlignmentRepositoryPort,
@@ -110,6 +116,12 @@ class SqlAlchemyUnitOfWork(UnitOfWork):
             ),
             SqlAlchemyEdgarStatementAlignmentRepository: lambda s: SqlAlchemyEdgarStatementAlignmentRepository(
                 session=s,
+            ),
+            EdgarReconciliationChecksRepositoryPort: lambda s: SqlAlchemyEdgarReconciliationChecksRepository(
+                session=s
+            ),
+            SqlAlchemyEdgarReconciliationChecksRepository: lambda s: SqlAlchemyEdgarReconciliationChecksRepository(
+                session=s
             ),
         }
 

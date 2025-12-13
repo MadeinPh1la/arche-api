@@ -50,6 +50,7 @@ from sqlalchemy import (
     UniqueConstraint,
     text,
 )
+from sqlalchemy.dialects.postgresql import JSONB
 from sqlalchemy.orm import Mapped, mapped_column
 
 from stacklion_api.infrastructure.database.models.base import Base
@@ -481,6 +482,96 @@ class EdgarStatementAlignment(Base):
         server_default=text("now()"),
     )
     updated_at: Mapped[datetime] = mapped_column(
+        DateTime(timezone=True),
+        nullable=False,
+        server_default=text("now()"),
+    )
+
+
+class EdgarReconciliationCheck(Base):
+    """Reconciliation ledger entry (sec.edgar_reconciliation_checks).
+
+    Append-only ledger of rule evaluations produced by the reconciliation engine.
+    Designed for deterministic issuer/statement/time queries.
+    """
+
+    __tablename__ = "edgar_reconciliation_checks"
+    __table_args__ = (
+        Index(
+            "ix_edgar_recon_checks_identity_run",
+            "cik",
+            "statement_type",
+            "fiscal_year",
+            "fiscal_period",
+            "version_sequence",
+            "reconciliation_run_id",
+            "rule_category",
+            "rule_id",
+            "dimension_key",
+        ),
+        Index(
+            "ix_edgar_recon_checks_run_status",
+            "reconciliation_run_id",
+            "status",
+            "severity",
+        ),
+        UniqueConstraint(
+            "reconciliation_run_id",
+            "rule_id",
+            "dimension_key",
+            name="uq_edgar_recon_checks_run_rule_dimension",
+        ),
+        {"schema": "sec"},
+    )  # type: ignore[assignment]
+
+    check_id: Mapped[UUID] = mapped_column(primary_key=True)
+
+    reconciliation_run_id: Mapped[UUID] = mapped_column(nullable=False)
+    executed_at: Mapped[datetime] = mapped_column(
+        DateTime(timezone=True),
+        nullable=False,
+        server_default=text("now()"),
+    )
+
+    statement_version_id: Mapped[UUID | None] = mapped_column(
+        ForeignKey("sec.statement_versions.statement_version_id"),
+        nullable=True,
+    )
+    company_id: Mapped[UUID | None] = mapped_column(
+        ForeignKey("ref.companies.company_id"),
+        nullable=True,
+    )
+
+    # Denormalized identity columns (modeling-friendly)
+    cik: Mapped[str] = mapped_column(String(10), nullable=False)
+    statement_type: Mapped[str] = mapped_column(String(32), nullable=False)
+    fiscal_year: Mapped[int] = mapped_column(Integer, nullable=False)
+    fiscal_period: Mapped[str] = mapped_column(String(8), nullable=False)
+    version_sequence: Mapped[int] = mapped_column(Integer, nullable=False)
+
+    statement_date: Mapped[date | None] = mapped_column(Date, nullable=True)
+
+    # Rule identity
+    rule_id: Mapped[str] = mapped_column(String(128), nullable=False)
+    rule_category: Mapped[str] = mapped_column(String(32), nullable=False)
+
+    # Outcome
+    status: Mapped[str] = mapped_column(String(16), nullable=False)
+    severity: Mapped[str] = mapped_column(String(16), nullable=False)
+
+    # Numeric deltas
+    expected_value: Mapped[Decimal | None] = mapped_column(Numeric(38, 6), nullable=True)
+    actual_value: Mapped[Decimal | None] = mapped_column(Numeric(38, 6), nullable=True)
+    delta_value: Mapped[Decimal | None] = mapped_column(Numeric(38, 6), nullable=True)
+
+    # Dimensional slice (optional)
+    dimension_key: Mapped[str | None] = mapped_column(String(128), nullable=True)
+    dimension_labels: Mapped[dict[str, Any] | None] = mapped_column(JSONB, nullable=True)
+
+    # Diagnostics (optional)
+    notes: Mapped[dict[str, Any] | None] = mapped_column(JSONB, nullable=True)
+
+    created_at: Mapped[datetime] = mapped_column(
         DateTime(timezone=True),
         nullable=False,
         server_default=text("now()"),

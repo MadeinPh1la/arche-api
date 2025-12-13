@@ -1,7 +1,7 @@
 services:
   api:
     build: .
-    container_name: stacklion-api
+    container_name: arche-api
     command: uvicorn stacklion_api.main:create_app --factory --host 0.0.0.0 --port 8000 --reload
     ports: ["8000:8000"]
     env_file: .env
@@ -31,17 +31,17 @@ services:
 
   db:
     image: postgres:16
-    container_name: stacklion-db
+    container_name: arche-db
     restart: unless-stopped
     environment:
-      POSTGRES_DB: stacklion
-      POSTGRES_USER: stacklion
-      POSTGRES_PASSWORD: stacklion
+      POSTGRES_DB: arche
+      POSTGRES_USER: arche
+      POSTGRES_PASSWORD: arche
     ports: ["5432:5432"]
     volumes:
       - postgres_data:/var/lib/postgresql/data
     healthcheck:
-      test: ["CMD-SHELL", "pg_isready -U stacklion -d stacklion"]
+      test: ["CMD-SHELL", "pg_isready -U arche -d arche"]
       interval: 5s
       timeout: 3s
       retries: 20
@@ -49,7 +49,7 @@ services:
 
   redis:
     image: redis:7-alpine
-    container_name: stacklion-redis
+    container_name: arche-redis
     restart: unless-stopped
     ports: ["6379:6379"]
     healthcheck:
@@ -61,7 +61,7 @@ services:
 
   otel-collector:
     image: otel/opentelemetry-collector:0.99.0
-    container_name: stacklion-otel
+    container_name: arche-otel
     command: ["--config=/etc/otel-collector.yaml"]
     read_only: true
     security_opt: ["no-new-privileges:true"]
@@ -83,7 +83,7 @@ services:
 
   prometheus:
     image: prom/prometheus:v2.54.1
-    container_name: stacklion-prometheus
+    container_name: arche-prometheus
     volumes:
       - ./prometheus.yml:/etc/prometheus/prometheus.yml:ro
     ports: ["9090:9090"]
@@ -94,7 +94,7 @@ services:
 
   tempo:
     image: grafana/tempo:2.6.1
-    container_name: stacklion-tempo
+    container_name: arche-tempo
     command: ["-config.file=/etc/tempo.yaml"]
     volumes:
       - ./tempo.yaml:/etc/tempo.yaml:ro
@@ -105,7 +105,7 @@ services:
 
   grafana:
     image: grafana/grafana:11.2.0
-    container_name: stacklion-grafana
+    container_name: arche-grafana
     ports: ["3000:3000"]
     # Minimal hardening
     read_only: true

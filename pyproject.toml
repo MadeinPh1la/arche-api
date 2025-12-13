@@ -3,12 +3,12 @@ requires = ["setuptools>=70", "wheel"]
 build-backend = "setuptools.build_meta"
 
 [project]
-name = "stacklion-api"
+name = "arche-api"
 version = "0.1.0"
 description = "Professional-grade financial data API (Clean Architecture, FastAPI, SQLAlchemy, Pydantic v2, Redis)"
 readme = "README.md"
 requires-python = ">=3.12"
-authors = [{ name = "Stacklion / Kevin Downey" }]
+authors = [{ name = "Protos Systems / Kevin Downey" }]
 license = { text = "Proprietary" }
 classifiers = [
   "Programming Language :: Python :: 3",
