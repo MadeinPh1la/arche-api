@@ -7,7 +7,7 @@ import pytest
 
 pytest.importorskip("opentelemetry")
 
-from stacklion_api.infrastructure.observability import otel
+from arche_api.infrastructure.observability import otel
 
 
 class _FakeSettings:
@@ -87,7 +87,7 @@ def test_init_otel_respects_enabled_flag(monkeypatch: pytest.MonkeyPatch, enable
 
     state = _install_exporter_fakes(monkeypatch)
 
-    otel.init_otel(service_name="stacklion-api", service_version="1.2.3")
+    otel.init_otel(service_name="arche_api", service_version="1.2.3")
 
     if not enabled:
         # No exporters or providers should be set when OTEL is disabled.
@@ -110,7 +110,7 @@ def test_init_otel_uses_default_exporters_when_no_endpoint(monkeypatch: pytest.M
 
     state = _install_exporter_fakes(monkeypatch)
 
-    otel.init_otel(service_name="stacklion-api", service_version="0.0.1")
+    otel.init_otel(service_name="arche_api", service_version="0.0.1")
 
     # One span exporter and one metric exporter, with endpoint kwarg omitted.
     assert state["span_exporter_endpoints"] == [None]

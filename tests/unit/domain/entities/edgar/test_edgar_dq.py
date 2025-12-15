@@ -1,5 +1,5 @@
 # tests/unit/domain/entities/test_edgar_dq.py
-# Copyright (c) Stacklion.
+# Copyright (c) Arche.
 # SPDX-License-Identifier: MIT
 """Unit tests for EDGAR data-quality domain entities."""
 
@@ -12,13 +12,13 @@ from typing import Any
 
 import pytest
 
-from stacklion_api.domain.entities.edgar_dq import (
+from arche_api.domain.entities.edgar_dq import (
     EdgarDQAnomaly,
     EdgarDQRun,
     EdgarFactQuality,
     NormalizedStatementIdentity,
 )
-from stacklion_api.domain.enums.edgar import FiscalPeriod, MaterialityClass, StatementType
+from arche_api.domain.enums.edgar import FiscalPeriod, MaterialityClass, StatementType
 
 
 def test_normalized_statement_identity_basic_equality_and_hash() -> None:

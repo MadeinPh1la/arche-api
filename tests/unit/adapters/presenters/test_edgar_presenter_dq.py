@@ -7,8 +7,8 @@ from __future__ import annotations
 
 from datetime import UTC, date, datetime
 
-from stacklion_api.adapters.presenters.edgar_presenter import EdgarPresenter
-from stacklion_api.adapters.schemas.http.edgar_schemas import (
+from arche_api.adapters.presenters.edgar_presenter import EdgarPresenter
+from arche_api.adapters.schemas.http.edgar_schemas import (
     DQAnomalyHTTP,
     FactQualityHTTP,
     NormalizedFactHTTP,
@@ -16,8 +16,8 @@ from stacklion_api.adapters.schemas.http.edgar_schemas import (
     RunStatementDQResultHTTP,
     StatementDQOverlayHTTP,
 )
-from stacklion_api.adapters.schemas.http.envelopes import SuccessEnvelope
-from stacklion_api.application.schemas.dto.edgar_dq import (
+from arche_api.adapters.schemas.http.envelopes import SuccessEnvelope
+from arche_api.application.schemas.dto.edgar_dq import (
     DQAnomalyDTO,
     FactQualityDTO,
     NormalizedFactDTO,
@@ -25,7 +25,7 @@ from stacklion_api.application.schemas.dto.edgar_dq import (
     RunStatementDQResultDTO,
     StatementDQOverlayDTO,
 )
-from stacklion_api.domain.enums.edgar import (
+from arche_api.domain.enums.edgar import (
     AccountingStandard,
     FiscalPeriod,
     MaterialityClass,

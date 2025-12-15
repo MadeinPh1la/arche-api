@@ -52,9 +52,9 @@ from sqlalchemy import pool
 from sqlalchemy.engine import Connection
 from sqlalchemy.ext.asyncio import AsyncEngine, create_async_engine
 
-from stacklion_api.infrastructure.database.models import ref as _ref_models  # noqa: F401
-from stacklion_api.infrastructure.database.models import sec as _sec_models  # noqa: F401
-from stacklion_api.infrastructure.database.models.base import metadata as BaseMetadata
+from arche_api.infrastructure.database.models import ref as _ref_models  # noqa: F401
+from arche_api.infrastructure.database.models import sec as _sec_models  # noqa: F401
+from arche_api.infrastructure.database.models.base import metadata as BaseMetadata
 
 try:
     from dotenv import load_dotenv

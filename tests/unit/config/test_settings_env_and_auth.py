@@ -5,14 +5,14 @@ import os
 import pytest
 from pydantic import ValidationError
 
-from stacklion_api.config.settings import Environment, Settings
+from arche_api.config.settings import Environment, Settings
 
 
 def _set_minimal_core_env(monkeypatch: pytest.MonkeyPatch) -> None:
     """Helper to satisfy required core settings."""
     monkeypatch.setenv(
         "DATABASE_URL",
-        "postgresql+asyncpg://user:pass@localhost:5432/stacklion_test",
+        "postgresql+asyncpg://user:pass@localhost:5432/arche_test",
     )
     monkeypatch.setenv("REDIS_URL", "redis://localhost:6379/0")
 

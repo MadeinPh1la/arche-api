@@ -4,17 +4,17 @@ import httpx
 import pytest
 from fastapi import FastAPI
 
-from stacklion_api.application.schemas.dto.edgar_derived import (
+from arche_api.application.schemas.dto.edgar_derived import (
     EdgarDerivedMetricsPointDTO,
 )
-from stacklion_api.dependencies.edgar import get_edgar_controller
-from stacklion_api.domain.enums.derived_metric import DerivedMetric
-from stacklion_api.domain.enums.edgar import (
+from arche_api.dependencies.edgar import get_edgar_controller
+from arche_api.domain.enums.derived_metric import DerivedMetric
+from arche_api.domain.enums.edgar import (
     AccountingStandard,
     FiscalPeriod,
     StatementType,
 )
-from stacklion_api.domain.exceptions.edgar import EdgarMappingError
+from arche_api.domain.exceptions.edgar import EdgarMappingError
 
 
 def _derived_metrics_path(app: FastAPI) -> str:

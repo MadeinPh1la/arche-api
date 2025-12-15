@@ -1,4 +1,4 @@
-# Copyright (c) Stacklion.
+# Copyright (c) Arche.
 # SPDX-License-Identifier: MIT
 """Unit tests for EdgarPresenter."""
 
@@ -6,18 +6,18 @@ from __future__ import annotations
 
 from datetime import date
 
-from stacklion_api.adapters.presenters.edgar_presenter import EdgarPresenter
-from stacklion_api.adapters.schemas.http.edgar_schemas import (
+from arche_api.adapters.presenters.edgar_presenter import EdgarPresenter
+from arche_api.adapters.schemas.http.edgar_schemas import (
     EdgarFilingHTTP,
     EdgarStatementVersionListHTTP,
     EdgarStatementVersionSummaryHTTP,
 )
-from stacklion_api.adapters.schemas.http.envelopes import PaginatedEnvelope, SuccessEnvelope
-from stacklion_api.application.schemas.dto.edgar import (
+from arche_api.adapters.schemas.http.envelopes import PaginatedEnvelope, SuccessEnvelope
+from arche_api.application.schemas.dto.edgar import (
     EdgarFilingDTO,
     EdgarStatementVersionDTO,
 )
-from stacklion_api.domain.enums.edgar import (
+from arche_api.domain.enums.edgar import (
     AccountingStandard,
     FilingType,
     FiscalPeriod,

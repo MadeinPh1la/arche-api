@@ -4,7 +4,7 @@ from __future__ import annotations
 import pytest
 from fastapi import FastAPI
 
-from stacklion_api.dependencies.core.bootstrap import bootstrap
+from arche_api.dependencies.core.bootstrap import bootstrap
 
 
 @pytest.mark.asyncio
@@ -13,8 +13,8 @@ async def test_bootstrap_cleans_up_on_errors(monkeypatch: pytest.MonkeyPatch):
     app = FastAPI()
 
     # Patch out engine/redis init so they don't touch real infrastructure.
-    import stacklion_api.infrastructure.caching.redis_client as redis_client
-    import stacklion_api.infrastructure.database.session as db_session
+    import arche_api.infrastructure.caching.redis_client as redis_client
+    import arche_api.infrastructure.database.session as db_session
 
     monkeypatch.setattr(db_session, "init_engine_and_sessionmaker", lambda s: None, raising=True)
     monkeypatch.setattr(redis_client, "init_redis", lambda s: None, raising=True)

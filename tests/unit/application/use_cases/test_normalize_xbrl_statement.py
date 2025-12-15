@@ -2,22 +2,22 @@ import datetime
 
 import pytest
 
-from stacklion_api.application.uow import UnitOfWork
-from stacklion_api.application.use_cases.statements.normalize_xbrl_statement import (
+from arche_api.application.uow import UnitOfWork
+from arche_api.application.use_cases.statements.normalize_xbrl_statement import (
     NormalizeXBRLStatementRequest,
     NormalizeXBRLStatementUseCase,
 )
-from stacklion_api.domain.entities.edgar_company import EdgarCompanyIdentity
-from stacklion_api.domain.entities.edgar_filing import EdgarFiling
-from stacklion_api.domain.entities.edgar_statement_version import EdgarStatementVersion
-from stacklion_api.domain.entities.xbrl_document import (
+from arche_api.domain.entities.edgar_company import EdgarCompanyIdentity
+from arche_api.domain.entities.edgar_filing import EdgarFiling
+from arche_api.domain.entities.edgar_statement_version import EdgarStatementVersion
+from arche_api.domain.entities.xbrl_document import (
     XBRLContext,
     XBRLDocument,
     XBRLFact,
     XBRLPeriod,
     XBRLUnit,
 )
-from stacklion_api.domain.enums.edgar import (
+from arche_api.domain.enums.edgar import (
     AccountingStandard,
     FilingType,
     FiscalPeriod,

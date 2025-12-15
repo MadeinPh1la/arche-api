@@ -1,5 +1,5 @@
 # tests/unit/infrastructure/test_idempotency_middleware_unit.py
-# Copyright (c) Stacklion.
+# Copyright (c) Arche.
 # SPDX-License-Identifier: MIT
 """Unit tests for IdempotencyMiddleware control flow.
 
@@ -19,7 +19,7 @@ from fastapi import FastAPI, Request
 from fastapi.responses import JSONResponse
 from httpx import ASGITransport, AsyncClient
 
-from stacklion_api.infrastructure.middleware import idempotency as idem_mod
+from arche_api.infrastructure.middleware import idempotency as idem_mod
 
 
 class _FakeRecord:

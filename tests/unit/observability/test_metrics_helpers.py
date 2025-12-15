@@ -1,6 +1,6 @@
 import pytest
 
-from stacklion_api.infrastructure.observability import metrics_market_data as m
+from arche_api.infrastructure.observability import metrics_market_data as m
 
 
 def test_inc_market_data_error_labels():

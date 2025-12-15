@@ -1,8 +1,8 @@
-# Stacklion Architecture Overview
+# Arche Architecture Overview
 
 **Clean Architecture • Deterministic Data Platform • World-Class Reliability**
 
-This document describes the **runtime, structural, and dependency architecture** of Stacklion.
+This document describes the **runtime, structural, and dependency architecture** of Arche.
 It complements `ENGINEERING_GUIDE.md` and is enforced by executable tests in:
 
 ```
@@ -26,13 +26,13 @@ This document explains:
 * How entrypoints like HTTP routers and MCP capabilities fit in
 * How EDGAR and Marketstack ingestion pipelines move through the architecture
 
-This is the contract that protects Stacklion from entropy, accidental tight coupling, and long-term maintainability failures.
+This is the contract that protects Arche from entropy, accidental tight coupling, and long-term maintainability failures.
 
 ---
 
 # **1. Core Principles**
 
-Stacklion is architected as a **deterministic financial modeling platform**.
+Arche is architected as a **deterministic financial modeling platform**.
 Every layer exists to uphold:
 
 ### **1.1 Isolation**
@@ -89,7 +89,7 @@ No layer may depend on a layer above it.
 
 # **3. Domain Layer**
 
-**Location:** `src/stacklion_api/domain/`
+**Location:** `src/arche_api/domain/`
 
 The domain layer contains **pure, dependency-free logic**:
 
@@ -110,7 +110,7 @@ Domain code MUST:
 
 ### **Why?**
 
-Domain is the **core of Stacklion**.
+Domain is the **core of Arche**.
 It must remain engine-agnostic and provider-agnostic.
 
 ### **Tests enforcing this**
@@ -122,7 +122,7 @@ It must remain engine-agnostic and provider-agnostic.
 
 # **4. Application Layer**
 
-**Location:** `src/stacklion_api/application/`
+**Location:** `src/arche_api/application/`
 
 The application layer expresses **use cases**, not implementation details.
 
@@ -154,7 +154,7 @@ It may **never**:
 Repository resolution must occur via:
 
 ```python
-module = import_module("stacklion_api.adapters.repositories.edgar_statements_repository")
+module = import_module("arche_api.adapters.repositories.edgar_statements_repository")
 repo_cls = module.EdgarStatementsRepository
 statements_repo = tx.get_repository(repo_cls)
 ```
@@ -169,7 +169,7 @@ statements_repo = tx.get_repository(repo_cls)
 
 # **5. Adapters Layer**
 
-**Location:** `src/stacklion_api/adapters/`
+**Location:** `src/arche_api/adapters/`
 
 Adapters implement the **edges of the system**.
 
@@ -218,7 +218,7 @@ Repositories must:
 
 # **6. Infrastructure Layer**
 
-**Location:** `src/stacklion_api/infrastructure/`
+**Location:** `src/arche_api/infrastructure/`
 
 This layer implements raw capabilities:
 
@@ -294,7 +294,7 @@ These implementations:
 ### **Correct**
 
 ```python
-module = import_module("stacklion_api.adapters.repositories.edgar_statements_repository")
+module = import_module("arche_api.adapters.repositories.edgar_statements_repository")
 repo_cls = module.EdgarStatementsRepository
 repo = tx.get_repository(repo_cls)
 ```
@@ -304,7 +304,7 @@ repo = tx.get_repository(repo_cls)
 Application layer:
 
 ```python
-from stacklion_api.adapters.repositories.edgar_statements_repository import EdgarStatementsRepository  # ❌
+from arche_api.adapters.repositories.edgar_statements_repository import EdgarStatementsRepository  # ❌
 repo = EdgarStatementsRepository(session)  # ❌
 ```
 
@@ -348,7 +348,7 @@ Architecture tests statically scan the import graph:
 * If routers lack versioned prefixes → FAIL
 * If repositories are constructed outside UoW → FAIL
 
-This ensures Stacklion remains scalable under continuous expansion.
+This ensures Arche remains scalable under continuous expansion.
 
 ---
 
@@ -402,7 +402,7 @@ The architecture ensures tests never depend on infrastructure.
 
 # **15. Why This Architecture Matters**
 
-This architecture is intentionally strict because Stacklion targets **financial modeling parity with professional platforms**:
+This architecture is intentionally strict because Arche targets **financial modeling parity with professional platforms**:
 
 * Deterministic versioning
 * Predictable ingestion
@@ -440,4 +440,4 @@ This document works in tandem with:
 # **17. Final Notes**
 
 This architecture is not optional.
-It is the backbone of Stacklion's long-term maintainability and professional-grade expansion.
+It is the backbone of Arche's long-term maintainability and professional-grade expansion.

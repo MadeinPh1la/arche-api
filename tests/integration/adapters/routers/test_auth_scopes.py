@@ -5,7 +5,7 @@ import pytest
 from fastapi import Depends, FastAPI
 from fastapi.testclient import TestClient
 
-from stacklion_api.infrastructure.auth.jwt_dependency import Principal, auth_required
+from arche_api.infrastructure.auth.jwt_dependency import Principal, auth_required
 
 # B008-safe default instance so FastAPI does not treat the handler param as a required body
 _PRINCIPAL_DEFAULT = Principal()

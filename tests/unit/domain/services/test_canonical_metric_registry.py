@@ -5,9 +5,9 @@
 
 from __future__ import annotations
 
-from stacklion_api.domain.enums.canonical_statement_metric import CanonicalStatementMetric
-from stacklion_api.domain.enums.edgar import StatementType
-from stacklion_api.domain.services import canonical_metric_registry as reg
+from arche_api.domain.enums.canonical_statement_metric import CanonicalStatementMetric
+from arche_api.domain.enums.edgar import StatementType
+from arche_api.domain.services import canonical_metric_registry as reg
 
 
 def test_all_enum_members_have_registry_entries() -> None:

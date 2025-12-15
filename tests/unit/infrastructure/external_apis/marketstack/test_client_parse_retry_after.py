@@ -1,6 +1,6 @@
 from __future__ import annotations
 
-from stacklion_api.infrastructure.external_apis.marketstack.client import (
+from arche_api.infrastructure.external_apis.marketstack.client import (
     _parse_retry_after,
 )
 

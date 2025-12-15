@@ -8,8 +8,8 @@ from fastapi.dependencies.utils import get_dependant
 from fastapi.routing import APIRoute
 from httpx import ASGITransport, AsyncClient
 
-from stacklion_api.adapters.routers.health_router import HealthProbe
-from stacklion_api.main import create_app
+from arche_api.adapters.routers.health_router import HealthProbe
+from arche_api.main import create_app
 
 
 class _GoodProbe(HealthProbe):

@@ -1,14 +1,14 @@
 # .github/project-roadmap.yml
-# Declarative config for the Stacklion professional-class roadmap.
+# Declarative config for the Arche professional-class roadmap.
 
 project:
   owner: "MadeinPh1la"          # GitHub user or org that owns the project
   owner_type: "USER"            # "USER" or "ORGANIZATION"
-  name: "@MadeinPh1la's Stacklion API"
+  name: "@MadeinPh1la's Arche API"
   # No project_number: script will find or create by name.
 
 repository:
-  full_name: "MadeinPh1la/stacklion-api"
+  full_name: "MadeinPh1la/arche_api"
 
 phases:
   - code: "E9"
@@ -60,13 +60,13 @@ views:
   # Roadmap table grouped by milestone (configure manually in Project UI).
   - name: "Roadmap"
     layout: "TABLE"
-    filter: "is:issue repo:MadeinPh1la/stacklion-api"
+    filter: "is:issue repo:MadeinPh1la/arche_api"
     group_by_field: "Milestone"
 
   # Delivery Kanban for near-term work (E9 + E10).
   - name: "Delivery board"
     layout: "BOARD"
-    filter: "is:issue repo:MadeinPh1la/stacklion-api label:phase:E9,label:phase:E10"
+    filter: "is:issue repo:MadeinPh1la/arche_api label:phase:E9,label:phase:E10"
     group_by_field: "Status"
 
 # Project Status field configuration.

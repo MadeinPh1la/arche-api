@@ -8,12 +8,12 @@ from uuid import UUID
 import pytest
 from sqlalchemy.ext.asyncio import AsyncSession, async_sessionmaker, create_async_engine
 
-from stacklion_api.adapters.repositories.staging_repository import IngestKey, StagingRepository
-from stacklion_api.infrastructure.database.models.staging import IngestRun, RawPayload
+from arche_api.adapters.repositories.staging_repository import IngestKey, StagingRepository
+from arche_api.infrastructure.database.models.staging import IngestRun, RawPayload
 
 TEST_DATABASE_URL = os.getenv(
     "DATABASE_URL",
-    "postgresql+asyncpg://stacklion:stacklion@127.0.0.1:5432/stacklion_test",
+    "postgresql+asyncpg://arche:arche@127.0.0.1:5432/arche_test",
 )
 
 

@@ -8,18 +8,18 @@ from __future__ import annotations
 from datetime import date
 from decimal import Decimal
 
-from stacklion_api.adapters.presenters.fundamentals_presenter import (
+from arche_api.adapters.presenters.fundamentals_presenter import (
     present_fundamentals_time_series,
 )
-from stacklion_api.domain.entities.edgar_fundamentals_timeseries import (
+from arche_api.domain.entities.edgar_fundamentals_timeseries import (
     FundamentalsTimeSeriesPoint,
 )
-from stacklion_api.domain.enums.edgar import (
+from arche_api.domain.enums.edgar import (
     AccountingStandard,
     FiscalPeriod,
     StatementType,
 )
-from stacklion_api.domain.services.canonical_metric_registry import (
+from arche_api.domain.services.canonical_metric_registry import (
     get_tier1_metrics_for_statement_type,
 )
 

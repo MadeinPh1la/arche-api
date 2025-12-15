@@ -7,7 +7,7 @@ import re
 from pathlib import Path
 
 PROJECT_ROOT = Path(__file__).resolve().parents[2]
-SRC_ROOT = PROJECT_ROOT / "src" / "stacklion_api"
+SRC_ROOT = PROJECT_ROOT / "src" / "arche_api"
 USE_CASES_ROOT = SRC_ROOT / "application" / "use_cases"
 TESTS_ROOT = PROJECT_ROOT / "tests"
 
@@ -20,13 +20,13 @@ def _iter_use_case_modules() -> list[tuple[str, Path]]:
         if path.name == "__init__.py":
             continue
         rel = path.relative_to(SRC_ROOT)
-        module_name = "stacklion_api." + ".".join(rel.with_suffix("").parts)
+        module_name = "arche_api." + ".".join(rel.with_suffix("").parts)
         modules.append((module_name, path))
     return modules
 
 
 def _expected_test_path_for(module_path: Path) -> Path:
-    # src/stacklion_api/application/use_cases/foo/bar.py
+    # src/arche_api/application/use_cases/foo/bar.py
     # -> tests/unit/application/use_cases/test_bar.py
     name = module_path.stem
     return TESTS_ROOT / "unit" / "application" / "use_cases" / f"test_{name}.py"

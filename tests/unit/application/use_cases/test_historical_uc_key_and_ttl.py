@@ -5,12 +5,12 @@ from datetime import UTC, datetime
 
 import pytest
 
-from stacklion_api.application.schemas.dto.quotes import HistoricalBarDTO, HistoricalQueryDTO
-from stacklion_api.application.use_cases.quotes.get_historical_quotes import (
+from arche_api.application.schemas.dto.quotes import HistoricalBarDTO, HistoricalQueryDTO
+from arche_api.application.use_cases.quotes.get_historical_quotes import (
     GetHistoricalQuotesUseCase,
 )
-from stacklion_api.domain.entities.historical_bar import BarInterval
-from stacklion_api.infrastructure.caching.json_cache import TTL_EOD_S, TTL_INTRADAY_RECENT_S
+from arche_api.domain.entities.historical_bar import BarInterval
+from arche_api.infrastructure.caching.json_cache import TTL_EOD_S, TTL_INTRADAY_RECENT_S
 
 
 class RecordingCache:

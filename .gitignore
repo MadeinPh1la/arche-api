@@ -100,3 +100,15 @@ htmlcov/
 .ruff_cache/
 __pycache__/
 .DS_Store
+
+# IDE / OS junk
+.DS_Store
+.idea/
+__pycache__/
+*.pyc
+
+# macOS / IDE / python cache
+.DS_Store
+.idea/
+__pycache__/
+*.py[cod]

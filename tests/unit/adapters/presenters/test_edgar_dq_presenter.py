@@ -3,25 +3,25 @@
 from datetime import date, datetime
 from uuid import uuid4
 
-from stacklion_api.adapters.presenters.edgar_dq_presenter import (
+from arche_api.adapters.presenters.edgar_dq_presenter import (
     present_run_statement_dq,
     present_statement_dq_overlay,
 )
-from stacklion_api.adapters.schemas.http.edgar_dq_schemas import (
+from arche_api.adapters.schemas.http.edgar_dq_schemas import (
     DQAnomalyHTTP,
     FactQualityHTTP,
     NormalizedFactHTTP,
     RunStatementDQResultHTTP,
     StatementDQOverlayHTTP,
 )
-from stacklion_api.application.schemas.dto.edgar_dq import (
+from arche_api.application.schemas.dto.edgar_dq import (
     DQAnomalyDTO,
     FactQualityDTO,
     NormalizedFactDTO,
     RunStatementDQResultDTO,
     StatementDQOverlayDTO,
 )
-from stacklion_api.domain.enums.edgar import (
+from arche_api.domain.enums.edgar import (
     AccountingStandard,
     FiscalPeriod,
     MaterialityClass,

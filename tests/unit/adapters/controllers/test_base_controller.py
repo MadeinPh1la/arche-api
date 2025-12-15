@@ -2,7 +2,7 @@ from __future__ import annotations
 
 import pytest
 
-from stacklion_api.adapters.controllers.base import BaseController
+from arche_api.adapters.controllers.base import BaseController
 
 
 def test_basecontroller_is_instantiable() -> None:

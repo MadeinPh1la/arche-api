@@ -19,9 +19,9 @@ from sqlalchemy import Boolean, Select, cast, select
 from sqlalchemy.exc import SQLAlchemyError
 from sqlalchemy.ext.asyncio import AsyncSession
 
-from stacklion_api.domain.entities.quote import Quote
-from stacklion_api.domain.exceptions import InfrastructureException
-from stacklion_api.infrastructure.database.models.md import QuoteModel
+from arche_api.domain.entities.quote import Quote
+from arche_api.domain.exceptions import InfrastructureException
+from arche_api.infrastructure.database.models.md import QuoteModel
 
 
 class SQLAlchemyQuoteRepository:

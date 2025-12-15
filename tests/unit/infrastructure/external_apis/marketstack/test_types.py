@@ -1,6 +1,6 @@
 from __future__ import annotations
 
-from stacklion_api.infrastructure.external_apis.marketstack.types import (
+from arche_api.infrastructure.external_apis.marketstack.types import (
     MarketstackLatestItem,
     MarketstackLatestResponse,
 )

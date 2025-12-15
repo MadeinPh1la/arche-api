@@ -1,4 +1,4 @@
-# Copyright (c) Stacklion.
+# Copyright (c) Arche.
 # SPDX-License-Identifier: MIT
 """Unit tests for MarketDataPresenter and helpers."""
 
@@ -7,12 +7,12 @@ from __future__ import annotations
 import pytest
 from fastapi import Response
 
-from stacklion_api.adapters.presenters.base_presenter import PresentResult
-from stacklion_api.adapters.presenters.market_data_presenter import (
+from arche_api.adapters.presenters.base_presenter import PresentResult
+from arche_api.adapters.presenters.market_data_presenter import (
     MarketDataPresenter,
     _normalize_if_none_match,
 )
-from stacklion_api.adapters.schemas.http.envelopes import PaginatedEnvelope
+from arche_api.adapters.schemas.http.envelopes import PaginatedEnvelope
 
 
 @pytest.mark.parametrize(
@@ -71,7 +71,7 @@ async def test_present_list_with_etag_returns_304_when_tag_matches() -> None:
     # Build the exact payload hashed by presenter
     payload = {"page": 1, "page_size": 1, "total": 1, "items": [{"x": 1}]}
     # Import the internal helper just for the test to compute the expected strong tag
-    from stacklion_api.adapters.presenters.market_data_presenter import (  # type: ignore
+    from arche_api.adapters.presenters.market_data_presenter import (  # type: ignore
         _compute_quoted_etag as _hash,
     )
 

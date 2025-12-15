@@ -6,7 +6,7 @@ import os
 import pytest
 from sqlalchemy.ext.asyncio import AsyncSession, async_sessionmaker, create_async_engine
 
-from stacklion_api.application.use_cases.external_apis.edgar.ingest_edgar_filings import (
+from arche_api.application.use_cases.external_apis.edgar.ingest_edgar_filings import (
     EdgarGateway,
     IngestEdgarFilings,
     IngestEdgarRequest,
@@ -15,7 +15,7 @@ from stacklion_api.application.use_cases.external_apis.edgar.ingest_edgar_filing
 # Use CI-friendly DB URL by default, overridable via env for local dev.
 TEST_DATABASE_URL = os.getenv(
     "DATABASE_URL",
-    "postgresql+asyncpg://stacklion:stacklion@127.0.0.1:5432/stacklion_test",
+    "postgresql+asyncpg://arche:arche@127.0.0.1:5432/arche_test",
 )
 
 

@@ -1,6 +1,6 @@
 from __future__ import annotations
 
-from stacklion_api.infrastructure.observability.metrics import (
+from arche_api.infrastructure.observability.metrics import (
     get_data_lag_seconds,
     get_ingest_errors_total,
     get_ingest_latency_seconds,

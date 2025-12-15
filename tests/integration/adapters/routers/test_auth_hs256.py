@@ -5,7 +5,7 @@ import jwt
 import pytest
 from starlette.testclient import TestClient
 
-from stacklion_api.main import create_app
+from arche_api.main import create_app
 
 
 @pytest.fixture(autouse=True)

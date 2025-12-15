@@ -2,7 +2,7 @@ from __future__ import annotations
 
 from fastapi.testclient import TestClient
 
-from stacklion_api.main import create_app
+from arche_api.main import create_app
 
 
 def test_trace_id_header_is_echoed_and_used_in_error_envelope():

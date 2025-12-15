@@ -2,13 +2,13 @@
 
 set -euo pipefail
 
-GITHUB_REPO="${GITHUB_REPO:-MadeinPh1la/stacklion-api}"
+GITHUB_REPO="${GITHUB_REPO:-MadeinPh1la/arche_api}"
 DEFAULT_ASSIGNEE="${DEFAULT_ASSIGNEE:-REPLACE_ME}"
 
 # Usage:
 #   export GITHUB_REPO="your/repo"
 #   export DEFAULT_ASSIGNEE="your-github-username"
-#   ./stacklion_all_phases_gh_issues.sh
+#   ./arche_all_phases_gh_issues.sh
 
 echo "Using repo: $GITHUB_REPO"
 echo "Default assignee: $DEFAULT_ASSIGNEE"

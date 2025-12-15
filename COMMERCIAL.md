@@ -1,8 +1,8 @@
-# Commercial Licensing – Stacklion API
+# Commercial Licensing – Arche API
 
 © 2025 Northern Lion Labs LLC. All rights reserved.
 
-Stacklion API is made available under the **Business Source License 1.1 (BSL 1.1)**.
+Arche API is made available under the **Business Source License 1.1 (BSL 1.1)**.
 This license allows open access to the source code for learning, evaluation,
 and internal use, but **requires a commercial license for production or
 monetized deployments**.
@@ -20,11 +20,11 @@ monetized deployments**.
 
 ## What Requires a Commercial License
 
-🚫 Hosting Stacklion or derivative services for third parties
-🚫 Deploying Stacklion in a production environment (internal or external)
-🚫 Including Stacklion’s modeling, forecasting, or valuation components in a
+🚫 Hosting Arche or derivative services for third parties
+🚫 Deploying Arche in a production environment (internal or external)
+🚫 Including Arche’s modeling, forecasting, or valuation components in a
 commercial product
-🚫 Offering Stacklion or a modified version as a paid or SaaS product
+🚫 Offering Arche or a modified version as a paid or SaaS product
 
 ---
 
@@ -34,7 +34,7 @@ For production or commercial use, contact:
 
 **Northern Lion Labs LLC**
 📧 licensing@northernlionlabs.com
-🌐 [https://stacklion.io](https://stacklion.io)
+🌐 [https://arche.io](https://arche.io)
 
 Include the following:
 - Organization name
@@ -59,8 +59,8 @@ terms.
 
 Client SDKs and schema tooling are licensed under the **MIT License** to promote
 developer adoption.
-Please check the respective repositories (e.g., `stacklion-sdk-python`,
-`stacklion-sdk-js`) for individual license terms.
+Please check the respective repositories (e.g., `arche-sdk-python`,
+`arche-sdk-js`) for individual license terms.
 
 ---
 

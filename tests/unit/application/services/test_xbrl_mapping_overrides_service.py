@@ -5,14 +5,14 @@ from typing import Any
 
 import pytest
 
-from stacklion_api.application.services.xbrl_mapping_overrides import (
+from arche_api.application.services.xbrl_mapping_overrides import (
     XBRLMappingOverridesService,
 )
-from stacklion_api.domain.enums.canonical_statement_metric import CanonicalStatementMetric
-from stacklion_api.domain.interfaces.repositories.xbrl_mapping_overrides_repository import (
+from arche_api.domain.enums.canonical_statement_metric import CanonicalStatementMetric
+from arche_api.domain.interfaces.repositories.xbrl_mapping_overrides_repository import (
     XBRLMappingOverridesRepository,
 )
-from stacklion_api.domain.services.xbrl_mapping_overrides import (
+from arche_api.domain.services.xbrl_mapping_overrides import (
     MappingOverrideRule,
     OverrideScope,
 )

@@ -4,8 +4,8 @@ import pytest
 from pydantic import ValidationError
 
 # The package is installed editable ("-e ."), so import from the real package root,
-# not "src.stacklion_api".
-from stacklion_api.config.settings import Environment, Settings
+# not "src.arche_api".
+from arche_api.config.settings import Environment, Settings
 
 
 def test_settings_read_from_environment(monkeypatch: pytest.MonkeyPatch) -> None:
@@ -13,10 +13,10 @@ def test_settings_read_from_environment(monkeypatch: pytest.MonkeyPatch) -> None
     monkeypatch.setenv("ENVIRONMENT", "test")
     monkeypatch.setenv(
         "DATABASE_URL",
-        "postgresql+asyncpg://postgres:postgres@localhost:5432/stacklion_test",
+        "postgresql+asyncpg://postgres:postgres@localhost:5432/arche_test",
     )
     monkeypatch.setenv("REDIS_URL", "redis://localhost:6379/0")
-    monkeypatch.setenv("JWT_ISSUER", "stacklion-test")
+    monkeypatch.setenv("JWT_ISSUER", "arche-test")
 
     s = Settings()
 
@@ -25,7 +25,7 @@ def test_settings_read_from_environment(monkeypatch: pytest.MonkeyPatch) -> None
     assert s.redis_url.startswith("redis://")
     # Optional if present in your model:
     if hasattr(s, "jwt_issuer"):
-        assert s.jwt_issuer == "stacklion-test"
+        assert s.jwt_issuer == "arche-test"
 
 
 def test_settings_forbid_extra_fields() -> None:

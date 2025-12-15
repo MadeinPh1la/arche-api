@@ -3,13 +3,13 @@ from contextlib import contextmanager
 
 import pytest
 
-from stacklion_api.config.settings import get_settings
+from arche_api.config.settings import get_settings
 
 
 def _req_env(**over):
     base = {
         "ENVIRONMENT": "production",
-        "DATABASE_URL": "postgresql+asyncpg://stacklion:stacklion@localhost:5432/stacklion_test",
+        "DATABASE_URL": "postgresql+asyncpg://arche:arche@localhost:5432/arche_test",
         "REDIS_URL": "redis://localhost:6379/0",
         "CLERK_ISSUER": "https://example.clerk.accounts.dev",
     }

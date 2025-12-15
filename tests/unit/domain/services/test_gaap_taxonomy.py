@@ -8,16 +8,16 @@ from datetime import date
 
 import pytest
 
-from stacklion_api.domain.entities.xbrl_document import (
+from arche_api.domain.entities.xbrl_document import (
     XBRLContext,
     XBRLDimension,
     XBRLFact,
     XBRLPeriod,
     XBRLUnit,
 )
-from stacklion_api.domain.enums.canonical_statement_metric import CanonicalStatementMetric
-from stacklion_api.domain.exceptions.edgar import EdgarMappingError
-from stacklion_api.domain.services.gaap_taxonomy import (
+from arche_api.domain.enums.canonical_statement_metric import CanonicalStatementMetric
+from arche_api.domain.exceptions.edgar import EdgarMappingError
+from arche_api.domain.services.gaap_taxonomy import (
     GAAPTaxonomy,
     build_minimal_gaap_taxonomy,
 )
@@ -83,7 +83,7 @@ def test_validate_fact_instant_period_mismatch_raises() -> None:
 
 def test_validate_fact_duration_period_mismatch_raises() -> None:
     # Create a concept that requires instant, then give duration context.
-    from stacklion_api.domain.services.gaap_taxonomy import GAAPConcept
+    from arche_api.domain.services.gaap_taxonomy import GAAPConcept
 
     concept = GAAPConcept(
         concept_qname="us-gaap:Assets",

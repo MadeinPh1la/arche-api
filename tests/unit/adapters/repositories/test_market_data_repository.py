@@ -8,18 +8,18 @@ from uuid import uuid4
 import pytest
 from sqlalchemy.ext.asyncio import AsyncSession, async_sessionmaker, create_async_engine
 
-from stacklion_api.adapters.repositories.market_data_repository import (
+from arche_api.adapters.repositories.market_data_repository import (
     IntradayBarRow,
     MarketDataRepository,
 )
-from stacklion_api.infrastructure.observability.metrics import (
+from arche_api.infrastructure.observability.metrics import (
     get_db_operation_duration_seconds,
 )
 
 # Use the same database URL as CI by default, but allow overrides via env.
 TEST_DATABASE_URL = os.getenv(
     "DATABASE_URL",
-    "postgresql+asyncpg://stacklion:stacklion@127.0.0.1:5432/stacklion_test",
+    "postgresql+asyncpg://arche:arche@127.0.0.1:5432/arche_test",
 )
 
 

@@ -1,4 +1,4 @@
-# Copyright (c) Stacklion.
+# Copyright (c) Arche.
 # SPDX-License-Identifier: MIT
 from __future__ import annotations
 
@@ -10,15 +10,15 @@ from decimal import Decimal
 import pytest
 from pydantic import SecretStr
 
-from stacklion_api.application.schemas.dto.quotes import HistoricalBarDTO
-from stacklion_api.dependencies.market_data import (
+from arche_api.application.schemas.dto.quotes import HistoricalBarDTO
+from arche_api.dependencies.market_data import (
     DeterministicMarketDataGateway,
     InMemoryAsyncCache,
     _is_deterministic_mode,  # intentionally testing private helper
 )
-from stacklion_api.domain.entities.historical_bar import BarInterval
-from stacklion_api.domain.exceptions.market_data import MarketDataValidationError
-from stacklion_api.infrastructure.external_apis.marketstack.settings import MarketstackSettings
+from arche_api.domain.entities.historical_bar import BarInterval
+from arche_api.domain.exceptions.market_data import MarketDataValidationError
+from arche_api.infrastructure.external_apis.marketstack.settings import MarketstackSettings
 
 
 def test_is_deterministic_mode_env_test() -> None:
@@ -28,7 +28,7 @@ def test_is_deterministic_mode_env_test() -> None:
     os.environ.pop("ENVIRONMENT", None)
 
 
-def test_is_deterministic_mode_stacklion_flag() -> None:
+def test_is_deterministic_mode_arche_flag() -> None:
     os.environ["STACKLION_TEST_MODE"] = "1"
     s = MarketstackSettings(base_url="u", access_key="x", timeout_s=1.0, max_retries=0)
     assert _is_deterministic_mode(s) is True

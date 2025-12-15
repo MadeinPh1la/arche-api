@@ -4,9 +4,9 @@ from __future__ import annotations
 import pytest
 from httpx import ASGITransport, AsyncClient
 
-from stacklion_api.mcp import server as mcp_server
-from stacklion_api.mcp.schemas.quotes_live import MCPQuote, QuotesLiveResult
-from stacklion_api.mcp.schemas.system import SystemHealthResult, SystemMetadataResult
+from arche_api.mcp import server as mcp_server
+from arche_api.mcp.schemas.quotes_live import MCPQuote, QuotesLiveResult
+from arche_api.mcp.schemas.system import SystemHealthResult, SystemMetadataResult
 
 
 @pytest.mark.anyio

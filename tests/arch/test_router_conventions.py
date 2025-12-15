@@ -8,18 +8,18 @@ from pathlib import Path
 from fastapi import APIRouter  # type: ignore[import]
 
 PROJECT_ROOT = Path(__file__).resolve().parents[2]
-SRC_ROOT = PROJECT_ROOT / "src" / "stacklion_api"
+SRC_ROOT = PROJECT_ROOT / "src" / "arche_api"
 ROUTERS_ROOT = SRC_ROOT / "adapters" / "routers"
 
 # Router modules that are allowed to have no /v1 prefix (e.g. top-level aggregator).
 PREFIX_EXEMPT_MODULES = {
-    "stacklion_api.adapters.routers.api_router",
-    "stacklion_api.adapters.routers.health_router",
-    "stacklion_api.adapters.routers.metrics_router",
-    "stacklion_api.adapters.routers.mcp_router",
+    "arche_api.adapters.routers.api_router",
+    "arche_api.adapters.routers.health_router",
+    "arche_api.adapters.routers.metrics_router",
+    "arche_api.adapters.routers.mcp_router",
     # Legitimate v2 market-data surfaces
-    "stacklion_api.adapters.routers.quotes_router",
-    "stacklion_api.adapters.routers.historical_quotes_router",
+    "arche_api.adapters.routers.quotes_router",
+    "arche_api.adapters.routers.historical_quotes_router",
 }
 
 
@@ -29,7 +29,7 @@ def _iter_router_files() -> list[tuple[str, Path]]:
         if path.name == "__init__.py":
             continue
         rel = path.relative_to(SRC_ROOT)
-        module_name = "stacklion_api." + ".".join(rel.with_suffix("").parts)
+        module_name = "arche_api." + ".".join(rel.with_suffix("").parts)
         modules.append((module_name, path))
     return modules
 
@@ -45,7 +45,7 @@ def test_routers_do_not_import_domain_entities() -> None:
             if (
                 isinstance(node, ast.ImportFrom)
                 and node.module
-                and node.module.startswith("stacklion_api.domain.entities")
+                and node.module.startswith("arche_api.domain.entities")
             ):
                 violations.append(
                     f"{module_name} imports domain.entities directly; routers must use HTTP schemas, "

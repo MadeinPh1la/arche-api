@@ -1,9 +1,9 @@
 # tests/arch/test_layering.py
-# Copyright (c) Stacklion.
+# Copyright (c) Arche.
 # SPDX-License-Identifier: MIT
 """Clean Architecture layering guardrail using grimp import graph.
 
-This test builds an import graph for the `stacklion_api` package and enforces
+This test builds an import graph for the `arche_api` package and enforces
 a strict layering policy:
 
     domain         → may depend only on domain
@@ -25,7 +25,7 @@ from typing import Final
 import grimp
 from grimp import ImportGraph
 
-ROOT_PACKAGE: Final[str] = "stacklion_api"
+ROOT_PACKAGE: Final[str] = "arche_api"
 
 # Map from top-level "layer" to the set of layers it is allowed to import.
 ALLOWED_DEPENDENCIES: Mapping[str, set[str]] = {
@@ -51,12 +51,12 @@ def _layer_for_module(module_name: str) -> str | None:
 
     We classify based on the first component after the root package:
 
-        stacklion_api.domain.*          → "domain"
-        stacklion_api.application.*     → "application"
-        stacklion_api.adapters.*        → "adapters"
-        stacklion_api.infrastructure.*  → "infrastructure"
+        arche_api.domain.*          → "domain"
+        arche_api.application.*     → "application"
+        arche_api.adapters.*        → "adapters"
+        arche_api.infrastructure.*  → "infrastructure"
 
-    Anything else (e.g. stacklion_api.config, stacklion_api.main) returns None
+    Anything else (e.g. arche_api.config, arche_api.main) returns None
     and is ignored for layering checks.
     """
     if not module_name.startswith(f"{ROOT_PACKAGE}."):

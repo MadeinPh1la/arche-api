@@ -4,7 +4,7 @@ from datetime import date
 
 from fastapi.testclient import TestClient
 
-from stacklion_api.main import create_app
+from arche_api.main import create_app
 
 
 def test_historical_400_when_from_after_to() -> None:

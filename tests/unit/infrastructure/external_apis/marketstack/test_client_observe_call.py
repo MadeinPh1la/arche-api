@@ -5,10 +5,10 @@ from typing import Any
 
 import pytest
 
-from stacklion_api.infrastructure.external_apis.marketstack.client import (
+from arche_api.infrastructure.external_apis.marketstack.client import (
     MarketstackClient,
 )
-from stacklion_api.infrastructure.external_apis.marketstack.settings import (
+from arche_api.infrastructure.external_apis.marketstack.settings import (
     MarketstackSettings,
 )
 
@@ -42,31 +42,31 @@ class NoopMetric:
 
 def patch_minimal_metrics(monkeypatch: pytest.MonkeyPatch) -> None:
     monkeypatch.setattr(
-        "stacklion_api.infrastructure.observability.metrics_market_data.get_market_data_gateway_latency_seconds",
+        "arche_api.infrastructure.observability.metrics_market_data.get_market_data_gateway_latency_seconds",
         lambda: NoopMetric(),
     )
     monkeypatch.setattr(
-        "stacklion_api.infrastructure.observability.metrics_market_data.get_market_data_errors_total",
+        "arche_api.infrastructure.observability.metrics_market_data.get_market_data_errors_total",
         lambda: NoopMetric(),
     )
     monkeypatch.setattr(
-        "stacklion_api.infrastructure.external_apis.marketstack.client._METRICS_FACTORY_HTTP_STATUS",
+        "arche_api.infrastructure.external_apis.marketstack.client._METRICS_FACTORY_HTTP_STATUS",
         lambda: NoopMetric(),
     )
     monkeypatch.setattr(
-        "stacklion_api.infrastructure.external_apis.marketstack.client._METRICS_FACTORY_RESPONSE_BYTES",
+        "arche_api.infrastructure.external_apis.marketstack.client._METRICS_FACTORY_RESPONSE_BYTES",
         lambda: NoopMetric(),
     )
     monkeypatch.setattr(
-        "stacklion_api.infrastructure.external_apis.marketstack.client._METRICS_FACTORY_RETRIES",
+        "arche_api.infrastructure.external_apis.marketstack.client._METRICS_FACTORY_RETRIES",
         lambda: NoopMetric(),
     )
     monkeypatch.setattr(
-        "stacklion_api.infrastructure.external_apis.marketstack.client._METRICS_FACTORY_304",
+        "arche_api.infrastructure.external_apis.marketstack.client._METRICS_FACTORY_304",
         lambda: NoopMetric(),
     )
     monkeypatch.setattr(
-        "stacklion_api.infrastructure.external_apis.marketstack.client._METRICS_FACTORY_BREAKER_EVENTS",
+        "arche_api.infrastructure.external_apis.marketstack.client._METRICS_FACTORY_BREAKER_EVENTS",
         lambda: NoopMetric(),
     )
 
@@ -76,7 +76,7 @@ def patch_retry_passthrough(monkeypatch: pytest.MonkeyPatch) -> None:
         return await func()
 
     monkeypatch.setattr(
-        "stacklion_api.infrastructure.external_apis.marketstack.client.retry_async",
+        "arche_api.infrastructure.external_apis.marketstack.client.retry_async",
         fake_retry,
     )
 

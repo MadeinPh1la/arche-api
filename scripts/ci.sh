@@ -18,7 +18,7 @@ export ENVIRONMENT=test
 export PYTHONUNBUFFERED=1
 
 # Match .env.tests and CI configuration exactly.
-export DATABASE_URL="postgresql+asyncpg://stacklion:stacklion@127.0.0.1:5432/stacklion_test"
+export DATABASE_URL="postgresql+asyncpg://arche:arche@127.0.0.1:5432/arche_test"
 export REDIS_URL="redis://127.0.0.1:6379/2"
 
 # 1) Format (no auto-fix in CI harness)
@@ -28,7 +28,7 @@ black --check .
 ruff check .
 
 # 3) Type-check
-mypy -p stacklion_api -p tests
+mypy -p arche_api -p tests
 
 # 4) Tests
 # Pytest picks up addopts (including coverage + cov-fail-under) from pyproject.toml

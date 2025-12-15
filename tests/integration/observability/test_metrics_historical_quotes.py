@@ -12,7 +12,7 @@ import respx
 from fastapi import FastAPI
 from fastapi.testclient import TestClient
 
-from stacklion_api.main import create_app
+from arche_api.main import create_app
 
 
 @pytest.fixture()
@@ -94,13 +94,13 @@ def test_metrics_exposed_and_increment_after_success(client: TestClient) -> None
 
     # Assert key metrics exist (rename if your project uses different names)
     # Histograms usually have _count/_sum/_bucket lines after first observation.
-    assert "stacklion_market_data_gateway_latency_seconds_bucket" in body
-    assert "stacklion_market_data_gateway_latency_seconds_count" in body
-    assert "stacklion_usecase_historical_quotes_latency_seconds_count" in body
+    assert "arche_market_data_gateway_latency_seconds_bucket" in body
+    assert "arche_market_data_gateway_latency_seconds_count" in body
+    assert "arche_usecase_historical_quotes_latency_seconds_count" in body
     # Cache either hit or miss; at least one counter should show up.
     assert (
-        "stacklion_market_data_cache_hits_total" in body
-        or "stacklion_market_data_cache_misses_total" in body
+        "arche_market_data_cache_hits_total" in body
+        or "arche_market_data_cache_misses_total" in body
     )
 
 
@@ -110,7 +110,7 @@ def test_metrics_error_paths_increment_counters(client: TestClient) -> None:
 
     We intentionally avoid asserting on specific label values or reason strings.
     The contract here is:
-        - the stacklion_market_data_errors_total metric exists, and
+        - the arche_market_data_errors_total metric exists, and
         - at least one instance of that metric has a value >= 1 after the 429 path.
     """
     # Make upstream return 429 to trigger rate-limited path
@@ -135,16 +135,16 @@ def test_metrics_error_paths_increment_counters(client: TestClient) -> None:
     body = prom.text
 
     # Error counter metric should be present.
-    assert "stacklion_market_data_errors_total" in body
+    assert "arche_market_data_errors_total" in body
 
     # Extract all non-comment lines for the error counter, e.g.:
-    # stacklion_market_data_errors_total{...labels...} 1.0
+    # arche_market_data_errors_total{...labels...} 1.0
     lines = [
         line
         for line in body.splitlines()
-        if line.startswith("stacklion_market_data_errors_total") and not line.startswith("#")
+        if line.startswith("arche_market_data_errors_total") and not line.startswith("#")
     ]
-    assert lines, "Expected at least one stacklion_market_data_errors_total metric line"
+    assert lines, "Expected at least one arche_market_data_errors_total metric line"
 
     # Parse the numeric values from the metric lines and ensure at least one
     # reflects an increment (value >= 1.0).
@@ -158,8 +158,8 @@ def test_metrics_error_paths_increment_counters(client: TestClient) -> None:
         except ValueError:
             continue
 
-    assert values, "Could not parse any numeric values for stacklion_market_data_errors_total"
+    assert values, "Could not parse any numeric values for arche_market_data_errors_total"
     assert any(v >= 1.0 for v in values), (
-        "Expected stacklion_market_data_errors_total to be incremented "
+        "Expected arche_market_data_errors_total to be incremented "
         "after exercising the upstream 429 error path"
     )

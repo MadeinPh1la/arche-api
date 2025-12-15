@@ -4,14 +4,14 @@ from dataclasses import replace
 
 import pytest
 
-from stacklion_api.domain.entities.xbrl_override_admin import (
+from arche_api.domain.entities.xbrl_override_admin import (
     OverrideRuleDraft,
     OverrideRuleVersion,
 )
-from stacklion_api.domain.enums.canonical_statement_metric import CanonicalStatementMetric
-from stacklion_api.domain.exceptions.edgar import EdgarMappingError
-from stacklion_api.domain.services.xbrl_mapping_overrides import OverrideScope
-from stacklion_api.domain.services.xbrl_override_validator import OverrideRuleValidator
+from arche_api.domain.enums.canonical_statement_metric import CanonicalStatementMetric
+from arche_api.domain.exceptions.edgar import EdgarMappingError
+from arche_api.domain.services.xbrl_mapping_overrides import OverrideScope
+from arche_api.domain.services.xbrl_override_validator import OverrideRuleValidator
 
 
 def _base_draft(scope: OverrideScope) -> OverrideRuleDraft:

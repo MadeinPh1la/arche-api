@@ -9,7 +9,7 @@ import math
 
 import pytest
 
-from stacklion_api.domain.entities.xbrl_document import (
+from arche_api.domain.entities.xbrl_document import (
     XBRLLabel,
     XBRLLinkbaseNetworks,
     XBRLPresentationArc,

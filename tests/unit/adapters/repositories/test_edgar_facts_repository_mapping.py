@@ -1,5 +1,5 @@
 # tests/unit/adapters/repositories/test_edgar_facts_repository_mapping.py
-# Copyright (c) Stacklion.
+# Copyright (c) Arche.
 # SPDX-License-Identifier: MIT
 """Unit tests for EDGAR normalized facts repository mapping helpers.
 
@@ -22,9 +22,9 @@ from decimal import Decimal
 from typing import Any
 from uuid import UUID, uuid4
 
-from stacklion_api.adapters.repositories.edgar_facts_repository import EdgarFactsRepository
-from stacklion_api.domain.entities.edgar_normalized_fact import EdgarNormalizedFact
-from stacklion_api.domain.enums.edgar import AccountingStandard, FiscalPeriod, StatementType
+from arche_api.adapters.repositories.edgar_facts_repository import EdgarFactsRepository
+from arche_api.domain.entities.edgar_normalized_fact import EdgarNormalizedFact
+from arche_api.domain.enums.edgar import AccountingStandard, FiscalPeriod, StatementType
 
 
 @dataclass

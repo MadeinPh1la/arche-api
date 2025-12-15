@@ -96,13 +96,13 @@ db-guard: _ensure-env-file
 fix: _ensure-venv
 	ruff check --fix .
 	black .
-	python -m mypy -p stacklion_api -p tests
+	python -m mypy -p arche_api -p tests
 
 .PHONY: check
 check: _ensure-venv
 	ruff check .
 	black --check .
-	python -m mypy -p stacklion_api -p tests
+	python -m mypy -p arche_api -p tests
 
 .PHONY: test
 test: _ensure-venv _ensure-env-file db-guard
@@ -112,7 +112,7 @@ test: _ensure-venv _ensure-env-file db-guard
 .PHONY: test-cov
 test-cov: _ensure-venv _ensure-env-file db-guard
 	@set -a; source "$(ENV_FILE)"; set +a; \
-	pytest -q --cov=stacklion_api --cov-report=term-missing
+	pytest -q --cov=arche_api --cov-report=term-missing
 
 # ------------------------------------------------------------------------------
 # Alembic (guarded)

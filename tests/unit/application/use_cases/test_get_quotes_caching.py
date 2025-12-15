@@ -7,12 +7,12 @@ from typing import Any
 
 import pytest
 
-from stacklion_api.application.use_cases.quotes.get_quotes import GetQuotes
-from stacklion_api.domain.entities.quote import Quote
-from stacklion_api.domain.interfaces.gateways.market_data_gateway import (
+from arche_api.application.use_cases.quotes.get_quotes import GetQuotes
+from arche_api.domain.entities.quote import Quote
+from arche_api.domain.interfaces.gateways.market_data_gateway import (
     MarketDataGatewayProtocol,
 )
-from stacklion_api.infrastructure.caching.json_cache import TTL_QUOTE_HOT_S
+from arche_api.infrastructure.caching.json_cache import TTL_QUOTE_HOT_S
 
 
 class RecordingCache:

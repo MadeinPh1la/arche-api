@@ -1,5 +1,5 @@
 # tests/unit/domain/services/test_fact_store_service.py
-# Copyright (c) Stacklion.
+# Copyright (c) Arche.
 # SPDX-License-Identifier: MIT
 """Unit tests for fact_store_service."""
 
@@ -10,11 +10,11 @@ from decimal import Decimal
 
 import pytest
 
-from stacklion_api.domain.entities.canonical_statement_payload import CanonicalStatementPayload
-from stacklion_api.domain.entities.edgar_normalized_fact import EdgarNormalizedFact
-from stacklion_api.domain.enums.canonical_statement_metric import CanonicalStatementMetric
-from stacklion_api.domain.enums.edgar import FiscalPeriod, StatementType
-from stacklion_api.domain.services.fact_store_service import (
+from arche_api.domain.entities.canonical_statement_payload import CanonicalStatementPayload
+from arche_api.domain.entities.edgar_normalized_fact import EdgarNormalizedFact
+from arche_api.domain.enums.canonical_statement_metric import CanonicalStatementMetric
+from arche_api.domain.enums.edgar import FiscalPeriod, StatementType
+from arche_api.domain.services.fact_store_service import (
     FactDerivationConfig,
     _infer_period_start,
     build_dimension_key,

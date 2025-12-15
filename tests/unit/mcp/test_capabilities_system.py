@@ -5,33 +5,33 @@ from dataclasses import dataclass
 
 import pytest
 
-from stacklion_api.mcp.capabilities import system_health as system_health_cap
-from stacklion_api.mcp.capabilities import system_metadata as system_metadata_cap
-from stacklion_api.mcp.client.stacklion_http import (
-    StacklionHTTPClient,
-    StacklionHTTPError,
-    StacklionHTTPResponse,
+from arche_api.mcp.capabilities import system_health as system_health_cap
+from arche_api.mcp.capabilities import system_metadata as system_metadata_cap
+from arche_api.mcp.client.arche_http import (
+    ArcheHTTPClient,
+    ArcheHTTPError,
+    ArcheHTTPResponse,
 )
-from stacklion_api.mcp.schemas.errors import MCPError
-from stacklion_api.mcp.schemas.system import SystemHealthResult, SystemMetadataResult
+from arche_api.mcp.schemas.errors import MCPError
+from arche_api.mcp.schemas.system import SystemHealthResult, SystemMetadataResult
 
 
 @dataclass
 class FakeSettings:
-    api_base_url: str = "https://api.stacklion.test"
+    api_base_url: str = "https://api.arche.test"
 
 
 @pytest.mark.anyio
 async def test_system_health_happy_path(monkeypatch: pytest.MonkeyPatch) -> None:
-    async def _fake_get_health(self: StacklionHTTPClient) -> StacklionHTTPResponse:
-        return StacklionHTTPResponse(
+    async def _fake_get_health(self: ArcheHTTPClient) -> ArcheHTTPResponse:
+        return ArcheHTTPResponse(
             status_code=200,
             headers={"x-request-id": "req-health-1"},
             body={"status": "ok"},
         )
 
     monkeypatch.setattr(
-        system_health_cap.StacklionHTTPClient,
+        system_health_cap.ArcheHTTPClient,
         "get_health",
         _fake_get_health,
         raising=False,
@@ -51,8 +51,8 @@ async def test_system_health_happy_path(monkeypatch: pytest.MonkeyPatch) -> None
 
 @pytest.mark.anyio
 async def test_system_health_error_path(monkeypatch: pytest.MonkeyPatch) -> None:
-    async def _fake_get_health_error(self: StacklionHTTPClient) -> StacklionHTTPResponse:
-        raise StacklionHTTPError(
+    async def _fake_get_health_error(self: ArcheHTTPClient) -> ArcheHTTPResponse:
+        raise ArcheHTTPError(
             message="health endpoint unavailable",
             status_code=503,
             error_code="INTERNAL_ERROR",
@@ -61,7 +61,7 @@ async def test_system_health_error_path(monkeypatch: pytest.MonkeyPatch) -> None
         )
 
     monkeypatch.setattr(
-        system_health_cap.StacklionHTTPClient,
+        system_health_cap.ArcheHTTPClient,
         "get_health",
         _fake_get_health_error,
         raising=False,

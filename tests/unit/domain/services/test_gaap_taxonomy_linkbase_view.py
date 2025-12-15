@@ -5,12 +5,12 @@
 
 from __future__ import annotations
 
-from stacklion_api.domain.entities.xbrl_document import (
+from arche_api.domain.entities.xbrl_document import (
     XBRLLabel,
     XBRLLinkbaseNetworks,
     XBRLPresentationArc,
 )
-from stacklion_api.domain.services.gaap_taxonomy import GaapTaxonomyView, PresentationNode
+from arche_api.domain.services.gaap_taxonomy import GaapTaxonomyView, PresentationNode
 
 
 def _build_linkbases_for_labels() -> XBRLLinkbaseNetworks:

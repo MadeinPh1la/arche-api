@@ -26,15 +26,15 @@ from sqlalchemy.ext.asyncio import (
     create_async_engine,
 )
 
-from stacklion_api.adapters.repositories.edgar_statement_alignment_repository import (
+from arche_api.adapters.repositories.edgar_statement_alignment_repository import (
     SqlAlchemyEdgarStatementAlignmentRepository,
 )
-from stacklion_api.domain.enums.edgar import FiscalPeriod, StatementType
-from stacklion_api.domain.interfaces.repositories.edgar_statement_alignment_repository import (
+from arche_api.domain.enums.edgar import FiscalPeriod, StatementType
+from arche_api.domain.interfaces.repositories.edgar_statement_alignment_repository import (
     StatementAlignmentRecord,
 )
-from stacklion_api.infrastructure.database.models.ref import Company
-from stacklion_api.infrastructure.database.models.sec import (
+from arche_api.infrastructure.database.models.ref import Company
+from arche_api.infrastructure.database.models.sec import (
     EdgarStatementAlignment,
     Filing,
     StatementVersion,
@@ -51,7 +51,7 @@ async def alignment_session() -> AsyncGenerator[AsyncSession, None]:
     """
     database_url = os.getenv(
         "DATABASE_URL",
-        "postgresql+asyncpg://stacklion:stacklion@127.0.0.1:5432/stacklion_test",
+        "postgresql+asyncpg://arche:arche@127.0.0.1:5432/arche_test",
     )
     engine: AsyncEngine = create_async_engine(database_url, future=True)
 

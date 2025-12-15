@@ -1,6 +1,6 @@
 # Engineering Quality Standard (EQS)
 
-**Scope:** This is the single source of truth for **typing, logging, SQLAlchemy, dependency injection (DI), testing, observability, security, performance, deployment hygiene, and Clean Architecture practice** across Stacklion.
+**Scope:** This is the single source of truth for **typing, logging, SQLAlchemy, dependency injection (DI), testing, observability, security, performance, deployment hygiene, and Clean Architecture practice** across Arche.
 
 - The public HTTP contract (routes, envelopes, errors, pagination, headers, versioning, idempotency) is defined in **`API_STANDARDS.md`** and is authoritative for anything “on the wire.”
 - If there’s any conflict: **`API_STANDARDS.md` wins for HTTP contracts; EQS wins for engineering practice.**
@@ -50,30 +50,30 @@ We treat the codebase as **three logical layers**:
 We enforce **directional dependencies** between the logical layers:
 
 - **Domain**
-  - May depend only on `stacklion_api.domain.*`.
+  - May depend only on `arche_api.domain.*`.
 
 - **Application**
   - May depend on:
-    - `stacklion_api.application.*`
-    - `stacklion_api.domain.*`
+    - `arche_api.application.*`
+    - `arche_api.domain.*`
   - Must **not** depend on:
-    - `stacklion_api.adapters.*`
-    - `stacklion_api.infrastructure.*`
+    - `arche_api.adapters.*`
+    - `arche_api.infrastructure.*`
 
 - **Outer layer (Adapters + Infrastructure)**
   - May depend on:
-    - `stacklion_api.adapters.*`
-    - `stacklion_api.infrastructure.*`
-    - `stacklion_api.application.*`
-    - `stacklion_api.domain.*`
+    - `arche_api.adapters.*`
+    - `arche_api.infrastructure.*`
+    - `arche_api.application.*`
+    - `arche_api.domain.*`
   - This layer is intentionally permissive so operational wiring is not artificially constrained.
 
 Package → layer mapping:
 
-- `stacklion_api.domain.*` → **domain**
-- `stacklion_api.application.*` → **application**
-- `stacklion_api.adapters.*` → **outer**
-- `stacklion_api.infrastructure.*` → **outer**
+- `arche_api.domain.*` → **domain**
+- `arche_api.application.*` → **application**
+- `arche_api.adapters.*` → **outer**
+- `arche_api.infrastructure.*` → **outer**
 
 ### 0.3 Architecture tests
 
@@ -91,8 +91,8 @@ If you introduce new top-level packages or change structure in a layer-sensitive
 
 - Application returns **DTOs only**.
 - **Presenters** are the **only** layer that shape **HTTP envelopes**.
-- Transport-specific schemas live under `src/stacklion_api/adapters/schemas/http/`.
-- Application DTOs live under `src/stacklion_api/application/schemas/dto/`.
+- Transport-specific schemas live under `src/arche_api/adapters/schemas/http/`.
+- Application DTOs live under `src/arche_api/application/schemas/dto/`.
 
 ### 0.5 Glossary (build policy)
 
@@ -180,7 +180,7 @@ If you introduce new top-level packages or change structure in a layer-sensitive
   - Prefer `Optional[T]` over `T | None` where FastAPI/Pydantic parity requires it.
 - **Style & Tooling:**
   - Ruff + Black + MyPy (`--strict`) gated in CI.
-  - Imports rooted at `src/stacklion_api`.
+  - Imports rooted at `src/arche_api`.
   - No dead imports.
   - No TODOs/placeholders in mainline code paths.
 - **Naming:**
@@ -550,7 +550,7 @@ or make it its own section. Up to you.
 
 *(Enforced by Architecture Tests — See: `tests/architecture/`)*
 
-This section defines the **authorized interactions**, **forbidden dependencies**, and **mandatory patterns** for every layer of the Stacklion system. The rules in this section are **actively enforced** by the architecture test suite in `tests/architecture/`. Any violation will fail CI.
+This section defines the **authorized interactions**, **forbidden dependencies**, and **mandatory patterns** for every layer of the Arche system. The rules in this section are **actively enforced** by the architecture test suite in `tests/architecture/`. Any violation will fail CI.
 
 This is the canonical contract for how code may and may not interact across:
 
@@ -654,7 +654,7 @@ These rules are not aspirational. They are executable.
 * Allowed pattern at use-case boundary:
 
 ```python
-module = import_module("stacklion_api.adapters.repositories.edgar_statements_repository")
+module = import_module("arche_api.adapters.repositories.edgar_statements_repository")
 repo_cls = module.EdgarStatementsRepository
 statements_repo = tx.get_repository(repo_cls)
 ```
@@ -818,7 +818,7 @@ domain  ←  application  ←  adapters  ←  infrastructure
 **Correct:**
 
 ```python
-module = import_module("stacklion_api.adapters.repositories.edgar_statements_repository")
+module = import_module("arche_api.adapters.repositories.edgar_statements_repository")
 repo_cls = module.EdgarStatementsRepository
 repo = tx.get_repository(repo_cls)
 ```
@@ -826,7 +826,7 @@ repo = tx.get_repository(repo_cls)
 **Incorrect / Forbidden:**
 
 ```python
-from stacklion_api.adapters.repositories.edgar_statements_repository import EdgarStatementsRepository
+from arche_api.adapters.repositories.edgar_statements_repository import EdgarStatementsRepository
 repo = EdgarStatementsRepository(...)        # ❌ forbidden
 repo = SomeConcreteRepo(session)            # ❌ bypasses UoW
 ```
@@ -847,7 +847,7 @@ When the architecture suite is green:
 * Entry points remain thin and correctly versioned.
 * Every "may/may not" rule is enforced in CI by executable tests.
 
-This is what keeps Stacklion **best-in-class, forward-compatible, replaceable, testable, and resistant to entropy**.
+This is what keeps Arche **best-in-class, forward-compatible, replaceable, testable, and resistant to entropy**.
 
 ---
 

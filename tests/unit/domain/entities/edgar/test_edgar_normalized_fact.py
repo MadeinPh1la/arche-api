@@ -1,5 +1,5 @@
 # tests/unit/domain/entities/test_edgar_normalized_fact.py
-# Copyright (c) Stacklion.
+# Copyright (c) Arche.
 # SPDX-License-Identifier: MIT
 """Unit tests for EDGAR normalized fact entity."""
 
@@ -12,8 +12,8 @@ from decimal import Decimal
 
 import pytest
 
-from stacklion_api.domain.entities.edgar_normalized_fact import EdgarNormalizedFact
-from stacklion_api.domain.enums.edgar import AccountingStandard, FiscalPeriod, StatementType
+from arche_api.domain.entities.edgar_normalized_fact import EdgarNormalizedFact
+from arche_api.domain.enums.edgar import AccountingStandard, FiscalPeriod, StatementType
 
 
 def test_edgar_normalized_fact_basic_construction() -> None:

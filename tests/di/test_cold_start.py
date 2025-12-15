@@ -19,10 +19,10 @@ def test_cold_start_imports_clean() -> None:
 
     # Purge cached modules for a clean import
     for name in list(sys.modules):
-        if name.startswith("stacklion_api"):
+        if name.startswith("arche_api"):
             sys.modules.pop(name)
 
-    app_mod = importlib.import_module("stacklion_api.main")
+    app_mod = importlib.import_module("arche_api.main")
     create_app = app_mod.create_app
     assert callable(create_app)
     app = create_app()

@@ -2,11 +2,11 @@ from __future__ import annotations
 
 import pytest
 
-from stacklion_api.domain.exceptions.market_data import MarketDataValidationError
-from stacklion_api.infrastructure.external_apis.marketstack.client import (
+from arche_api.domain.exceptions.market_data import MarketDataValidationError
+from arche_api.infrastructure.external_apis.marketstack.client import (
     MarketstackClient,
 )
-from stacklion_api.infrastructure.external_apis.marketstack.settings import (
+from arche_api.infrastructure.external_apis.marketstack.settings import (
     MarketstackSettings,
 )
 

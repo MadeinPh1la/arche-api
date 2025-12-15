@@ -1,5 +1,5 @@
 # docs/templates/domain_entity_example.py
-# Copyright (c) Stacklion.
+# Copyright (c) Arche.
 # SPDX-License-Identifier: MIT
 """Example domain entity.
 
@@ -18,7 +18,7 @@ from __future__ import annotations
 from dataclasses import dataclass
 from datetime import date
 
-from stacklion_api.domain.exceptions import ValidationException
+from arche_api.domain.exceptions import ValidationException
 
 
 @dataclass(frozen=True, slots=True)

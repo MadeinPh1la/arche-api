@@ -19,13 +19,13 @@ from decimal import Decimal
 
 import pytest
 
-from stacklion_api.domain.entities.canonical_statement_payload import (
+from arche_api.domain.entities.canonical_statement_payload import (
     CanonicalStatementPayload,
 )
-from stacklion_api.domain.enums.canonical_statement_metric import CanonicalStatementMetric
-from stacklion_api.domain.enums.edgar import AccountingStandard, FiscalPeriod, StatementType
-from stacklion_api.domain.exceptions.edgar import EdgarIngestionError, EdgarMappingError
-from stacklion_api.domain.services.statement_ledger_delta_engine import (
+from arche_api.domain.enums.canonical_statement_metric import CanonicalStatementMetric
+from arche_api.domain.enums.edgar import AccountingStandard, FiscalPeriod, StatementType
+from arche_api.domain.exceptions.edgar import EdgarIngestionError, EdgarMappingError
+from arche_api.domain.services.statement_ledger_delta_engine import (
     build_restatement_ledger,
     compute_restatement_delta_between_versions,
 )

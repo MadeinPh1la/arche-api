@@ -10,19 +10,19 @@ from typing import Any
 import pytest
 from pydantic import BaseModel, SecretStr
 
-from stacklion_api.application.schemas.dto.quotes import HistoricalBarDTO, HistoricalQueryDTO
-from stacklion_api.application.use_cases.quotes.get_historical_quotes import (
+from arche_api.application.schemas.dto.quotes import HistoricalBarDTO, HistoricalQueryDTO
+from arche_api.application.use_cases.quotes.get_historical_quotes import (
     GetHistoricalQuotesUseCase,
 )
-from stacklion_api.dependencies.market_data import (
+from arche_api.dependencies.market_data import (
     InMemoryAsyncCache,
     _build_real_gateway,
     _is_deterministic_mode,
     _load_marketstack_settings,
 )
-from stacklion_api.domain.entities.historical_bar import BarInterval
-from stacklion_api.domain.exceptions.market_data import MarketDataValidationError
-from stacklion_api.infrastructure.external_apis.marketstack.settings import (
+from arche_api.domain.entities.historical_bar import BarInterval
+from arche_api.domain.exceptions.market_data import MarketDataValidationError
+from arche_api.infrastructure.external_apis.marketstack.settings import (
     MarketstackSettings,
 )
 
@@ -53,7 +53,7 @@ def test_load_marketstack_settings_prefers_app_settings(monkeypatch: pytest.Monk
     monkeypatch.setenv("MARKETSTACK_BASE_URL", "https://wrong.example.com")
 
     # Patch get_settings used by dependencies.market_data
-    import stacklion_api.dependencies.market_data as md
+    import arche_api.dependencies.market_data as md
 
     monkeypatch.setattr(md, "get_settings", _fake_get_settings, raising=True)
 

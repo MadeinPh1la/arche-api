@@ -10,28 +10,28 @@ from typing import Any
 
 import pytest
 
-from stacklion_api.adapters.repositories.edgar_statements_repository import (
+from arche_api.adapters.repositories.edgar_statements_repository import (
     EdgarStatementsRepository,
 )
-from stacklion_api.application.uow import UnitOfWork
-from stacklion_api.application.use_cases.statements.get_normalized_statement import (
+from arche_api.application.uow import UnitOfWork
+from arche_api.application.use_cases.statements.get_normalized_statement import (
     GetNormalizedStatementRequest,
     GetNormalizedStatementUseCase,
 )
-from stacklion_api.domain.entities.canonical_statement_payload import (
+from arche_api.domain.entities.canonical_statement_payload import (
     CanonicalStatementPayload,
 )
-from stacklion_api.domain.entities.edgar_company import EdgarCompanyIdentity
-from stacklion_api.domain.entities.edgar_filing import EdgarFiling
-from stacklion_api.domain.entities.edgar_statement_version import EdgarStatementVersion
-from stacklion_api.domain.enums.canonical_statement_metric import CanonicalStatementMetric
-from stacklion_api.domain.enums.edgar import (
+from arche_api.domain.entities.edgar_company import EdgarCompanyIdentity
+from arche_api.domain.entities.edgar_filing import EdgarFiling
+from arche_api.domain.entities.edgar_statement_version import EdgarStatementVersion
+from arche_api.domain.enums.canonical_statement_metric import CanonicalStatementMetric
+from arche_api.domain.enums.edgar import (
     AccountingStandard,
     FilingType,
     FiscalPeriod,
     StatementType,
 )
-from stacklion_api.domain.exceptions.edgar import EdgarIngestionError, EdgarMappingError
+from arche_api.domain.exceptions.edgar import EdgarIngestionError, EdgarMappingError
 
 
 class FakeUnitOfWork(UnitOfWork):  # type: ignore[misc]

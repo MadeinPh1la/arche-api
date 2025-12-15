@@ -17,13 +17,13 @@ import pytest
 from fastapi import FastAPI
 from fastapi.testclient import TestClient
 
-from stacklion_api.adapters.routers.views_router import router as views_router
-from stacklion_api.application.schemas.dto.edgar_derived import (
+from arche_api.adapters.routers.views_router import router as views_router
+from arche_api.application.schemas.dto.edgar_derived import (
     EdgarDerivedMetricsPointDTO,
 )
-from stacklion_api.dependencies.edgar import get_edgar_controller
-from stacklion_api.domain.enums.derived_metric import DerivedMetric
-from stacklion_api.domain.enums.edgar import (
+from arche_api.dependencies.edgar import get_edgar_controller
+from arche_api.domain.enums.derived_metric import DerivedMetric
+from arche_api.domain.enums.edgar import (
     AccountingStandard,
     FiscalPeriod,
     StatementType,

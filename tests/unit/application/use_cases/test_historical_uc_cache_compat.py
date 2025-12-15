@@ -6,11 +6,11 @@ from decimal import Decimal
 
 import pytest
 
-from stacklion_api.application.schemas.dto.quotes import HistoricalBarDTO, HistoricalQueryDTO
-from stacklion_api.application.use_cases.quotes.get_historical_quotes import (
+from arche_api.application.schemas.dto.quotes import HistoricalBarDTO, HistoricalQueryDTO
+from arche_api.application.use_cases.quotes.get_historical_quotes import (
     GetHistoricalQuotesUseCase,
 )
-from stacklion_api.domain.entities.historical_bar import BarInterval
+from arche_api.domain.entities.historical_bar import BarInterval
 
 
 class PositionalOnlyCase:

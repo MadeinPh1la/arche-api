@@ -1,5 +1,5 @@
 # tests/unit/adapters/gateways/test_marketstack_gateway_unit.py
-# Copyright (c) Stacklion.
+# Copyright (c) Arche.
 # SPDX-License-Identifier: MIT
 
 from __future__ import annotations
@@ -12,14 +12,14 @@ import httpx
 import pytest
 import respx
 
-from stacklion_api.adapters.gateways.marketstack_gateway import MarketstackGateway
-from stacklion_api.application.schemas.dto.quotes import HistoricalQueryDTO
-from stacklion_api.domain.entities.historical_bar import BarInterval
-from stacklion_api.domain.exceptions.market_data import (
+from arche_api.adapters.gateways.marketstack_gateway import MarketstackGateway
+from arche_api.application.schemas.dto.quotes import HistoricalQueryDTO
+from arche_api.domain.entities.historical_bar import BarInterval
+from arche_api.domain.exceptions.market_data import (
     MarketDataRateLimited,
     MarketDataValidationError,
 )
-from stacklion_api.infrastructure.external_apis.marketstack.settings import MarketstackSettings
+from arche_api.infrastructure.external_apis.marketstack.settings import MarketstackSettings
 
 _BASE_URL = "https://api.marketstack.com/v2"
 _EOD_URL_REGEX = r"https://api\.marketstack\.com/v2/eod.*"

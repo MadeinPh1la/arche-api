@@ -1,5 +1,5 @@
 # tests/integration/routers/test_historical_quotes_router_error_mapping.py
-# Copyright (c) Stacklion.
+# Copyright (c) Arche.
 # SPDX-License-Identifier: MIT
 from __future__ import annotations
 
@@ -7,11 +7,11 @@ import pytest
 from fastapi import FastAPI
 from fastapi.testclient import TestClient
 
-from stacklion_api.adapters.routers.historical_quotes_router import (
+from arche_api.adapters.routers.historical_quotes_router import (
     router as historical_quotes_router,
 )
-from stacklion_api.dependencies.market_data import get_historical_quotes_use_case
-from stacklion_api.domain.exceptions.market_data import (
+from arche_api.dependencies.market_data import get_historical_quotes_use_case
+from arche_api.domain.exceptions.market_data import (
     MarketDataBadRequest,
     MarketDataQuotaExceeded,
     MarketDataRateLimited,

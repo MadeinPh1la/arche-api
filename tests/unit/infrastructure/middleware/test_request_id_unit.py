@@ -1,4 +1,4 @@
-# Copyright (c) Stacklion.
+# Copyright (c) Arche.
 # SPDX-License-Identifier: MIT
 """Unit tests for RequestIdMiddleware behavior and header rules."""
 
@@ -7,7 +7,7 @@ from __future__ import annotations
 from fastapi import FastAPI, Request
 from fastapi.testclient import TestClient
 
-from stacklion_api.infrastructure.middleware.request_id import (
+from arche_api.infrastructure.middleware.request_id import (
     _REQUEST_ID_HEADER,
     _SAFE_RE,
     RequestIdMiddleware,

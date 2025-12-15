@@ -42,7 +42,7 @@ def _iter_dto_names(dto_mod: Any) -> Iterable[str]:
 
 
 def test_dto_includes_audit_fields() -> None:
-    dto_mod = import_module("stacklion_api.application.schemas.dto")
+    dto_mod = import_module("arche_api.application.schemas.dto")
     missing_by_type: dict[str, list[str]] = {}
 
     for name in _iter_dto_names(dto_mod):

@@ -1,5 +1,5 @@
 # tests/integration/middleware/test_idempotency_middleware.py
-# Copyright (c) Stacklion.
+# Copyright (c) Arche.
 # SPDX-License-Identifier: MIT
 """Integration tests for IdempotencyMiddleware.
 
@@ -27,8 +27,8 @@ from sqlalchemy.ext.asyncio import (
     create_async_engine,
 )
 
-from stacklion_api.infrastructure.database.models.idempotency import IdempotencyKey
-from stacklion_api.infrastructure.middleware.idempotency import IdempotencyMiddleware
+from arche_api.infrastructure.database.models.idempotency import IdempotencyKey
+from arche_api.infrastructure.middleware.idempotency import IdempotencyMiddleware
 
 
 def _utcnow_naive() -> datetime:
@@ -53,7 +53,7 @@ async def app() -> AsyncGenerator[FastAPI, None]:
     async def session_provider() -> AsyncIterator[AsyncSession]:
         database_url = os.getenv(
             "DATABASE_URL",
-            "postgresql+asyncpg://stacklion:stacklion@127.0.0.1:5432/stacklion_test",
+            "postgresql+asyncpg://arche:arche@127.0.0.1:5432/arche_test",
         )
         engine: AsyncEngine = create_async_engine(database_url, future=True)
 
@@ -194,7 +194,7 @@ async def test_expired_record_allows_new_execution(client: httpx.AsyncClient) ->
     # Pre-insert an expired *started* record for this key.
     database_url = os.getenv(
         "DATABASE_URL",
-        "postgresql+asyncpg://stacklion:stacklion@127.0.0.1:5432/stacklion_test",
+        "postgresql+asyncpg://arche:arche@127.0.0.1:5432/arche_test",
     )
     engine: AsyncEngine = create_async_engine(database_url, future=True)
     async with engine.begin() as conn:

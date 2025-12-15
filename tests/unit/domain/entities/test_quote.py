@@ -5,7 +5,7 @@ from decimal import Decimal
 
 import pytest
 
-from stacklion_api.domain.entities.quote import Quote
+from arche_api.domain.entities.quote import Quote
 
 
 def test_quote_valid_construction_and_invariants() -> None:

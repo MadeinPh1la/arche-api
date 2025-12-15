@@ -1,29 +1,29 @@
 [run]
 branch = True
-source = src/stacklion_api
+source = src/arche_api
 omit =
     # --- Infra & cold paths not exercised by this phase yet (temporary) ---
-    src/stacklion_api/infrastructure/database/*
-    src/stacklion_api/infrastructure/security/clerk_jwks.py
-    src/stacklion_api/infrastructure/auth/clerk_principal_dependency.py
-    src/stacklion_api/infrastructure/logging/tracing.py
+    src/arche_api/infrastructure/database/*
+    src/arche_api/infrastructure/security/clerk_jwks.py
+    src/arche_api/infrastructure/auth/clerk_principal_dependency.py
+    src/arche_api/infrastructure/logging/tracing.py
 
     # --- Pure value-objects with no tests yet ---
-    src/stacklion_api/domain/value_objects/*
+    src/arche_api/domain/value_objects/*
 
     # --- Low-signal plumbing currently under-tested ---
-    src/stacklion_api/infrastructure/caching/redis_client.py
-    src/stacklion_api/infrastructure/middleware/security_headers.py
+    src/arche_api/infrastructure/caching/redis_client.py
+    src/arche_api/infrastructure/middleware/security_headers.py
 
     # --- Dependencies scaffolding (not part of this PR’s scope) ---
-    src/stacklion_api/adapters/dependencies/*
+    src/arche_api/adapters/dependencies/*
 
     # --- Legacy A5/quotes surfaces not covered in this PR ---
-    src/stacklion_api/adapters/controllers/quotes_controller.py
-    src/stacklion_api/adapters/routers/quotes_router.py
-    src/stacklion_api/adapters/presenters/quotes_presenter.py
+    src/arche_api/adapters/controllers/quotes_controller.py
+    src/arche_api/adapters/routers/quotes_router.py
+    src/arche_api/adapters/presenters/quotes_presenter.py
 
     # --- Background / maintenance / health surfaces (out of scope) ---
-    src/stacklion_api/tasks/*
-    src/stacklion_api/application/use_cases/maintenance/*
-    src/stacklion_api/infrastructure/health/*
+    src/arche_api/tasks/*
+    src/arche_api/application/use_cases/maintenance/*
+    src/arche_api/infrastructure/health/*

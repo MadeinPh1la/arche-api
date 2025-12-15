@@ -6,8 +6,8 @@ import pytest
 from fastapi import FastAPI, HTTPException
 from fastapi.testclient import TestClient
 
-from stacklion_api.infrastructure.middleware import request_metrics as rm
-from stacklion_api.infrastructure.middleware.request_metrics import (
+from arche_api.infrastructure.middleware import request_metrics as rm
+from arche_api.infrastructure.middleware.request_metrics import (
     RequestLatencyMiddleware,
 )
 

@@ -4,16 +4,16 @@ import httpx
 import pytest
 import respx
 
-from stacklion_api.domain.exceptions.market_data import (
+from arche_api.domain.exceptions.market_data import (
     MarketDataBadRequest,
     MarketDataQuotaExceeded,
     MarketDataRateLimited,
     MarketDataUnavailable,
     MarketDataValidationError,
 )
-from stacklion_api.infrastructure.external_apis.marketstack.client import MarketstackClient
-from stacklion_api.infrastructure.external_apis.marketstack.settings import MarketstackSettings
-from stacklion_api.infrastructure.logging.logger import set_request_context
+from arche_api.infrastructure.external_apis.marketstack.client import MarketstackClient
+from arche_api.infrastructure.external_apis.marketstack.settings import MarketstackSettings
+from arche_api.infrastructure.logging.logger import set_request_context
 
 
 @pytest.mark.asyncio

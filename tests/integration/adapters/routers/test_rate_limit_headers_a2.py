@@ -2,7 +2,7 @@
 import pytest
 from httpx import ASGITransport, AsyncClient
 
-from stacklion_api.main import create_app
+from arche_api.main import create_app
 
 
 @pytest.mark.anyio

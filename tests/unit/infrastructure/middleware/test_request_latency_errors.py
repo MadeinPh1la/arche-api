@@ -7,7 +7,7 @@ from fastapi import FastAPI
 from fastapi.responses import PlainTextResponse
 from fastapi.testclient import TestClient
 
-from stacklion_api.infrastructure.middleware.request_metrics import RequestLatencyMiddleware
+from arche_api.infrastructure.middleware.request_metrics import RequestLatencyMiddleware
 
 
 def _make_app_with_middleware() -> FastAPI:
@@ -44,7 +44,7 @@ def test_request_latency_prometheus_error_does_not_break_request(
     """
     # Force RequestLatencyMiddleware to use a histogram that throws.
     monkeypatch.setattr(
-        "stacklion_api.infrastructure.middleware.request_metrics.get_http_server_request_duration_seconds",
+        "arche_api.infrastructure.middleware.request_metrics.get_http_server_request_duration_seconds",
         lambda: _BadHistogram(),
     )
 
@@ -64,7 +64,7 @@ def test_request_latency_otel_error_does_not_break_request(
     """
     # Patch the module-level _otel_hist() helper to return a broken histogram.
     monkeypatch.setattr(
-        "stacklion_api.infrastructure.middleware.request_metrics._otel_hist",
+        "arche_api.infrastructure.middleware.request_metrics._otel_hist",
         lambda: _BadOtelHistogram(),
     )
 

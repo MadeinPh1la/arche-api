@@ -1,7 +1,7 @@
 from fastapi import Response
 
-from stacklion_api.adapters.routers.base_router import BaseRouter
-from stacklion_api.adapters.schemas.http.envelopes import SuccessEnvelope
+from arche_api.adapters.routers.base_router import BaseRouter
+from arche_api.adapters.schemas.http.envelopes import SuccessEnvelope
 
 
 def test_send_success_applies_headers_and_returns_mapping_copy():

@@ -4,14 +4,14 @@ import httpx
 import pytest
 import respx
 
-from stacklion_api.domain.exceptions.edgar import (
+from arche_api.domain.exceptions.edgar import (
     EdgarIngestionError,
     EdgarMappingError,
     EdgarNotFound,
 )
-from stacklion_api.infrastructure.external_apis.edgar.client import EdgarClient
-from stacklion_api.infrastructure.external_apis.edgar.settings import EdgarSettings
-from stacklion_api.infrastructure.logging.logger import set_request_context
+from arche_api.infrastructure.external_apis.edgar.client import EdgarClient
+from arche_api.infrastructure.external_apis.edgar.settings import EdgarSettings
+from arche_api.infrastructure.logging.logger import set_request_context
 
 
 @pytest.mark.asyncio

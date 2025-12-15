@@ -7,7 +7,7 @@ import sqlalchemy as sa
 from alembic import op
 from sqlalchemy.dialects import postgresql
 
-from stacklion_api.infrastructure.database.models.base import DEFAULT_DB_SCHEMA
+from arche_api.infrastructure.database.models.base import DEFAULT_DB_SCHEMA
 
 # Revision identifiers, used by Alembic.
 revision = "000000000000_idempotency_keys"

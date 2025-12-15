@@ -9,18 +9,18 @@ import httpx
 import pytest
 from sqlalchemy.ext.asyncio import AsyncSession, async_sessionmaker, create_async_engine
 
-from stacklion_api.adapters.gateways.marketstack_gateway import MarketstackGateway
-from stacklion_api.adapters.repositories.market_data_repository import (
+from arche_api.adapters.gateways.marketstack_gateway import MarketstackGateway
+from arche_api.adapters.repositories.market_data_repository import (
     IntradayBarRow,
     MarketDataRepository,
 )
-from stacklion_api.domain.exceptions.market_data import (
+from arche_api.domain.exceptions.market_data import (
     MarketDataBadRequest,
     MarketDataQuotaExceeded,
     MarketDataRateLimited,
     MarketDataUnavailable,
 )
-from stacklion_api.infrastructure.external_apis.marketstack.settings import MarketstackSettings
+from arche_api.infrastructure.external_apis.marketstack.settings import MarketstackSettings
 
 
 @pytest.mark.anyio
@@ -31,7 +31,7 @@ async def test_marketstack_live_ingest_smoke() -> None:
 
     db_url = os.getenv(
         "STACKLION_DATABASE_URL",
-        "postgresql+asyncpg://postgres:postgres@localhost:5435/stacklion_test",
+        "postgresql+asyncpg://postgres:postgres@localhost:5435/arche_test",
     )
 
     engine = create_async_engine(db_url)

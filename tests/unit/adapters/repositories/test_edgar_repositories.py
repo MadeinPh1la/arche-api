@@ -30,32 +30,32 @@ from sqlalchemy.ext.asyncio import (
     create_async_engine,
 )
 
-from stacklion_api.adapters.repositories.edgar_filings_repository import (
+from arche_api.adapters.repositories.edgar_filings_repository import (
     EdgarFilingsRepository,
 )
-from stacklion_api.adapters.repositories.edgar_statements_repository import (
+from arche_api.adapters.repositories.edgar_statements_repository import (
     EdgarStatementsRepository,
 )
-from stacklion_api.domain.entities.canonical_statement_payload import (
+from arche_api.domain.entities.canonical_statement_payload import (
     CanonicalStatementPayload,
 )
-from stacklion_api.domain.entities.edgar_company import EdgarCompanyIdentity
-from stacklion_api.domain.entities.edgar_filing import EdgarFiling
-from stacklion_api.domain.entities.edgar_statement_version import EdgarStatementVersion
-from stacklion_api.domain.enums.canonical_statement_metric import (
+from arche_api.domain.entities.edgar_company import EdgarCompanyIdentity
+from arche_api.domain.entities.edgar_filing import EdgarFiling
+from arche_api.domain.entities.edgar_statement_version import EdgarStatementVersion
+from arche_api.domain.enums.canonical_statement_metric import (
     CanonicalStatementMetric,
 )
-from stacklion_api.domain.enums.edgar import (
+from arche_api.domain.enums.edgar import (
     AccountingStandard,
     FilingType,
     FiscalPeriod,
     StatementType,
 )
-from stacklion_api.infrastructure.database.models.base import Base
+from arche_api.infrastructure.database.models.base import Base
 
 TEST_DATABASE_URL = os.getenv(
     "TEST_DATABASE_URL",
-    "postgresql+asyncpg://stacklion:stacklion@127.0.0.1:5432/stacklion_test",
+    "postgresql+asyncpg://arche:arche@127.0.0.1:5432/arche_test",
 )
 
 

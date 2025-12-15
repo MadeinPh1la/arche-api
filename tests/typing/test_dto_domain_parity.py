@@ -2,8 +2,8 @@ from importlib import import_module
 
 
 def test_dto_domain_parity():
-    dom = import_module("stacklion_api.domain.entities")
-    dto = import_module("stacklion_api.application.schemas.dto")
+    dom = import_module("arche_api.domain.entities")
+    dto = import_module("arche_api.application.schemas.dto")
 
     # Prefer explicit exports; otherwise heuristics (PascalCase / *DTO)
     domain_names = getattr(dom, "__all__", [n for n in dir(dom) if n[:1].isupper()])

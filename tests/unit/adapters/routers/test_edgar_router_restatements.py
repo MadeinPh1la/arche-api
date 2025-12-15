@@ -18,17 +18,17 @@ import pytest
 from fastapi import FastAPI
 from httpx import ASGITransport, AsyncClient
 
-from stacklion_api.adapters.routers.edgar_router import router as edgar_router
-from stacklion_api.application.schemas.dto.edgar import (
+from arche_api.adapters.routers.edgar_router import router as edgar_router
+from arche_api.application.schemas.dto.edgar import (
     ComputeRestatementDeltaResultDTO,
     GetRestatementLedgerResultDTO,
     RestatementLedgerEntryDTO,
     RestatementMetricDeltaDTO,
     RestatementSummaryDTO,
 )
-from stacklion_api.dependencies.edgar import get_edgar_controller
-from stacklion_api.domain.enums.edgar import FiscalPeriod, StatementType
-from stacklion_api.domain.exceptions.edgar import EdgarIngestionError, EdgarMappingError
+from arche_api.dependencies.edgar import get_edgar_controller
+from arche_api.domain.enums.edgar import FiscalPeriod, StatementType
+from arche_api.domain.exceptions.edgar import EdgarIngestionError, EdgarMappingError
 
 
 @pytest.fixture

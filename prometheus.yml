@@ -9,7 +9,7 @@ scrape_configs:
       - targets: ['otel-collector:9464']
 
   # Scrape native Prom metrics endpoint
-  - job_name: 'stacklion-api'
+  - job_name: 'arche_api'
     metrics_path: /metrics
     static_configs:
       - targets: ['api:8000']

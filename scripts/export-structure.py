@@ -22,7 +22,7 @@ def generate_tree(
 
 
 # Run it
-project_dir = Path("src/stacklion_api/")
+project_dir = Path("src/arche_api/")
 with open("project_structure2.txt", "w", encoding="utf-8") as f:
     print(project_dir.name, file=f)
     generate_tree(project_dir, output_file=f)

@@ -4,7 +4,7 @@ import asyncio
 
 import pytest
 
-from stacklion_api.infrastructure.resilience.circuit_breaker import CircuitBreaker
+from arche_api.infrastructure.resilience.circuit_breaker import CircuitBreaker
 
 
 @pytest.mark.anyio

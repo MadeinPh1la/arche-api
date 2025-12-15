@@ -6,10 +6,10 @@ from decimal import Decimal
 
 import pytest
 
-from stacklion_api.adapters.gateways.marketstack_gateway import MarketstackGateway
-from stacklion_api.application.schemas.dto.quotes import HistoricalQueryDTO
-from stacklion_api.domain.entities.historical_bar import BarInterval
-from stacklion_api.domain.exceptions.market_data import MarketDataValidationError
+from arche_api.adapters.gateways.marketstack_gateway import MarketstackGateway
+from arche_api.application.schemas.dto.quotes import HistoricalQueryDTO
+from arche_api.domain.entities.historical_bar import BarInterval
+from arche_api.domain.exceptions.market_data import MarketDataValidationError
 
 
 class StubClient:

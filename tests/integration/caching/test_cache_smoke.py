@@ -3,9 +3,9 @@ import json
 
 import pytest
 
-from stacklion_api.infrastructure.caching.json_cache import RedisJsonCache
-from stacklion_api.infrastructure.caching.redis_client import get_redis_client
-from stacklion_api.infrastructure.observability.metrics import (
+from arche_api.infrastructure.caching.json_cache import RedisJsonCache
+from arche_api.infrastructure.caching.redis_client import get_redis_client
+from arche_api.infrastructure.observability.metrics import (
     get_cache_operation_duration_seconds,
     get_cache_operations_total,
 )

@@ -18,14 +18,14 @@ from typing import Annotated
 
 from fastapi import APIRouter, Depends, Query
 
-from stacklion_api.adapters.presenters.quotes_presenter import QuotesPresenter
-from stacklion_api.adapters.schemas.http.envelopes import PaginatedEnvelope
-from stacklion_api.adapters.schemas.http.quotes import HistoricalQuoteResponse
-from stacklion_api.adapters.uow import UnitOfWork
-from stacklion_api.application.use_cases.quotes.get_historical_quotes import (
+from arche_api.adapters.presenters.quotes_presenter import QuotesPresenter
+from arche_api.adapters.schemas.http.envelopes import PaginatedEnvelope
+from arche_api.adapters.schemas.http.quotes import HistoricalQuoteResponse
+from arche_api.adapters.uow import UnitOfWork
+from arche_api.application.use_cases.quotes.get_historical_quotes import (
     GetHistoricalQuotesUseCase,
 )
-from stacklion_api.dependencies.market_data import get_uow
+from arche_api.dependencies.market_data import get_uow
 
 router = APIRouter(
     prefix="/v1/market-data",

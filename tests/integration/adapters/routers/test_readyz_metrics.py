@@ -6,7 +6,7 @@ import pytest
 from httpx import AsyncClient
 from prometheus_client.parser import text_string_to_metric_families
 
-from stacklion_api.main import app
+from arche_api.main import app
 
 
 def _readiness_path_from_openapi() -> str:

@@ -27,4 +27,4 @@ RUN pip install --upgrade pip \
  && pip install --no-cache-dir -e ".[dev,otel]"
 
 # --- Default dev command (factory to ensure lifespan runs) ---
-CMD ["uvicorn", "stacklion_api.main:create_app", "--factory", "--host", "0.0.0.0", "--port", "8000", "--reload"]
+CMD ["uvicorn", "arche_api.main:create_app", "--factory", "--host", "0.0.0.0", "--port", "8000", "--reload"]

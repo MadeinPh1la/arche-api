@@ -1,5 +1,5 @@
 # tests/unit/application/use_cases/test_historical_uc_branches.py
-# Copyright (c) Stacklion.
+# Copyright (c) Arche.
 # SPDX-License-Identifier: MIT
 from __future__ import annotations
 
@@ -9,13 +9,13 @@ from decimal import Decimal
 
 import pytest
 
-from stacklion_api.application.schemas.dto.quotes import HistoricalBarDTO, HistoricalQueryDTO
-from stacklion_api.application.use_cases.quotes.get_historical_quotes import (
+from arche_api.application.schemas.dto.quotes import HistoricalBarDTO, HistoricalQueryDTO
+from arche_api.application.use_cases.quotes.get_historical_quotes import (
     GetHistoricalQuotesUseCase,
 )
-from stacklion_api.dependencies.market_data import InMemoryAsyncCache
-from stacklion_api.domain.entities.historical_bar import BarInterval
-from stacklion_api.domain.exceptions.market_data import MarketDataRateLimited
+from arche_api.dependencies.market_data import InMemoryAsyncCache
+from arche_api.domain.entities.historical_bar import BarInterval
+from arche_api.domain.exceptions.market_data import MarketDataRateLimited
 
 
 # ---------- helpers ----------

@@ -12,7 +12,7 @@ from __future__ import annotations
 
 from datetime import UTC, date, datetime
 
-from stacklion_api.adapters.schemas.http.edgar_schemas import (
+from arche_api.adapters.schemas.http.edgar_schemas import (
     DQAnomalyHTTP,
     FactQualityHTTP,
     NormalizedFactHTTP,
@@ -20,7 +20,7 @@ from stacklion_api.adapters.schemas.http.edgar_schemas import (
     RunStatementDQResultHTTP,
     StatementDQOverlayHTTP,
 )
-from stacklion_api.domain.enums.edgar import (
+from arche_api.domain.enums.edgar import (
     AccountingStandard,
     FiscalPeriod,
     MaterialityClass,

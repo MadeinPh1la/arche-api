@@ -1,4 +1,4 @@
-# Copyright (c) Stacklion.
+# Copyright (c) Arche.
 # SPDX-License-Identifier: MIT
 """Integration test: request-id header appears through the real app stack."""
 
@@ -6,7 +6,7 @@ from __future__ import annotations
 
 from fastapi.testclient import TestClient
 
-from stacklion_api.main import create_app
+from arche_api.main import create_app
 
 
 def test_request_id_header_on_protected_ping() -> None:

@@ -29,13 +29,13 @@ jobs:
       postgres:
         image: postgres:16
         env:
-          POSTGRES_USER: stacklion
-          POSTGRES_PASSWORD: stacklion
-          POSTGRES_DB: stacklion_test
+          POSTGRES_USER: arche
+          POSTGRES_PASSWORD: arche
+          POSTGRES_DB: arche_test
         ports:
           - "5432:5432"
         options: >-
-          --health-cmd="pg_isready -U stacklion -d stacklion_test"
+          --health-cmd="pg_isready -U arche -d arche_test"
           --health-interval=10s
           --health-timeout=5s
           --health-retries=10
@@ -55,7 +55,7 @@ jobs:
       # Test environment identity (mirrors .env.tests)
       # ====================================================================
       ENVIRONMENT: test
-      SERVICE_NAME: stacklion-api
+      SERVICE_NAME: arche_api
       SERVICE_VERSION: "0.0.0"
       LOG_LEVEL: WARNING
 
@@ -65,8 +65,8 @@ jobs:
       # ====================================================================
       # Database / cache (local + CI friendly)
       # ====================================================================
-      DATABASE_URL: postgresql+asyncpg://stacklion:stacklion@127.0.0.1:5432/stacklion_test
-      TEST_DATABASE_URL: postgresql+asyncpg://stacklion:stacklion@127.0.0.1:5432/stacklion_test
+      DATABASE_URL: postgresql+asyncpg://arche:arche@127.0.0.1:5432/arche_test
+      TEST_DATABASE_URL: postgresql+asyncpg://arche:arche@127.0.0.1:5432/arche_test
       REDIS_URL: redis://127.0.0.1:6379/2
 
       # Celery (if used in tests)
@@ -103,11 +103,11 @@ jobs:
       # ====================================================================
       # Clerk (dummy test configuration)
       # ====================================================================
-      NEXT_PUBLIC_CLERK_PUBLISHABLE_KEY: pk_test_stacklion_test
-      CLERK_SECRET_KEY: sk_test_stacklion_test
-      CLERK_ISSUER: https://stacklion-test.clerk.accounts.dev
-      CLERK_AUDIENCE: stacklion-api
-      CLERK_JWKS_URL: https://stacklion-test.clerk.accounts.dev/.well-known/jwks.json
+      NEXT_PUBLIC_CLERK_PUBLISHABLE_KEY: pk_test_arche_test
+      CLERK_SECRET_KEY: sk_test_arche_test
+      CLERK_ISSUER: https://arche-test.clerk.accounts.dev
+      CLERK_AUDIENCE: arche_api
+      CLERK_JWKS_URL: https://arche-test.clerk.accounts.dev/.well-known/jwks.json
       CLERK_WEBHOOK_SECRET: whsec_test
 
     steps:
@@ -138,7 +138,7 @@ jobs:
       - name: Wait for Postgres (belt & suspenders)
         run: |
           for i in {1..30}; do
-            if pg_isready -h 127.0.0.1 -p 5432 -d stacklion_test -U stacklion; then
+            if pg_isready -h 127.0.0.1 -p 5432 -d arche_test -U arche; then
               echo "Postgres is ready."
               exit 0
             fi

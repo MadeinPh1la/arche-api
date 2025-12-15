@@ -1,6 +1,6 @@
 # Cache Strategy
 
-This document defines the canonical caching conventions for Stacklion.
+This document defines the canonical caching conventions for Arche.
 
 It is **binding** for all new cache usage and should be updated whenever a new
 vertical or pattern is introduced.
@@ -12,10 +12,10 @@ vertical or pattern is introduced.
 All cache keys follow this general pattern:
 
 ```text
-stacklion:{vertical}:v1:{resource}:{shape}
+arche:{vertical}:v1:{resource}:{shape}
 ````
 
-* `stacklion` — global project namespace.
+* `arche` — global project namespace.
 * `{vertical}` — domain vertical (e.g. `market_data`, `auth`, `refdata`).
 * `v1` — cache schema version; bump if the shape/semantics change.
 * `{resource}` — logical resource (e.g. `quote`, `historical`, `instrument`).
@@ -26,13 +26,13 @@ stacklion:{vertical}:v1:{resource}:{shape}
 Latest “spot” quotes (A5 surface):
 
 ```text
-stacklion:market_data:v1:quote:{symbol}
+arche:market_data:v1:quote:{symbol}
 ```
 
 Examples:
 
-* `stacklion:market_data:v1:quote:AAPL`
-* `stacklion:market_data:v1:quote:MSFT`
+* `arche:market_data:v1:quote:AAPL`
+* `arche:market_data:v1:quote:MSFT`
 
 Notes:
 
@@ -44,7 +44,7 @@ Notes:
 Historical OHLCV windows (A6 surface):
 
 ```text
-stacklion:market_data:v1:historical:{tickers_sorted}:{interval}:{from_iso}:{to_iso}:p{page}:s{page_size}
+arche:market_data:v1:historical:{tickers_sorted}:{interval}:{from_iso}:{to_iso}:p{page}:s{page_size}
 ```
 
 Where:
@@ -59,14 +59,14 @@ Where:
 Example:
 
 ```text
-stacklion:market_data:v1:historical:AAPL,MSFT:1day:2025-01-01T00:00:00+00:00:2025-01-31T00:00:00+00:00:p1:s100
+arche:market_data:v1:historical:AAPL,MSFT:1day:2025-01-01T00:00:00+00:00:2025-01-31T00:00:00+00:00:p1:s100
 ```
 
 If/when this tail becomes too long (e.g. complex filters), the last segment may be
 replaced by a stable hash:
 
 ```text
-stacklion:market_data:v1:historical:{tickers_sorted}:{interval}:q:{sha1(params_json)}
+arche:market_data:v1:historical:{tickers_sorted}:{interval}:q:{sha1(params_json)}
 ```
 
 ---
@@ -76,7 +76,7 @@ stacklion:market_data:v1:historical:{tickers_sorted}:{interval}:q:{sha1(params_j
 TTL bands are defined in:
 
 ```python
-stacklion_api.infrastructure.caching.json_cache
+arche_api.infrastructure.caching.json_cache
 ```
 
 ### 2.1 TTL Bands
@@ -121,7 +121,7 @@ Within `GetHistoricalQuotesUseCase`:
 
 ### 3.1 Read-Through Caching (Default)
 
-Read-through is the **default** pattern for Stacklion’s current read-heavy flows.
+Read-through is the **default** pattern for Arche’s current read-heavy flows.
 
 Flow:
 
@@ -143,13 +143,13 @@ Used by:
 A generic read-through helper is provided in:
 
 ```python
-stacklion_api.infrastructure.caching.json_cache.read_through_json
+arche_api.infrastructure.caching.json_cache.read_through_json
 ```
 
 ### 3.2 Write-Through Caching (Not Default)
 
 Write-through caching is **not** enabled by default and should only be used when
-Stacklion is the system of record for a given resource (e.g. internal config).
+Arche is the system of record for a given resource (e.g. internal config).
 
 If you introduce write-through caching:
 
@@ -206,7 +206,7 @@ errors gracefully.
 Cache selection happens in:
 
 ```python
-stacklion_api.dependencies.market_data._build_cache()
+arche_api.dependencies.market_data._build_cache()
 ```
 
 Rules:
@@ -217,7 +217,7 @@ Rules:
 
 * Otherwise:
 
-  * Use `RedisJsonCache(namespace="stacklion:market_data:v1")`.
+  * Use `RedisJsonCache(namespace="arche:market_data:v1")`.
 
 ### 5.2 Gateway Selection
 
@@ -237,7 +237,7 @@ When you introduce a new cached feature:
 1. **Define Key Shape**
 
    * Add the pattern here under a new subsection (e.g. “6.1 Fundamentals”).
-   * Follow `stacklion:{vertical}:v1:{resource}:{shape}`.
+   * Follow `arche:{vertical}:v1:{resource}:{shape}`.
 
 2. **Pick a TTL Band**
 
@@ -288,7 +288,7 @@ black .
 2. **Type-check**
 
 ```bash
-python -m mypy -p stacklion_api -p tests
+python -m mypy -p arche_api -p tests
 ```
 
 3. **Tests**
@@ -302,7 +302,7 @@ bash scripts/ci.sh
 or, if you want to be explicit:
 
 ```bash
-pytest -q --cov=stacklion_api --cov-report=term-missing
+pytest -q --cov=arche_api --cov-report=term-missing
 ```
 
 4. **Git hygiene**

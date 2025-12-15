@@ -5,32 +5,30 @@ from dataclasses import dataclass
 
 import pytest
 
-from stacklion_api.mcp.capabilities import quotes_historical as quotes_historical_cap
-from stacklion_api.mcp.capabilities import quotes_live as quotes_live_cap
-from stacklion_api.mcp.client.stacklion_http import (
-    StacklionHTTPClient,
-    StacklionHTTPError,
-    StacklionHTTPResponse,
+from arche_api.mcp.capabilities import quotes_historical as quotes_historical_cap
+from arche_api.mcp.capabilities import quotes_live as quotes_live_cap
+from arche_api.mcp.client.arche_http import (
+    ArcheHTTPClient,
+    ArcheHTTPError,
+    ArcheHTTPResponse,
 )
-from stacklion_api.mcp.schemas.errors import MCPError
-from stacklion_api.mcp.schemas.quotes_historical import (
+from arche_api.mcp.schemas.errors import MCPError
+from arche_api.mcp.schemas.quotes_historical import (
     MCPHistoricalBar,
     QuotesHistoricalParams,
     QuotesHistoricalResult,
 )
-from stacklion_api.mcp.schemas.quotes_live import MCPQuote, QuotesLiveParams, QuotesLiveResult
+from arche_api.mcp.schemas.quotes_live import MCPQuote, QuotesLiveParams, QuotesLiveResult
 
 
 @dataclass
 class FakeSettings:
-    api_base_url: str = "https://api.stacklion.test"
+    api_base_url: str = "https://api.arche.test"
 
 
 @pytest.mark.anyio
 async def test_quotes_live_happy_path(monkeypatch: pytest.MonkeyPatch) -> None:
-    async def _fake_get_live_quotes(
-        self: StacklionHTTPClient, tickers: list[str]
-    ) -> StacklionHTTPResponse:
+    async def _fake_get_live_quotes(self: ArcheHTTPClient, tickers: list[str]) -> ArcheHTTPResponse:
         body = {
             "data": {
                 "items": [
@@ -44,14 +42,14 @@ async def test_quotes_live_happy_path(monkeypatch: pytest.MonkeyPatch) -> None:
                 ]
             }
         }
-        return StacklionHTTPResponse(
+        return ArcheHTTPResponse(
             status_code=200,
             headers={"x-request-id": "req-live-1"},
             body=body,
         )
 
     monkeypatch.setattr(
-        quotes_live_cap.StacklionHTTPClient,
+        quotes_live_cap.ArcheHTTPClient,
         "get_live_quotes",
         _fake_get_live_quotes,
         raising=False,
@@ -76,10 +74,10 @@ async def test_quotes_live_happy_path(monkeypatch: pytest.MonkeyPatch) -> None:
 @pytest.mark.anyio
 async def test_quotes_live_error_path(monkeypatch: pytest.MonkeyPatch) -> None:
     async def _fake_get_live_quotes_error(
-        self: StacklionHTTPClient,
+        self: ArcheHTTPClient,
         tickers: list[str],
-    ) -> StacklionHTTPResponse:
-        raise StacklionHTTPError(
+    ) -> ArcheHTTPResponse:
+        raise ArcheHTTPError(
             message="Too many requests",
             status_code=429,
             error_code="RATE_LIMITED",
@@ -88,7 +86,7 @@ async def test_quotes_live_error_path(monkeypatch: pytest.MonkeyPatch) -> None:
         )
 
     monkeypatch.setattr(
-        quotes_live_cap.StacklionHTTPClient,
+        quotes_live_cap.ArcheHTTPClient,
         "get_live_quotes",
         _fake_get_live_quotes_error,
         raising=False,
@@ -109,7 +107,7 @@ async def test_quotes_live_error_path(monkeypatch: pytest.MonkeyPatch) -> None:
 @pytest.mark.anyio
 async def test_quotes_historical_happy_path(monkeypatch: pytest.MonkeyPatch) -> None:
     async def _fake_get_historical_quotes(
-        self: StacklionHTTPClient,
+        self: ArcheHTTPClient,
         *,
         tickers: list[str],
         from_: str,
@@ -117,7 +115,7 @@ async def test_quotes_historical_happy_path(monkeypatch: pytest.MonkeyPatch) -> 
         interval: str,
         page: int,
         page_size: int,
-    ) -> StacklionHTTPResponse:
+    ) -> ArcheHTTPResponse:
         assert tickers == ["AAPL"]
         body = {
             "page": page,
@@ -136,14 +134,14 @@ async def test_quotes_historical_happy_path(monkeypatch: pytest.MonkeyPatch) -> 
                 }
             ],
         }
-        return StacklionHTTPResponse(
+        return ArcheHTTPResponse(
             status_code=200,
             headers={"x-request-id": "req-hist-1"},
             body=body,
         )
 
     monkeypatch.setattr(
-        quotes_historical_cap.StacklionHTTPClient,
+        quotes_historical_cap.ArcheHTTPClient,
         "get_historical_quotes",
         _fake_get_historical_quotes,
         raising=False,
@@ -184,7 +182,7 @@ async def test_quotes_historical_happy_path(monkeypatch: pytest.MonkeyPatch) -> 
 @pytest.mark.anyio
 async def test_quotes_historical_error_path(monkeypatch: pytest.MonkeyPatch) -> None:
     async def _fake_get_historical_quotes_error(
-        self: StacklionHTTPClient,
+        self: ArcheHTTPClient,
         *,
         tickers: list[str],
         from_: str,
@@ -192,8 +190,8 @@ async def test_quotes_historical_error_path(monkeypatch: pytest.MonkeyPatch) -> 
         interval: str,
         page: int,
         page_size: int,
-    ) -> StacklionHTTPResponse:
-        raise StacklionHTTPError(
+    ) -> ArcheHTTPResponse:
+        raise ArcheHTTPError(
             message="Market data unavailable",
             status_code=503,
             error_code="MARKET_DATA_UNAVAILABLE",
@@ -202,7 +200,7 @@ async def test_quotes_historical_error_path(monkeypatch: pytest.MonkeyPatch) -> 
         )
 
     monkeypatch.setattr(
-        quotes_historical_cap.StacklionHTTPClient,
+        quotes_historical_cap.ArcheHTTPClient,
         "get_historical_quotes",
         _fake_get_historical_quotes_error,
         raising=False,

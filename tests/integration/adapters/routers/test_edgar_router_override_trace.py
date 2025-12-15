@@ -21,14 +21,14 @@ import pytest
 from fastapi import FastAPI
 from fastapi.testclient import TestClient
 
-import stacklion_api.adapters.routers.edgar_router as edgar_router_module
-from stacklion_api.adapters.dependencies.edgar_uow import get_edgar_uow
-from stacklion_api.adapters.schemas.http.edgar_overrides_schemas import (
+import arche_api.adapters.routers.edgar_router as edgar_router_module
+from arche_api.adapters.dependencies.edgar_uow import get_edgar_uow
+from arche_api.adapters.schemas.http.edgar_overrides_schemas import (
     StatementOverrideTraceHTTP,
 )
-from stacklion_api.adapters.schemas.http.envelopes import ErrorEnvelope, SuccessEnvelope
-from stacklion_api.domain.enums.edgar import FiscalPeriod, StatementType
-from stacklion_api.domain.exceptions.edgar import EdgarIngestionError
+from arche_api.adapters.schemas.http.envelopes import ErrorEnvelope, SuccessEnvelope
+from arche_api.domain.enums.edgar import FiscalPeriod, StatementType
+from arche_api.domain.exceptions.edgar import EdgarIngestionError
 
 
 class _FakeOverrideTraceDTO:

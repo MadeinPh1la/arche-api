@@ -11,7 +11,7 @@ from __future__ import annotations
 
 from typing import Protocol
 
-from stacklion_api.domain.interfaces.repositories.xbrl_mapping_overrides_repository import (
+from arche_api.domain.interfaces.repositories.xbrl_mapping_overrides_repository import (
     XBRLMappingOverridesRepository,
 )
 

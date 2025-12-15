@@ -10,25 +10,25 @@ from typing import Any
 
 import pytest
 
-from stacklion_api.application.schemas.dto.edgar_dq import RunStatementDQResultDTO
-from stacklion_api.application.uow import UnitOfWork as UnitOfWorkProtocol
-from stacklion_api.application.use_cases.statements.run_statement_dq import (
+from arche_api.application.schemas.dto.edgar_dq import RunStatementDQResultDTO
+from arche_api.application.uow import UnitOfWork as UnitOfWorkProtocol
+from arche_api.application.use_cases.statements.run_statement_dq import (
     RunStatementDQRequest,
     RunStatementDQUseCase,
     _max_severity,
     _severity_rank,
 )
-from stacklion_api.domain.entities.edgar_dq import (
+from arche_api.domain.entities.edgar_dq import (
     EdgarDQAnomaly,
     EdgarDQRun,
     EdgarFactQuality,
     NormalizedStatementIdentity,
 )
-from stacklion_api.domain.entities.edgar_normalized_fact import EdgarNormalizedFact
-from stacklion_api.domain.enums.edgar import FiscalPeriod, MaterialityClass, StatementType
-from stacklion_api.domain.exceptions.edgar import EdgarIngestionError
-from stacklion_api.domain.interfaces.repositories.edgar_dq_repository import EdgarDQRepository
-from stacklion_api.domain.interfaces.repositories.edgar_facts_repository import EdgarFactsRepository
+from arche_api.domain.entities.edgar_normalized_fact import EdgarNormalizedFact
+from arche_api.domain.enums.edgar import FiscalPeriod, MaterialityClass, StatementType
+from arche_api.domain.exceptions.edgar import EdgarIngestionError
+from arche_api.domain.interfaces.repositories.edgar_dq_repository import EdgarDQRepository
+from arche_api.domain.interfaces.repositories.edgar_facts_repository import EdgarFactsRepository
 
 
 class _FakeFactsRepo(EdgarFactsRepository):

@@ -1,6 +1,6 @@
 from fastapi import Response
 
-from stacklion_api.adapters.presenters.base_presenter import BasePresenter
+from arche_api.adapters.presenters.base_presenter import BasePresenter
 
 
 def test_present_paginated_uses_explicit_etag_and_sets_headers():

@@ -1,8 +1,8 @@
 apiVersion: 1
 providers:
-  - name: "Stacklion (read-only)"
+  - name: "Arche (read-only)"
     orgId: 1
-    folder: "Stacklion"
+    folder: "Arche"
     type: file
     disableDeletion: true
     editable: false

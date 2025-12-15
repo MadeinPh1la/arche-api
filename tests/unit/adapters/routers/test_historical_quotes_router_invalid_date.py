@@ -1,11 +1,11 @@
 # tests/unit/routers/test_historical_quotes_router_invalid_date.py
-# Copyright (c) Stacklion.
+# Copyright (c) Arche.
 # SPDX-License-Identifier: MIT
 from __future__ import annotations
 
 from fastapi.testclient import TestClient
 
-from stacklion_api.main import create_app
+from arche_api.main import create_app
 
 
 def test_router_returns_400_on_invalid_date_format():

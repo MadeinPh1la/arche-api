@@ -1,4 +1,4 @@
-# Copyright (c) Stacklion.
+# Copyright (c) Arche.
 # SPDX-License-Identifier: MIT
 """Unit tests for EDGAR HTTP schemas."""
 
@@ -6,7 +6,7 @@ from __future__ import annotations
 
 from datetime import UTC, date, datetime
 
-from stacklion_api.adapters.schemas.http.edgar_schemas import (
+from arche_api.adapters.schemas.http.edgar_schemas import (
     EdgarFilingHTTP,
     EdgarStatementVersionHTTP,
     EdgarStatementVersionListHTTP,
@@ -14,7 +14,7 @@ from stacklion_api.adapters.schemas.http.edgar_schemas import (
     NormalizedFactHTTP,
     NormalizedStatementHTTP,
 )
-from stacklion_api.domain.enums.edgar import (
+from arche_api.domain.enums.edgar import (
     AccountingStandard,
     FilingType,
     FiscalPeriod,

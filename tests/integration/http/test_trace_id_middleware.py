@@ -1,7 +1,7 @@
 # tests/integration/http/test_trace_id_middleware.py
 from fastapi.testclient import TestClient
 
-from stacklion_api.main import create_app
+from arche_api.main import create_app
 
 
 def test_trace_is_generated_and_echoed():
@@ -22,7 +22,7 @@ def test_inbound_trace_is_reused_and_echoed():
 def test_inbound_trace_is_trimmed_and_capped():
     from fastapi.testclient import TestClient
 
-    from stacklion_api.main import create_app
+    from arche_api.main import create_app
 
     c = TestClient(create_app())
     # long value gets rejected -> new UUID generated (length != len(long))

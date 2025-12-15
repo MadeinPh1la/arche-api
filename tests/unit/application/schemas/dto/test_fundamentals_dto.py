@@ -6,7 +6,7 @@ from __future__ import annotations
 
 from datetime import date
 
-from stacklion_api.application.schemas.dto.fundamentals import (
+from arche_api.application.schemas.dto.fundamentals import (
     FundamentalsTimeSeriesPointDTO,
     GetFundamentalsTimeSeriesResultDTO,
 )

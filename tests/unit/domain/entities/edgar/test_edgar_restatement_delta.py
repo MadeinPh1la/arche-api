@@ -9,17 +9,17 @@ from decimal import Decimal
 
 import pytest
 
-from stacklion_api.domain.entities.canonical_statement_payload import (
+from arche_api.domain.entities.canonical_statement_payload import (
     CanonicalStatementPayload,
 )
-from stacklion_api.domain.entities.edgar_restatement_delta import (
+from arche_api.domain.entities.edgar_restatement_delta import (
     RestatementDelta,
     RestatementMetricDelta,
     compute_restatement_delta,
 )
-from stacklion_api.domain.enums.canonical_statement_metric import CanonicalStatementMetric
-from stacklion_api.domain.enums.edgar import AccountingStandard, FiscalPeriod, StatementType
-from stacklion_api.domain.exceptions.edgar import EdgarMappingError
+from arche_api.domain.enums.canonical_statement_metric import CanonicalStatementMetric
+from arche_api.domain.enums.edgar import AccountingStandard, FiscalPeriod, StatementType
+from arche_api.domain.exceptions.edgar import EdgarMappingError
 
 
 def _make_payload(

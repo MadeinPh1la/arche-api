@@ -21,9 +21,9 @@ from collections.abc import Sequence
 from decimal import Decimal
 from typing import cast
 
-from stacklion_api.domain.entities.edgar_restatement_delta import RestatementDelta
-from stacklion_api.domain.enums.edgar import FiscalPeriod, MaterialityClass, StatementType
-from stacklion_api.domain.services.restatement_timeline import build_restatement_metric_timeline
+from arche_api.domain.entities.edgar_restatement_delta import RestatementDelta
+from arche_api.domain.enums.edgar import FiscalPeriod, MaterialityClass, StatementType
+from arche_api.domain.services.restatement_timeline import build_restatement_metric_timeline
 
 
 class _FakeMetricEnum:

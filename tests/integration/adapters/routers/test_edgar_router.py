@@ -1,4 +1,4 @@
-# Copyright (c) Stacklion.
+# Copyright (c) Arche.
 # SPDX-License-Identifier: MIT
 """Integration tests for EDGAR router.
 
@@ -17,20 +17,20 @@ import pytest
 from fastapi import FastAPI
 from fastapi.testclient import TestClient
 
-from stacklion_api.adapters.controllers.edgar_controller import EdgarController
-from stacklion_api.adapters.routers.edgar_router import router as edgar_router
-from stacklion_api.application.schemas.dto.edgar import (
+from arche_api.adapters.controllers.edgar_controller import EdgarController
+from arche_api.adapters.routers.edgar_router import router as edgar_router
+from arche_api.application.schemas.dto.edgar import (
     EdgarFilingDTO,
     EdgarStatementVersionDTO,
 )
-from stacklion_api.dependencies.edgar import get_edgar_controller
-from stacklion_api.domain.enums.edgar import (
+from arche_api.dependencies.edgar import get_edgar_controller
+from arche_api.domain.enums.edgar import (
     AccountingStandard,
     FilingType,
     FiscalPeriod,
     StatementType,
 )
-from stacklion_api.domain.exceptions.edgar import EdgarIngestionError, EdgarMappingError
+from arche_api.domain.exceptions.edgar import EdgarIngestionError, EdgarMappingError
 
 
 class _FakeEdgarController(EdgarController):  # type: ignore[misc]

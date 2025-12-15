@@ -17,11 +17,11 @@ from fastapi.testclient import TestClient
 from sqlalchemy import text
 from sqlalchemy.ext.asyncio import AsyncEngine, create_async_engine
 
-from stacklion_api.application.schemas.dto.quotes import HistoricalBarDTO
-from stacklion_api.config.settings import get_settings
-from stacklion_api.dependencies.market_data import get_historical_quotes_use_case
-from stacklion_api.domain.entities.historical_bar import BarInterval
-from stacklion_api.main import create_app
+from arche_api.application.schemas.dto.quotes import HistoricalBarDTO
+from arche_api.config.settings import get_settings
+from arche_api.dependencies.market_data import get_historical_quotes_use_case
+from arche_api.domain.entities.historical_bar import BarInterval
+from arche_api.main import create_app
 
 
 @pytest.fixture(scope="session")
@@ -50,7 +50,7 @@ def _bootstrap_test_db_schema(event_loop: asyncio.AbstractEventLoop) -> None:
     """
     database_url = os.getenv(
         "DATABASE_URL",
-        "postgresql+asyncpg://stacklion:stacklion@127.0.0.1:5432/stacklion_test",
+        "postgresql+asyncpg://arche:arche@127.0.0.1:5432/arche_test",
     )
 
     async def _init() -> None:

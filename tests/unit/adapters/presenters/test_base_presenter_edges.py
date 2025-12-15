@@ -1,6 +1,6 @@
 from fastapi import Response
 
-from stacklion_api.adapters.presenters.base_presenter import BasePresenter
+from arche_api.adapters.presenters.base_presenter import BasePresenter
 
 
 def test_present_success_applies_trace_and_emits_etag():

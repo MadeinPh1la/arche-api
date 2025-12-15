@@ -6,7 +6,7 @@ from __future__ import annotations
 
 from datetime import date
 
-from stacklion_api.adapters.mappers.xbrl_parser import XBRLParser
+from arche_api.adapters.mappers.xbrl_parser import XBRLParser
 
 _SIMPLE_XBRL = """
 <xbrli:xbrl xmlns:xbrli="http://www.xbrl.org/2003/instance"

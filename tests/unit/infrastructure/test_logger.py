@@ -7,7 +7,7 @@ import os
 
 import pytest
 
-from stacklion_api.infrastructure.logging.logger import (
+from arche_api.infrastructure.logging.logger import (
     _JsonFormatter,  # internal but importable
     configure_root_logging,
 )

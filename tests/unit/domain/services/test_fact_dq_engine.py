@@ -5,13 +5,13 @@ from __future__ import annotations
 from datetime import date, datetime, timedelta
 from decimal import Decimal
 
-from stacklion_api.domain.entities.edgar_dq import (
+from arche_api.domain.entities.edgar_dq import (
     EdgarDQRun,
     NormalizedStatementIdentity,
 )
-from stacklion_api.domain.entities.edgar_normalized_fact import EdgarNormalizedFact
-from stacklion_api.domain.enums.edgar import FiscalPeriod, StatementType
-from stacklion_api.domain.services.fact_dq_engine import (
+from arche_api.domain.entities.edgar_normalized_fact import EdgarNormalizedFact
+from arche_api.domain.enums.edgar import FiscalPeriod, StatementType
+from arche_api.domain.services.fact_dq_engine import (
     FactDQConfig,
     FactDQEngine,
     FactDQResult,

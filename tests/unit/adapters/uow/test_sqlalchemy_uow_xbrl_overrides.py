@@ -3,11 +3,11 @@ from __future__ import annotations
 
 import pytest
 
-from stacklion_api.adapters.repositories.xbrl_mapping_overrides_repository import (
+from arche_api.adapters.repositories.xbrl_mapping_overrides_repository import (
     SqlAlchemyXBRLMappingOverridesRepository,
 )
-from stacklion_api.adapters.uow.sqlalchemy_uow import SqlAlchemyUnitOfWork
-from stacklion_api.domain.interfaces.repositories.xbrl_mapping_overrides_repository import (
+from arche_api.adapters.uow.sqlalchemy_uow import SqlAlchemyUnitOfWork
+from arche_api.domain.interfaces.repositories.xbrl_mapping_overrides_repository import (
     XBRLMappingOverridesRepository,
 )
 

@@ -13,19 +13,19 @@ from __future__ import annotations
 from datetime import date
 from decimal import Decimal
 
-from stacklion_api.domain.entities.edgar_statement_version import (
+from arche_api.domain.entities.edgar_statement_version import (
     AccountingStandard,
 )
-from stacklion_api.domain.enums.canonical_statement_metric import (
+from arche_api.domain.enums.canonical_statement_metric import (
     CanonicalStatementMetric,
 )
-from stacklion_api.domain.enums.edgar import FiscalPeriod, StatementType
-from stacklion_api.domain.services.edgar_normalization import (
+from arche_api.domain.enums.edgar import FiscalPeriod, StatementType
+from arche_api.domain.services.edgar_normalization import (
     CanonicalStatementNormalizer,
     EdgarFact,
     NormalizationContext,
 )
-from stacklion_api.domain.services.xbrl_mapping_overrides import (
+from arche_api.domain.services.xbrl_mapping_overrides import (
     MappingOverrideRule,
     OverrideScope,
 )

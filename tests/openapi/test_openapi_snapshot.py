@@ -1,5 +1,5 @@
 # tests/openapi/test_openapi_snapshot.py
-# Copyright (c) Stacklion.
+# Copyright (c) Arche.
 # SPDX-License-Identifier: MIT
 """OpenAPI Snapshot Tests (E2E-lite)
 
@@ -55,7 +55,7 @@ def _stable_openapi_env(monkeypatch: pytest.MonkeyPatch) -> None:
     """
     # Environment identity
     monkeypatch.setenv("ENVIRONMENT", "test")
-    monkeypatch.setenv("SERVICE_NAME", "stacklion-api")
+    monkeypatch.setenv("SERVICE_NAME", "arche_api")
     monkeypatch.setenv("SERVICE_VERSION", "0.0.0")
     monkeypatch.setenv("LOG_LEVEL", "WARNING")
 
@@ -65,7 +65,7 @@ def _stable_openapi_env(monkeypatch: pytest.MonkeyPatch) -> None:
     # Database / cache
     monkeypatch.setenv(
         "DATABASE_URL",
-        "postgresql+asyncpg://stacklion:stacklion@127.0.0.1:5432/stacklion_test",
+        "postgresql+asyncpg://arche:arche@127.0.0.1:5432/arche_test",
     )
     monkeypatch.setenv("REDIS_URL", "redis://127.0.0.1:6379/2")
 
@@ -93,16 +93,16 @@ def _stable_openapi_env(monkeypatch: pytest.MonkeyPatch) -> None:
     monkeypatch.setenv("OTEL_EXPORTER_OTLP_ENDPOINT", "http://127.0.0.1:4317")
 
     # Clerk (dummy test configuration)
-    monkeypatch.setenv("NEXT_PUBLIC_CLERK_PUBLISHABLE_KEY", "pk_test_stacklion_test")
-    monkeypatch.setenv("CLERK_SECRET_KEY", "sk_test_stacklion_test")
+    monkeypatch.setenv("NEXT_PUBLIC_CLERK_PUBLISHABLE_KEY", "pk_test_arche_test")
+    monkeypatch.setenv("CLERK_SECRET_KEY", "sk_test_arche_test")
     monkeypatch.setenv(
         "CLERK_ISSUER",
-        "https://stacklion-test.clerk.accounts.dev",
+        "https://arche-test.clerk.accounts.dev",
     )
-    monkeypatch.setenv("CLERK_AUDIENCE", "stacklion-api")
+    monkeypatch.setenv("CLERK_AUDIENCE", "arche_api")
     monkeypatch.setenv(
         "CLERK_JWKS_URL",
-        "https://stacklion-test.clerk.accounts.dev/.well-known/jwks.json",
+        "https://arche-test.clerk.accounts.dev/.well-known/jwks.json",
     )
     monkeypatch.setenv("CLERK_WEBHOOK_SECRET", "whsec_test")
 
@@ -123,8 +123,8 @@ def _fetch_openapi() -> dict[str, Any]:
     under the deterministic test configuration.
     """
     # Import here so that the autouse fixture can set env vars first.
-    import stacklion_api.config.settings as settings_module
-    import stacklion_api.main as main_module
+    import arche_api.config.settings as settings_module
+    import arche_api.main as main_module
 
     # Ensure settings & main pick up the current environment (from fixture).
     importlib.reload(settings_module)

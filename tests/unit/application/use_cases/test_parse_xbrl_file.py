@@ -1,10 +1,10 @@
 import pytest
 
-from stacklion_api.application.use_cases.external_apis.edgar.parse_xbrl_file import (
+from arche_api.application.use_cases.external_apis.edgar.parse_xbrl_file import (
     ParseXBRLFileRequest,
     ParseXBRLFileUseCase,
 )
-from stacklion_api.domain.entities.xbrl_document import (
+from arche_api.domain.entities.xbrl_document import (
     XBRLContext,
     XBRLDocument,
     XBRLFact,

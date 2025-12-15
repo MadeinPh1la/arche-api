@@ -9,12 +9,12 @@ from decimal import Decimal
 
 import pytest
 
-from stacklion_api.domain.entities.edgar_derived_timeseries import (
+from arche_api.domain.entities.edgar_derived_timeseries import (
     DerivedMetricsTimeSeriesPoint,
     build_derived_metrics_timeseries,
 )
-from stacklion_api.domain.enums.derived_metric import DerivedMetric
-from stacklion_api.domain.enums.edgar import AccountingStandard, FiscalPeriod, StatementType
+from arche_api.domain.enums.derived_metric import DerivedMetric
+from arche_api.domain.enums.edgar import AccountingStandard, FiscalPeriod, StatementType
 
 
 def _make_point(

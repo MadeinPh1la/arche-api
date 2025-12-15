@@ -13,11 +13,11 @@ from __future__ import annotations
 from collections.abc import Sequence
 from typing import Any
 
-from stacklion_api.adapters.repositories.xbrl_mapping_overrides_repository import (
+from arche_api.adapters.repositories.xbrl_mapping_overrides_repository import (
     SqlAlchemyXBRLMappingOverridesRepository,
 )
-from stacklion_api.domain.enums.canonical_statement_metric import CanonicalStatementMetric
-from stacklion_api.domain.services.xbrl_mapping_overrides import MappingOverrideRule, OverrideScope
+from arche_api.domain.enums.canonical_statement_metric import CanonicalStatementMetric
+from arche_api.domain.services.xbrl_mapping_overrides import MappingOverrideRule, OverrideScope
 
 
 class _DummyResult:

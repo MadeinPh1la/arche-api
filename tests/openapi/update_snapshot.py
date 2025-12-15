@@ -5,7 +5,7 @@ from pathlib import Path
 
 from fastapi.testclient import TestClient
 
-from stacklion_api.main import app
+from arche_api.main import app
 
 SNAPSHOT_PATH = Path(__file__).parent / "snapshots" / "openapi.json"
 

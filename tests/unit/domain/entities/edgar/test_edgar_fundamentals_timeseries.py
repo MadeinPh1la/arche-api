@@ -7,15 +7,15 @@ from __future__ import annotations
 from datetime import date
 from decimal import Decimal
 
-from stacklion_api.domain.entities.canonical_statement_payload import (
+from arche_api.domain.entities.canonical_statement_payload import (
     CanonicalStatementPayload,
 )
-from stacklion_api.domain.entities.edgar_fundamentals_timeseries import (
+from arche_api.domain.entities.edgar_fundamentals_timeseries import (
     FundamentalsTimeSeriesPoint,
     build_fundamentals_timeseries,
 )
-from stacklion_api.domain.enums.canonical_statement_metric import CanonicalStatementMetric
-from stacklion_api.domain.enums.edgar import AccountingStandard, FiscalPeriod, StatementType
+from arche_api.domain.enums.canonical_statement_metric import CanonicalStatementMetric
+from arche_api.domain.enums.edgar import AccountingStandard, FiscalPeriod, StatementType
 
 
 def _make_payload(

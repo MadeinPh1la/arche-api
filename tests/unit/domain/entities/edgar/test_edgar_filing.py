@@ -4,10 +4,10 @@ from datetime import date, datetime
 
 import pytest
 
-from stacklion_api.domain.entities.edgar_company import EdgarCompanyIdentity
-from stacklion_api.domain.entities.edgar_filing import EdgarFiling
-from stacklion_api.domain.enums.edgar import FilingType
-from stacklion_api.domain.exceptions.edgar import EdgarMappingError
+from arche_api.domain.entities.edgar_company import EdgarCompanyIdentity
+from arche_api.domain.entities.edgar_filing import EdgarFiling
+from arche_api.domain.enums.edgar import FilingType
+from arche_api.domain.exceptions.edgar import EdgarMappingError
 
 
 def _make_company() -> EdgarCompanyIdentity:

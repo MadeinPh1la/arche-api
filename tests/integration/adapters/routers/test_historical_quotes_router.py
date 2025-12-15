@@ -1,5 +1,5 @@
 # tests/integration/routers/test_historical_quotes_router.py
-# Copyright (c) Stacklion.
+# Copyright (c) Arche.
 # SPDX-License-Identifier: MIT
 """Integration tests: Historical Quotes Router (A6).
 
@@ -23,12 +23,12 @@ import pytest
 from fastapi import FastAPI
 from fastapi.testclient import TestClient
 
-from stacklion_api.adapters.routers.historical_quotes_router import (
+from arche_api.adapters.routers.historical_quotes_router import (
     router as historical_quotes_router,
 )
-from stacklion_api.application.schemas.dto.quotes import HistoricalBarDTO
-from stacklion_api.dependencies.market_data import get_historical_quotes_use_case
-from stacklion_api.domain.entities.historical_bar import BarInterval
+from arche_api.application.schemas.dto.quotes import HistoricalBarDTO
+from arche_api.dependencies.market_data import get_historical_quotes_use_case
+from arche_api.domain.entities.historical_bar import BarInterval
 
 
 class FakeUC:

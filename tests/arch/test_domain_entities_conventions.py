@@ -9,7 +9,7 @@ from collections.abc import Iterable
 from pathlib import Path
 
 PROJECT_ROOT = Path(__file__).resolve().parents[2]
-SRC_ROOT = PROJECT_ROOT / "src" / "stacklion_api"
+SRC_ROOT = PROJECT_ROOT / "src" / "arche_api"
 ENTITIES_ROOT = SRC_ROOT / "domain" / "entities"
 
 GOOGLE_STYLE_RE = re.compile(r"\b(Args|Attributes):", re.MULTILINE)
@@ -23,8 +23,8 @@ FORBIDDEN_IMPORT_PREFIXES = (
     "redis",
     "structlog",
     "logging",
-    "stacklion_api.adapters",
-    "stacklion_api.infrastructure",
+    "arche_api.adapters",
+    "arche_api.infrastructure",
 )
 
 
@@ -37,7 +37,7 @@ def _iter_entity_files() -> Iterable[Path]:
 
 def _module_name_from_path(path: Path) -> str:
     rel = path.relative_to(SRC_ROOT)
-    return "stacklion_api." + ".".join(rel.with_suffix("").parts)
+    return "arche_api." + ".".join(rel.with_suffix("").parts)
 
 
 def test_domain_entities_have_no_forbidden_imports() -> None:

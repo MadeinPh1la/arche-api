@@ -6,11 +6,11 @@ from __future__ import annotations
 
 from datetime import date
 
-from stacklion_api.application.schemas.dto.edgar_derived import (
+from arche_api.application.schemas.dto.edgar_derived import (
     EdgarDerivedMetricsPointDTO,
 )
-from stacklion_api.domain.enums.derived_metric import DerivedMetric
-from stacklion_api.domain.enums.edgar import AccountingStandard, FiscalPeriod, StatementType
+from arche_api.domain.enums.derived_metric import DerivedMetric
+from arche_api.domain.enums.edgar import AccountingStandard, FiscalPeriod, StatementType
 
 
 def test_edgar_derived_metrics_point_dto_roundtrip() -> None:

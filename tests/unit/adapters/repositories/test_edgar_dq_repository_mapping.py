@@ -1,5 +1,5 @@
 # tests/unit/adapters/repositories/test_edgar_dq_repository_mapping.py
-# Copyright (c) Stacklion.
+# Copyright (c) Arche.
 # SPDX-License-Identifier: MIT
 """Mapping tests for :mod:`edgar_dq_repository`.
 
@@ -20,14 +20,14 @@ from dataclasses import dataclass
 from datetime import UTC, datetime
 from uuid import UUID, uuid4
 
-from stacklion_api.adapters.repositories.edgar_dq_repository import EdgarDQRepository
-from stacklion_api.domain.entities.edgar_dq import (
+from arche_api.adapters.repositories.edgar_dq_repository import EdgarDQRepository
+from arche_api.domain.entities.edgar_dq import (
     EdgarDQAnomaly,
     EdgarDQRun,
     EdgarFactQuality,
     NormalizedStatementIdentity,
 )
-from stacklion_api.domain.enums.edgar import FiscalPeriod, MaterialityClass, StatementType
+from arche_api.domain.enums.edgar import FiscalPeriod, MaterialityClass, StatementType
 
 # ---------------------------------------------------------------------------
 # Dummy row types to simulate ORM results

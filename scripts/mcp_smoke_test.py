@@ -1,8 +1,8 @@
 #!/usr/bin/env python3
 """
-MCP Smoke Test Script for Stacklion.
+MCP Smoke Test Script for Arche.
 
-This script exercises the Stacklion MCP HTTP endpoint end-to-end using a
+This script exercises the Arche MCP HTTP endpoint end-to-end using a
 simple MCP envelope over HTTP POST.
 
 Contract:
@@ -58,7 +58,7 @@ class SmokeTestConfig:
     """Configuration for MCP smoke tests.
 
     Attributes:
-        base_url: Base URL of the Stacklion HTTP API (without trailing slash).
+        base_url: Base URL of the Arche HTTP API (without trailing slash).
         mcp_path: Path to the MCP HTTP entrypoint (e.g., "/mcp").
         api_key: Optional API key to send as `X-Api-Key`.
         timeout_s: HTTP request timeout in seconds.
@@ -83,7 +83,7 @@ class MCPServerError(RuntimeError):
 
 
 class MCPClient:
-    """Minimal MCP HTTP client for Stacklion.
+    """Minimal MCP HTTP client for Arche.
 
     This client speaks a simple MCP envelope over HTTP POST:
 
@@ -192,7 +192,7 @@ class MCPClient:
 
 
 async def run_smoke_tests(config: SmokeTestConfig) -> int:
-    """Run a sequence of MCP smoke tests against the Stacklion endpoint.
+    """Run a sequence of MCP smoke tests against the Arche endpoint.
 
     Args:
         config: SmokeTestConfig instance with connection parameters.
@@ -265,14 +265,14 @@ def parse_args(argv: list[str] | None = None) -> SmokeTestConfig:
         A populated SmokeTestConfig instance.
     """
     parser = argparse.ArgumentParser(
-        description="Stacklion MCP HTTP smoke test (MCP envelope over POST).",
+        description="Arche MCP HTTP smoke test (MCP envelope over POST).",
     )
 
     parser.add_argument(
         "--base-url",
         default=os.getenv("MCP_HTTP_BASE_URL", "http://127.0.0.1:8000"),
         help=(
-            "Base URL for the Stacklion HTTP API " "(default: %(default)s or MCP_HTTP_BASE_URL)."
+            "Base URL for the Arche HTTP API " "(default: %(default)s or MCP_HTTP_BASE_URL)."
         ),
     )
     parser.add_argument(

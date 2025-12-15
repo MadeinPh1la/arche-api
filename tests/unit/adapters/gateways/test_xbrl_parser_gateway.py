@@ -4,7 +4,7 @@
 
 from __future__ import annotations
 
-from stacklion_api.adapters.gateways.xbrl_parser_gateway import DefaultXBRLParserGateway
+from arche_api.adapters.gateways.xbrl_parser_gateway import DefaultXBRLParserGateway
 
 _SIMPLE_XBRL = """
 <xbrli:xbrl xmlns:xbrli="http://www.xbrl.org/2003/instance">

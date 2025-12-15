@@ -12,19 +12,19 @@ from typing import Any
 
 import pytest
 
-from stacklion_api.application.use_cases.statements.get_statement_override_trace import (
+from arche_api.application.use_cases.statements.get_statement_override_trace import (
     GetStatementOverrideTraceRequest,
     GetStatementOverrideTraceUseCase,
 )
-from stacklion_api.domain.entities.xbrl_override_observability import (
+from arche_api.domain.entities.xbrl_override_observability import (
     EffectiveOverrideDecisionSummary,
     OverrideTraceEntry,
     StatementOverrideObservability,
 )
-from stacklion_api.domain.enums.canonical_statement_metric import CanonicalStatementMetric
-from stacklion_api.domain.enums.edgar import AccountingStandard, FiscalPeriod, StatementType
-from stacklion_api.domain.exceptions.edgar import EdgarIngestionError, EdgarMappingError
-from stacklion_api.domain.services.xbrl_mapping_overrides import (
+from arche_api.domain.enums.canonical_statement_metric import CanonicalStatementMetric
+from arche_api.domain.enums.edgar import AccountingStandard, FiscalPeriod, StatementType
+from arche_api.domain.exceptions.edgar import EdgarIngestionError, EdgarMappingError
+from arche_api.domain.services.xbrl_mapping_overrides import (
     MappingOverrideRule,
     OverrideScope,
 )

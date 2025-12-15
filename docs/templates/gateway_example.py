@@ -14,10 +14,10 @@ from __future__ import annotations
 
 from collections.abc import Sequence
 
-from stacklion_api.application.schemas.dto.quotes import HistoricalQuoteDTO
-from stacklion_api.domain.exceptions import ExternalAPIException
-from stacklion_api.infrastructure.external_apis.marketstack.client import MarketstackClient
-from stacklion_api.infrastructure.external_apis.marketstack.types import MarketstackBar
+from arche_api.application.schemas.dto.quotes import HistoricalQuoteDTO
+from arche_api.domain.exceptions import ExternalAPIException
+from arche_api.infrastructure.external_apis.marketstack.client import MarketstackClient
+from arche_api.infrastructure.external_apis.marketstack.types import MarketstackBar
 
 
 class MarketstackGateway:

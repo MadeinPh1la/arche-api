@@ -1,4 +1,4 @@
-# Copyright (c) Stacklion.
+# Copyright (c) Arche.
 # SPDX-License-Identifier: MIT
 """Unit tests for EdgarController."""
 
@@ -8,12 +8,12 @@ from datetime import date
 
 import pytest
 
-from stacklion_api.adapters.controllers.edgar_controller import EdgarController
-from stacklion_api.application.schemas.dto.edgar import (
+from arche_api.adapters.controllers.edgar_controller import EdgarController
+from arche_api.application.schemas.dto.edgar import (
     EdgarFilingDTO,
     EdgarStatementVersionDTO,
 )
-from stacklion_api.domain.enums.edgar import (
+from arche_api.domain.enums.edgar import (
     AccountingStandard,
     FilingType,
     FiscalPeriod,

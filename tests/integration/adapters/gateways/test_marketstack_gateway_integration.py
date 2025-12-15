@@ -7,15 +7,15 @@ import httpx
 import pytest
 import respx
 
-from stacklion_api.adapters.gateways.marketstack_gateway import MarketstackGateway
-from stacklion_api.application.schemas.dto.quotes import HistoricalQueryDTO
-from stacklion_api.domain.entities.historical_bar import BarInterval
-from stacklion_api.domain.exceptions.market_data import (
+from arche_api.adapters.gateways.marketstack_gateway import MarketstackGateway
+from arche_api.application.schemas.dto.quotes import HistoricalQueryDTO
+from arche_api.domain.entities.historical_bar import BarInterval
+from arche_api.domain.exceptions.market_data import (
     MarketDataRateLimited,
     MarketDataUnavailable,
 )
-from stacklion_api.infrastructure.external_apis.marketstack.client import MarketstackClient
-from stacklion_api.infrastructure.external_apis.marketstack.settings import MarketstackSettings
+from arche_api.infrastructure.external_apis.marketstack.client import MarketstackClient
+from arche_api.infrastructure.external_apis.marketstack.settings import MarketstackSettings
 
 
 @pytest.mark.asyncio

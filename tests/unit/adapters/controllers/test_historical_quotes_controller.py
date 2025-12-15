@@ -1,4 +1,4 @@
-# Copyright (c) Stacklion.
+# Copyright (c) Arche.
 # SPDX-License-Identifier: MIT
 """Unit tests for HistoricalQuotesController."""
 
@@ -8,11 +8,11 @@ from datetime import UTC, datetime
 
 import pytest
 
-from stacklion_api.adapters.controllers.historical_quotes_controller import (
+from arche_api.adapters.controllers.historical_quotes_controller import (
     HistoricalQuotesController,
 )
-from stacklion_api.application.schemas.dto.quotes import HistoricalBarDTO, HistoricalQueryDTO
-from stacklion_api.domain.entities.historical_bar import BarInterval
+from arche_api.application.schemas.dto.quotes import HistoricalBarDTO, HistoricalQueryDTO
+from arche_api.domain.entities.historical_bar import BarInterval
 
 
 class _FakeUC:

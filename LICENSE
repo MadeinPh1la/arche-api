@@ -1,7 +1,7 @@
 Business Source License 1.1
 
 Licensor: Northern Lion Labs LLC
-Licensed Work: Stacklion API
+Licensed Work: Arche API
 License Date: 2025-10-15
 Change Date: 2028-10-15
 Change License: Apache License, Version 2.0
@@ -45,7 +45,7 @@ modify, and distribute the Licensed Work under specific conditions.
 Additional Use Grant – SDKs, Schemas, and Documentation
 -------------------------------------------------------
 Client SDKs, schema tooling, and public documentation distributed under the
-Stacklion namespace are licensed separately under the MIT License.
+Arche namespace are licensed separately under the MIT License.
 
 MIT License (applies only to SDKs, Schemas, and Docs)
 Copyright (c) 2025 Northern Lion Labs

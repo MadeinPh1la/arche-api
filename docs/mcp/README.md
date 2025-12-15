@@ -1,6 +1,6 @@
-# Stacklion MCP Integration
+# Arche MCP Integration
 
-Stacklion exposes a **Model Context Protocol (MCP)** interface on top of the public Stacklion API so AI agents and MCP runtimes can:
+Arche exposes a **Model Context Protocol (MCP)** interface on top of the public Arche API so AI agents and MCP runtimes can:
 
 - Discover available methods and their input/output schemas.
 - Understand authentication and rate-limit expectations.
@@ -13,7 +13,7 @@ The MCP layer is a **thin adapter** over the existing HTTP contracts defined in:
 - `docs/standards/ENGINEERING_GUIDE.md`
 - `docs/standards/DEFINITION_OF_DONE.md`
 
-The HTTP layer uses Stacklion’s canonical envelopes (e.g. `SuccessEnvelope`, `PaginatedEnvelope`, `ErrorEnvelope`). The MCP layer **unwraps** those into the `result_schema` and `errors.schema` types defined in `mcp/manifest/mcp.json`.
+The HTTP layer uses Arche’s canonical envelopes (e.g. `SuccessEnvelope`, `PaginatedEnvelope`, `ErrorEnvelope`). The MCP layer **unwraps** those into the `result_schema` and `errors.schema` types defined in `mcp/manifest/mcp.json`.
 
 ---
 
@@ -28,7 +28,7 @@ The MCP manifest currently defines four methods:
   Fetch historical OHLCV bars for one or more tickers over a time window (paginated).
 
 - `system.health`  
-  Cheap health indicator for the Stacklion API via MCP.
+  Cheap health indicator for the Arche API via MCP.
 
 - `system.metadata`  
   Static metadata about MCP/interface versions and usage limits (intervals, page size, range constraints, etc.).
@@ -60,14 +60,14 @@ Additional HTTP-level details (base URL, auth headers, rate-limit headers) come 
 
 ## Authentication
 
-All MCP calls must be authenticated against the underlying Stacklion API.
+All MCP calls must be authenticated against the underlying Arche API.
 
 ### Primary mechanism
 
 The MCP layer is expected to send an API key with each HTTP call, typically via:
 
 ```http
-X-Api-Key: <stacklion_api_key>
+X-Api-Key: <arche_api_key>
 ````
 
 If deployment uses a different header or mechanism, document that at the environment level and configure the MCP host accordingly.
@@ -111,7 +111,7 @@ Agents should **back off** according to `retry_after_s` rather than hammering th
 
 ### HTTP layer (underlying API)
 
-The Stacklion HTTP API uses envelope contracts like:
+The Arche HTTP API uses envelope contracts like:
 
 * `SuccessEnvelope[T]`
 * `PaginatedEnvelope[T]`
@@ -312,7 +312,7 @@ Fetch historical OHLCV bars for tickers over a date range, with pagination.
 
 **Purpose**
 
-Simple health indicator for the Stacklion API via MCP.
+Simple health indicator for the Arche API via MCP.
 
 **Input schema**
 
@@ -394,7 +394,7 @@ Use these values instead of hardcoding limits in agents.
 2. **Wire auth**
 
    * Ensure an API key is available (e.g. environment variable).
-   * Inject `X-Api-Key` on every HTTP call the MCP host makes to Stacklion.
+   * Inject `X-Api-Key` on every HTTP call the MCP host makes to Arche.
    * If environment requires bearer tokens, also attach `Authorization: Bearer <JWT>`.
 
 3. **Call methods**
@@ -426,5 +426,5 @@ we must:
 3. Update the examples in this `README.md` if they drift.
 4. Run CI (lint, mypy, tests, contract checks) before merge.
 
-This keeps the MCP interface production-grade: predictable, typed, and fully aligned with the core Stacklion platform.
+This keeps the MCP interface production-grade: predictable, typed, and fully aligned with the core Arche platform.
 

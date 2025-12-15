@@ -5,9 +5,9 @@ from collections.abc import Mapping
 import pytest
 from fastapi import HTTPException
 
-import stacklion_api.infrastructure.auth.jwt_dependency as jwt_dep
-from stacklion_api.config.features.auth import AuthSettings
-from stacklion_api.infrastructure.auth.jwt_dependency import Principal, auth_required
+import arche_api.infrastructure.auth.jwt_dependency as jwt_dep
+from arche_api.config.features.auth import AuthSettings
+from arche_api.infrastructure.auth.jwt_dependency import Principal, auth_required
 
 
 class DummyRequest:

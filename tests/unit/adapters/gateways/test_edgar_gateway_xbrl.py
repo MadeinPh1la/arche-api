@@ -6,8 +6,8 @@ from __future__ import annotations
 
 import pytest
 
-from stacklion_api.adapters.gateways.edgar_gateway import HttpEdgarIngestionGateway
-from stacklion_api.domain.exceptions.edgar import EdgarIngestionError
+from arche_api.adapters.gateways.edgar_gateway import HttpEdgarIngestionGateway
+from arche_api.domain.exceptions.edgar import EdgarIngestionError
 
 
 class _FakeEdgarClient:

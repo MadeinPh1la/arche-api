@@ -16,7 +16,7 @@ from __future__ import annotations
 
 from pydantic import Field
 
-from stacklion_api.adapters.schemas.http.base import BaseHTTPSchema
+from arche_api.adapters.schemas.http.base import BaseHTTPSchema
 
 
 class StubResponse:

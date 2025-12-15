@@ -1,5 +1,5 @@
 # tests/unit/domain/entities/test_statement_quality.py
-# Copyright (c) Stacklion.
+# Copyright (c) Arche.
 # SPDX-License-Identifier: MIT
 """Unit tests for statement quality evaluation domain logic."""
 
@@ -10,8 +10,8 @@ from decimal import Decimal
 
 import pytest
 
-from stacklion_api.domain.entities.canonical_statement_payload import CanonicalStatementPayload
-from stacklion_api.domain.entities.statement_quality import (
+from arche_api.domain.entities.canonical_statement_payload import CanonicalStatementPayload
+from arche_api.domain.entities.statement_quality import (
     StatementQualityIssue,
     StatementQualityIssueSeverity,
     StatementQualityReport,
@@ -22,8 +22,8 @@ from stacklion_api.domain.entities.statement_quality import (
     _compute_score,
     evaluate_statement_quality,
 )
-from stacklion_api.domain.enums.canonical_statement_metric import CanonicalStatementMetric
-from stacklion_api.domain.enums.edgar import FiscalPeriod, StatementType
+from arche_api.domain.enums.canonical_statement_metric import CanonicalStatementMetric
+from arche_api.domain.enums.edgar import FiscalPeriod, StatementType
 
 
 def _make_payload(

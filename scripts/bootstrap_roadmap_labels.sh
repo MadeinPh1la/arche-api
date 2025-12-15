@@ -1,7 +1,7 @@
 #!/usr/bin/env bash
 set -euo pipefail
 
-REPO="${GITHUB_REPO:-MadeinPh1la/stacklion-api}"
+REPO="${GITHUB_REPO:-MadeinPh1la/arche_api}"
 
 echo "Bootstrapping labels in $REPO"
 

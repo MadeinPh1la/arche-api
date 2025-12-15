@@ -20,25 +20,25 @@ import pytest
 from fastapi import FastAPI
 from fastapi.testclient import TestClient
 
-from stacklion_api.adapters.routers.fundamentals_router import (
+from arche_api.adapters.routers.fundamentals_router import (
     get_uow,
 )
-from stacklion_api.adapters.routers.fundamentals_router import (
+from arche_api.adapters.routers.fundamentals_router import (
     router as fundamentals_router,
 )
-from stacklion_api.application.use_cases.statements.get_fundamentals_timeseries import (
+from arche_api.application.use_cases.statements.get_fundamentals_timeseries import (
     GetFundamentalsTimeSeriesRequest,
     GetFundamentalsTimeSeriesUseCase,
 )
-from stacklion_api.domain.entities.edgar_fundamentals_timeseries import (
+from arche_api.domain.entities.edgar_fundamentals_timeseries import (
     FundamentalsTimeSeriesPoint,
 )
-from stacklion_api.domain.enums.edgar import (
+from arche_api.domain.enums.edgar import (
     AccountingStandard,
     FiscalPeriod,
     StatementType,
 )
-from stacklion_api.domain.services.canonical_metric_registry import (
+from arche_api.domain.services.canonical_metric_registry import (
     get_tier1_metrics_for_statement_type,
 )
 

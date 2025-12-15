@@ -12,19 +12,19 @@ from typing import Any
 
 import pytest
 
-from stacklion_api.application.schemas.dto.edgar_dq import StatementDQOverlayDTO
-from stacklion_api.application.uow import UnitOfWork
-from stacklion_api.application.use_cases.statements.get_statement_with_dq_overlay import (
+from arche_api.application.schemas.dto.edgar_dq import StatementDQOverlayDTO
+from arche_api.application.uow import UnitOfWork
+from arche_api.application.use_cases.statements.get_statement_with_dq_overlay import (
     GetStatementWithDQOverlayRequest,
     GetStatementWithDQOverlayUseCase,
 )
-from stacklion_api.domain.enums.edgar import (
+from arche_api.domain.enums.edgar import (
     AccountingStandard,
     FiscalPeriod,
     MaterialityClass,
     StatementType,
 )
-from stacklion_api.domain.exceptions.edgar import EdgarIngestionError
+from arche_api.domain.exceptions.edgar import EdgarIngestionError
 
 # --------------------------------------------------------------------------- #
 # Fakes                                                                       #

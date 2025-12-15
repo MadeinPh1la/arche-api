@@ -1062,7 +1062,7 @@
           },
           "facts": {
             "items": {
-              "$ref": "#/components/schemas/stacklion_api__adapters__schemas__http__edgar_schemas__NormalizedFactHTTP"
+              "$ref": "#/components/schemas/arche_api__adapters__schemas__http__edgar_schemas__NormalizedFactHTTP"
             },
             "title": "Facts",
             "type": "array"
@@ -1865,7 +1865,7 @@
           },
           "facts": {
             "items": {
-              "$ref": "#/components/schemas/stacklion_api__adapters__schemas__http__edgar_dq_schemas__NormalizedFactHTTP"
+              "$ref": "#/components/schemas/arche_api__adapters__schemas__http__edgar_dq_schemas__NormalizedFactHTTP"
             },
             "title": "Facts",
             "type": "array"
@@ -2239,7 +2239,7 @@
         "title": "ValidationError",
         "type": "object"
       },
-      "stacklion_api__adapters__schemas__http__edgar_dq_schemas__NormalizedFactHTTP": {
+      "arche_api__adapters__schemas__http__edgar_dq_schemas__NormalizedFactHTTP": {
         "additionalProperties": false,
         "properties": {
           "accounting_standard": {
@@ -2354,7 +2354,7 @@
         "title": "NormalizedFactHTTP",
         "type": "object"
       },
-      "stacklion_api__adapters__schemas__http__edgar_schemas__NormalizedFactHTTP": {
+      "arche_api__adapters__schemas__http__edgar_schemas__NormalizedFactHTTP": {
         "additionalProperties": false,
         "examples": [
           {
@@ -2444,7 +2444,7 @@
   },
   "info": {
     "description": "Secure, governed financial data API.",
-    "title": "Stacklion API",
+    "title": "Arche API",
     "version": "0.0.0"
   },
   "openapi": "3.1.0",

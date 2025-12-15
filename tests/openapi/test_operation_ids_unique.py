@@ -1,4 +1,4 @@
-from stacklion_api.main import app
+from arche_api.main import app
 
 
 def test_operation_ids_are_unique() -> None:

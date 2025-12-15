@@ -7,7 +7,7 @@ from __future__ import annotations
 from datetime import date
 from decimal import Decimal
 
-from stacklion_api.domain.entities.xbrl_document import (
+from arche_api.domain.entities.xbrl_document import (
     XBRLContext,
     XBRLDimension,
     XBRLDocument,

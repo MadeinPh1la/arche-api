@@ -1,5 +1,5 @@
 # tests/integration/repositories/test_idempotency_repository.py
-# Copyright (c) Stacklion.
+# Copyright (c) Arche.
 # SPDX-License-Identifier: MIT
 """Integration tests for the SQLAlchemy IdempotencyRepository implementation.
 
@@ -23,8 +23,8 @@ from sqlalchemy.ext.asyncio import (
     create_async_engine,
 )
 
-from stacklion_api.adapters.repositories.idempotency_repository import IdempotencyRepository
-from stacklion_api.infrastructure.database.models.idempotency import IdempotencyKey
+from arche_api.adapters.repositories.idempotency_repository import IdempotencyRepository
+from arche_api.infrastructure.database.models.idempotency import IdempotencyKey
 
 
 def _utcnow_naive() -> datetime:
@@ -42,7 +42,7 @@ async def idemp_session() -> AsyncGenerator[AsyncSession, None]:
     """
     database_url = os.getenv(
         "DATABASE_URL",
-        "postgresql+asyncpg://stacklion:stacklion@127.0.0.1:5432/stacklion_test",
+        "postgresql+asyncpg://arche:arche@127.0.0.1:5432/arche_test",
     )
     engine: AsyncEngine = create_async_engine(database_url, future=True)
 

@@ -4,8 +4,8 @@ import os
 
 import pytest
 
-from stacklion_api.config.features.auth import AuthSettings, get_auth_settings
-from stacklion_api.config.settings import get_settings as get_app_settings
+from arche_api.config.features.auth import AuthSettings, get_auth_settings
+from arche_api.config.settings import get_settings as get_app_settings
 
 
 def _clear_auth_env(monkeypatch: pytest.MonkeyPatch) -> None:

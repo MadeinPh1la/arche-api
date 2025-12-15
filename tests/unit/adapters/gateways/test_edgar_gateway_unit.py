@@ -1,4 +1,4 @@
-# Copyright (c) Stacklion.
+# Copyright (c) Arche.
 # SPDX-License-Identifier: MIT
 
 from __future__ import annotations
@@ -7,12 +7,12 @@ from datetime import date
 
 import pytest
 
-from stacklion_api.adapters.gateways.edgar_gateway import HttpEdgarIngestionGateway
-from stacklion_api.domain.entities.edgar_company import EdgarCompanyIdentity
-from stacklion_api.domain.entities.edgar_filing import EdgarFiling
-from stacklion_api.domain.enums.edgar import FilingType, StatementType
-from stacklion_api.domain.exceptions.edgar import EdgarIngestionError
-from stacklion_api.infrastructure.external_apis.edgar.client import EdgarClient
+from arche_api.adapters.gateways.edgar_gateway import HttpEdgarIngestionGateway
+from arche_api.domain.entities.edgar_company import EdgarCompanyIdentity
+from arche_api.domain.entities.edgar_filing import EdgarFiling
+from arche_api.domain.enums.edgar import FilingType, StatementType
+from arche_api.domain.exceptions.edgar import EdgarIngestionError
+from arche_api.infrastructure.external_apis.edgar.client import EdgarClient
 
 
 class _FakeEdgarClient(EdgarClient):

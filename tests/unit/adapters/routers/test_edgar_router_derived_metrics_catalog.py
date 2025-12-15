@@ -15,8 +15,8 @@ import pytest
 from fastapi import FastAPI
 from httpx import ASGITransport, AsyncClient
 
-from stacklion_api.adapters.routers.edgar_router import router as edgar_router
-from stacklion_api.domain.enums.derived_metric import DerivedMetric
+from arche_api.adapters.routers.edgar_router import router as edgar_router
+from arche_api.domain.enums.derived_metric import DerivedMetric
 
 
 @pytest.fixture
@@ -107,7 +107,7 @@ async def test_get_derived_metrics_catalog_unhandled_error_maps_to_503(
     # Monkeypatch the module-level presenter used by the router.
 
     # Re-import to ensure we patch the same instance used by FastAPI routing.
-    from stacklion_api.adapters.routers import edgar_router as edgar_router_module
+    from arche_api.adapters.routers import edgar_router as edgar_router_module
 
     monkeypatch.setattr(edgar_router_module, "presenter", _FaultyPresenter())
 

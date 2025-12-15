@@ -84,7 +84,7 @@ otel = [
 ]
 
 [project.urls]
-Homepage = "https://stacklion.io"
+Homepage = "https://arche.io"
 
 [tool.setuptools]
 package-dir = { "" = "src" }
@@ -93,9 +93,9 @@ package-dir = { "" = "src" }
 where = ["src"]
 exclude = ["tests*", "benchmarks*", "loadtests*", "docs*", "scripts*"]
 
-# Ensure typing is recognized by type checkers (add src/stacklion_api/py.typed)
+# Ensure typing is recognized by type checkers (add src/arche_api/py.typed)
 [tool.setuptools.package-data]
-"stacklion_api" = ["py.typed"]
+"arche_api" = ["py.typed"]
 
 # ======================================================================
 # Ruff (Lint)
@@ -147,7 +147,7 @@ ignore = [
 ]
 
 [tool.ruff.lint.isort]
-known-first-party = ["stacklion_api"]
+known-first-party = ["arche_api"]
 force-single-line = false
 
 [tool.ruff.lint.pydocstyle]
@@ -178,31 +178,31 @@ max-complexity = 10
 ]
 
 # Main entrypoint: keep bind rule, but don't enforce docstrings here.
-"src/stacklion_api/main.py" = [
+"src/arche_api/main.py" = [
   "S104",
   "D",
 ]
 
 # JWT dependency: FastAPI Depends hack + we don't care about docstrings here.
-"src/stacklion_api/infrastructure/auth/jwt_dependency.py" = [
+"src/arche_api/infrastructure/auth/jwt_dependency.py" = [
   "B008",
   "D",
 ]
 
 # Internal infrastructure and glue that are not dev-facing APIs.
-"src/stacklion_api/infrastructure/**/*.py" = [
+"src/arche_api/infrastructure/**/*.py" = [
   "D",
 ]
-"src/stacklion_api/config/**/*.py" = [
+"src/arche_api/config/**/*.py" = [
   "D",
 ]
-"src/stacklion_api/dependencies/**/*.py" = [
+"src/arche_api/dependencies/**/*.py" = [
   "D",
 ]
-"src/stacklion_api/mcp/**/*.py" = [
+"src/arche_api/mcp/**/*.py" = [
   "D",
 ]
-"src/stacklion_api/utils/**/*.py" = [
+"src/arche_api/utils/**/*.py" = [
   "D",
 ]
 
@@ -271,16 +271,16 @@ ignore_missing_imports = true
 
 [[tool.mypy.overrides]]
 module = [
-  "stacklion_api.adapters.*",
-  "stacklion_api.infrastructure.*",
-  "stacklion_api.config.*",
-  "stacklion_api.main",
+  "arche_api.adapters.*",
+  "arche_api.infrastructure.*",
+  "arche_api.config.*",
+  "arche_api.main",
   "migrations.env",
 ]
 disable_error_code = ["misc", "import-untyped", "no-any-return",]
 
 [[tool.mypy.overrides]]
-module = "stacklion_api.tasks.cli"
+module = "arche_api.tasks.cli"
 ignore_errors = true
 
 [[tool.mypy.overrides]]
@@ -292,7 +292,7 @@ ignore_errors = true
 # ======================================================================
 [tool.coverage.run]
 branch = true
-source = ["src/stacklion_api"]
+source = ["src/arche_api"]
 omit = [
   "tests/*",
   "*/site-packages/*",
@@ -316,7 +316,7 @@ addopts = """
   -q
   --strict-markers
   --disable-warnings
-  --cov=stacklion_api
+  --cov=arche_api
   --cov-report=term-missing:skip-covered
   --cov-report=xml
   --cov-fail-under=80

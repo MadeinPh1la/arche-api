@@ -1,7 +1,7 @@
 import os
 from contextlib import contextmanager
 
-from stacklion_api.config.settings import get_settings
+from arche_api.config.settings import get_settings
 
 
 @contextmanager
@@ -28,7 +28,7 @@ def _env(**pairs: str | None):
 def _required_basics() -> dict[str, str]:
     # Minimal required fields for Settings to validate
     return {
-        "DATABASE_URL": "postgresql+asyncpg://stacklion:stacklion@localhost:5432/stacklion_test",
+        "DATABASE_URL": "postgresql+asyncpg://arche:arche@localhost:5432/arche_test",
         "REDIS_URL": "redis://localhost:6379/0",
         "CLERK_ISSUER": "https://example.clerk.accounts.dev",
     }

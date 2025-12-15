@@ -7,7 +7,7 @@ from fastapi.exceptions import RequestValidationError
 from fastapi.testclient import TestClient
 from pydantic import BaseModel
 
-from stacklion_api.infrastructure.http import errors
+from arche_api.infrastructure.http import errors
 
 
 class Payload(BaseModel):

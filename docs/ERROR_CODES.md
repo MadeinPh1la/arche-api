@@ -1,4 +1,4 @@
-# Stacklion Error Codes
+# Arche Error Codes
 
 Canonical error envelope:
 ```json

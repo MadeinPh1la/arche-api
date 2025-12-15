@@ -1,5 +1,5 @@
 # tests/unit/domain/services/test_edgar_normalization.py
-# Copyright (c) Stacklion.
+# Copyright (c) Arche.
 # SPDX-License-Identifier: MIT
 """Unit tests for the EDGAR canonical statement normalization engine.
 
@@ -17,19 +17,19 @@ from datetime import date
 
 import pytest
 
-from stacklion_api.domain.entities.canonical_statement_payload import (
+from arche_api.domain.entities.canonical_statement_payload import (
     CanonicalStatementPayload,
 )
-from stacklion_api.domain.enums.canonical_statement_metric import (
+from arche_api.domain.enums.canonical_statement_metric import (
     CanonicalStatementMetric,
 )
-from stacklion_api.domain.enums.edgar import (
+from arche_api.domain.enums.edgar import (
     AccountingStandard,
     FiscalPeriod,
     StatementType,
 )
-from stacklion_api.domain.exceptions.edgar import EdgarMappingError
-from stacklion_api.domain.services.edgar_normalization import (
+from arche_api.domain.exceptions.edgar import EdgarMappingError
+from arche_api.domain.services.edgar_normalization import (
     NORMALIZED_PAYLOAD_VERSION,
     CanonicalStatementNormalizer,
     EdgarFact,

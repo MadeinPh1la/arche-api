@@ -6,8 +6,8 @@ import asyncio
 import fakeredis.aioredis
 import pytest
 
-from stacklion_api.infrastructure.caching import redis_client as redis_client_module
-from stacklion_api.infrastructure.caching.json_cache import TTL_QUOTE_HOT_S, RedisJsonCache
+from arche_api.infrastructure.caching import redis_client as redis_client_module
+from arche_api.infrastructure.caching.json_cache import TTL_QUOTE_HOT_S, RedisJsonCache
 
 
 @pytest.mark.asyncio
@@ -16,7 +16,7 @@ async def test_singleflight_loader_invoked_once_under_concurrency(monkeypatch):
     fake = fakeredis.aioredis.FakeRedis(decode_responses=True)
     monkeypatch.setattr(redis_client_module, "_client", fake)
 
-    cache = RedisJsonCache(namespace="stacklion:market_data:v1")
+    cache = RedisJsonCache(namespace="arche:market_data:v1")
 
     key = "quote:AAPL"
     loader_calls = 0

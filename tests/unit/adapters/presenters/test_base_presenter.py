@@ -1,4 +1,4 @@
-# Copyright (c) Stacklion.
+# Copyright (c) Arche.
 # SPDX-License-Identifier: MIT
 """Unit tests for BasePresenter behaviors and helpers."""
 
@@ -10,13 +10,13 @@ from decimal import Decimal
 import pytest
 from fastapi import Response
 
-from stacklion_api.adapters.presenters.base_presenter import (
+from arche_api.adapters.presenters.base_presenter import (
     BasePresenter,
     PresentResult,
     _compute_quoted_etag,
     _json_default,
 )
-from stacklion_api.adapters.schemas.http.envelopes import (
+from arche_api.adapters.schemas.http.envelopes import (
     ErrorEnvelope,
     PaginatedEnvelope,
     SuccessEnvelope,

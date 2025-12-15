@@ -4,7 +4,7 @@ import httpx
 import respx
 from fastapi.testclient import TestClient
 
-from stacklion_api.main import create_app
+from arche_api.main import create_app
 
 PAYLOAD = {
     "pagination": {"limit": 50, "offset": 0, "count": 1, "total": 1},

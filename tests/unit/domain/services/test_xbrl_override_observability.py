@@ -4,20 +4,20 @@ from collections.abc import Sequence
 from datetime import date
 from typing import Any
 
-from stacklion_api.domain.entities.xbrl_override_observability import (
+from arche_api.domain.entities.xbrl_override_observability import (
     StatementOverrideObservability,
 )
-from stacklion_api.domain.enums.canonical_statement_metric import CanonicalStatementMetric
-from stacklion_api.domain.enums.edgar import AccountingStandard, FiscalPeriod, StatementType
-from stacklion_api.domain.services.edgar_normalization import (
+from arche_api.domain.enums.canonical_statement_metric import CanonicalStatementMetric
+from arche_api.domain.enums.edgar import AccountingStandard, FiscalPeriod, StatementType
+from arche_api.domain.services.edgar_normalization import (
     EdgarFact,
     NormalizationContext,
 )
-from stacklion_api.domain.services.xbrl_mapping_overrides import (
+from arche_api.domain.services.xbrl_mapping_overrides import (
     MappingOverrideRule,
     OverrideScope,
 )
-from stacklion_api.domain.services.xbrl_override_observability import (
+from arche_api.domain.services.xbrl_override_observability import (
     XBRLOverrideObservabilityService,
 )
 

@@ -1,5 +1,5 @@
 # tests/unit/domain/entities/edgar/test_edgar_statement_version.py
-# Copyright (c) Stacklion.
+# Copyright (c) Arche.
 # SPDX-License-Identifier: MIT
 """Unit tests for the EdgarStatementVersion domain entity.
 
@@ -23,16 +23,16 @@ from datetime import date
 
 import pytest
 
-from stacklion_api.domain.entities.edgar_company import EdgarCompanyIdentity
-from stacklion_api.domain.entities.edgar_filing import EdgarFiling
-from stacklion_api.domain.entities.edgar_statement_version import EdgarStatementVersion
-from stacklion_api.domain.enums.edgar import (
+from arche_api.domain.entities.edgar_company import EdgarCompanyIdentity
+from arche_api.domain.entities.edgar_filing import EdgarFiling
+from arche_api.domain.entities.edgar_statement_version import EdgarStatementVersion
+from arche_api.domain.enums.edgar import (
     AccountingStandard,
     FilingType,
     FiscalPeriod,
     StatementType,
 )
-from stacklion_api.domain.exceptions.edgar import EdgarMappingError
+from arche_api.domain.exceptions.edgar import EdgarMappingError
 
 # --------------------------------------------------------------------------- #
 # Test helpers                                                                #

@@ -1,4 +1,4 @@
-# Copyright (c) Stacklion.
+# Copyright (c) Arche.
 # SPDX-License-Identifier: MIT
 """Integration test for /v1/protected/ping."""
 
@@ -6,7 +6,7 @@ from __future__ import annotations
 
 from fastapi.testclient import TestClient
 
-from stacklion_api.main import create_app
+from arche_api.main import create_app
 
 
 def test_protected_ping_returns_ok_payload() -> None:

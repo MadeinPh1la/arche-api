@@ -9,8 +9,8 @@ from uuid import uuid4
 import pytest
 from sqlalchemy.ext.asyncio import AsyncSession, async_sessionmaker, create_async_engine
 
-from stacklion_api.application.interfaces.market_data_gateway import MarketDataGateway
-from stacklion_api.application.use_cases.external_apis.marketstack.ingest_marketstack_intraday import (
+from arche_api.application.interfaces.market_data_gateway import MarketDataGateway
+from arche_api.application.use_cases.external_apis.marketstack.ingest_marketstack_intraday import (
     IngestIntradayRequest,
     IngestMarketstackIntradayBars,
 )
@@ -18,7 +18,7 @@ from stacklion_api.application.use_cases.external_apis.marketstack.ingest_market
 # Use CI-friendly DB URL by default, overridable via env for local dev.
 TEST_DATABASE_URL = os.getenv(
     "DATABASE_URL",
-    "postgresql+asyncpg://stacklion:stacklion@127.0.0.1:5432/stacklion_test",
+    "postgresql+asyncpg://arche:arche@127.0.0.1:5432/arche_test",
 )
 
 

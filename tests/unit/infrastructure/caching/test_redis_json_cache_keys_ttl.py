@@ -6,8 +6,8 @@ import json
 import fakeredis.aioredis
 import pytest
 
-from stacklion_api.infrastructure.caching import redis_client as redis_client_module
-from stacklion_api.infrastructure.caching.json_cache import TTL_INTRADAY_RECENT_S, RedisJsonCache
+from arche_api.infrastructure.caching import redis_client as redis_client_module
+from arche_api.infrastructure.caching.json_cache import TTL_INTRADAY_RECENT_S, RedisJsonCache
 
 
 @pytest.mark.asyncio
@@ -17,13 +17,13 @@ async def test_redis_json_cache_key_shape_and_ttl(monkeypatch):
     # Wire the fake into the global Redis client used by the cache.
     monkeypatch.setattr(redis_client_module, "_client", fake)
 
-    cache = RedisJsonCache(namespace="stacklion:market_data:v1")
+    cache = RedisJsonCache(namespace="arche:market_data:v1")
     tail = "historical:AAPL:1min:2025-01-01T00:00:00+00:00:2025-01-01T01:00:00+00:00:p1:s50"
     payload = {"x": 1}
 
     await cache.set_json(tail, payload, ttl=TTL_INTRADAY_RECENT_S)
 
-    full_key = f"stacklion:market_data:v1:{tail}"
+    full_key = f"arche:market_data:v1:{tail}"
     assert await fake.get(full_key) == json.dumps(payload)
 
     ttl = await fake.ttl(full_key)

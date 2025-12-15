@@ -25,18 +25,18 @@ from sqlalchemy.ext.asyncio import (
     create_async_engine,
 )
 
-from stacklion_api.adapters.repositories.edgar_reconciliation_checks_repository import (
+from arche_api.adapters.repositories.edgar_reconciliation_checks_repository import (
     SqlAlchemyEdgarReconciliationChecksRepository,
 )
-from stacklion_api.domain.entities.edgar_dq import NormalizedStatementIdentity
-from stacklion_api.domain.entities.edgar_reconciliation import ReconciliationResult
-from stacklion_api.domain.enums.edgar import FiscalPeriod, MaterialityClass, StatementType
-from stacklion_api.domain.enums.edgar_reconciliation import (
+from arche_api.domain.entities.edgar_dq import NormalizedStatementIdentity
+from arche_api.domain.entities.edgar_reconciliation import ReconciliationResult
+from arche_api.domain.enums.edgar import FiscalPeriod, MaterialityClass, StatementType
+from arche_api.domain.enums.edgar_reconciliation import (
     ReconciliationRuleCategory,
     ReconciliationStatus,
 )
-from stacklion_api.infrastructure.database.models.ref import Company
-from stacklion_api.infrastructure.database.models.sec import (
+from arche_api.infrastructure.database.models.ref import Company
+from arche_api.infrastructure.database.models.sec import (
     EdgarReconciliationCheck,
     Filing,
     StatementVersion,
@@ -53,7 +53,7 @@ async def recon_session() -> AsyncGenerator[AsyncSession, None]:
     """
     database_url = os.getenv(
         "DATABASE_URL",
-        "postgresql+asyncpg://stacklion:stacklion@127.0.0.1:5432/stacklion_test",
+        "postgresql+asyncpg://arche:arche@127.0.0.1:5432/arche_test",
     )
     engine: AsyncEngine = create_async_engine(database_url, future=True)
 

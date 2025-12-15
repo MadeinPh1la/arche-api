@@ -15,10 +15,10 @@ from __future__ import annotations
 
 from dataclasses import dataclass
 
-from stacklion_api.adapters.uow import UnitOfWork  # or application-level UoW interface
-from stacklion_api.application.schemas.dto.base import BaseDTO
-from stacklion_api.domain.exceptions import NotFoundException
-from stacklion_api.domain.interfaces.repositories.market_data_repository import (
+from arche_api.adapters.uow import UnitOfWork  # or application-level UoW interface
+from arche_api.application.schemas.dto.base import BaseDTO
+from arche_api.domain.exceptions import NotFoundException
+from arche_api.domain.interfaces.repositories.market_data_repository import (
     MarketDataRepository,
 )
 

@@ -1,4 +1,4 @@
-from stacklion_api.adapters.routers.base_router import BaseRouter
+from arche_api.adapters.routers.base_router import BaseRouter
 
 
 def test_base_router_prefix_and_tags():

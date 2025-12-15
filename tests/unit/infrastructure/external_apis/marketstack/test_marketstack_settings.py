@@ -2,7 +2,7 @@ from __future__ import annotations
 
 import pytest
 
-from stacklion_api.infrastructure.external_apis.marketstack.settings import (
+from arche_api.infrastructure.external_apis.marketstack.settings import (
     MarketstackSettings,
     _default_allowed_intervals,
 )

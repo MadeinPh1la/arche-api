@@ -19,18 +19,18 @@ from uuid import UUID, uuid4
 
 import pytest
 
-from stacklion_api.adapters.repositories.edgar_dq_repository import (
+from arche_api.adapters.repositories.edgar_dq_repository import (
     EdgarDQRepository,
     _materiality_rank,
 )
-from stacklion_api.domain.entities.edgar_dq import (
+from arche_api.domain.entities.edgar_dq import (
     EdgarDQAnomaly,
     EdgarDQRun,
     EdgarFactQuality,
     NormalizedStatementIdentity,
 )
-from stacklion_api.domain.enums.edgar import FiscalPeriod, MaterialityClass, StatementType
-from stacklion_api.domain.exceptions.edgar import EdgarIngestionError
+from arche_api.domain.enums.edgar import FiscalPeriod, MaterialityClass, StatementType
+from arche_api.domain.exceptions.edgar import EdgarIngestionError
 
 # --------------------------------------------------------------------------- #
 # Domain helpers                                                              #

@@ -2,7 +2,7 @@ from __future__ import annotations
 
 import pytest
 
-from stacklion_api.infrastructure.observability.metrics_market_data import (
+from arche_api.infrastructure.observability.metrics_market_data import (
     get_market_data_304_total,
     get_market_data_breaker_events_total,
     get_market_data_cache_hits_total,

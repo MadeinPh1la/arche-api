@@ -2,8 +2,8 @@ from __future__ import annotations
 
 import pytest
 
-from stacklion_api.domain.entities.edgar_company import EdgarCompanyIdentity
-from stacklion_api.domain.exceptions.edgar import EdgarMappingError
+from arche_api.domain.entities.edgar_company import EdgarCompanyIdentity
+from arche_api.domain.exceptions.edgar import EdgarMappingError
 
 
 def test_edgar_company_identity_valid_construction_and_normalization() -> None:

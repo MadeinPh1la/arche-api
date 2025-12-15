@@ -1,5 +1,5 @@
 
-# Stacklion MCP Manifest
+# Arche MCP Manifest
 
 This document explains the structure and semantics of:
 
@@ -9,7 +9,7 @@ mcp/manifest/mcp.json
 
 This manifest is the **contract** between:
 
-* The Stacklion MCP adapter (which calls the underlying HTTP API), and
+* The Arche MCP adapter (which calls the underlying HTTP API), and
 * MCP runtimes / agents (which call methods described in this manifest).
 
 The manifest is **descriptive only**. It does not introduce new HTTP endpoints; it documents the MCP-facing methods, their input/output schemas, and the normalized error model.
@@ -32,7 +32,7 @@ High-level layout:
 
 ```json
 {
-  "name": "stacklion-mcp",
+  "name": "arche-mcp",
   "version": "1.0.0",
   "description": "...",
   "contact": { ... },
@@ -46,7 +46,7 @@ High-level layout:
 
 ### `name`
 
-* `"stacklion-mcp"`
+* `"arche-mcp"`
   Stable identifier for the MCP service. Treat this as the logical service name in logs and agent configurations.
 
 ### `version`
@@ -61,7 +61,7 @@ High-level layout:
 
 Human-readable description of what the MCP interface does:
 
-> "Stacklion MCP service exposing live and historical quotes over a stable, typed interface."
+> "Arche MCP service exposing live and historical quotes over a stable, typed interface."
 
 Agents and UIs can display this as the service summary.
 
@@ -69,9 +69,9 @@ Agents and UIs can display this as the service summary.
 
 ```json
 "contact": {
-  "name": "Stacklion API",
-  "url": "https://stacklion.io/",
-  "email": "support@stacklion.io"
+  "name": "Arche API",
+  "url": "https://arche.io/",
+  "email": "support@arche.io"
 }
 ```
 
@@ -88,7 +88,7 @@ Used by:
 }
 ```
 
-License for the MCP manifest/interface. This should track the overall Stacklion project license.
+License for the MCP manifest/interface. This should track the overall Arche project license.
 
 ---
 
@@ -164,11 +164,11 @@ Fetch latest quote snapshots for up to 50 tickers.
       },
       "request_id": {
         "type": ["string", "null"],
-        "description": "Underlying Stacklion X-Request-ID for correlation."
+        "description": "Underlying Arche X-Request-ID for correlation."
       },
       "source_status": {
         "type": "integer",
-        "description": "HTTP status code returned by the underlying Stacklion endpoint."
+        "description": "HTTP status code returned by the underlying Arche endpoint."
       }
     }
   }
@@ -282,7 +282,7 @@ Fetch historical OHLCV bars for tickers over a time window, with pagination.
       "total": { "type": "integer" },
       "request_id": {
         "type": ["string", "null"],
-        "description": "Underlying Stacklion X-Request-ID for correlation."
+        "description": "Underlying Arche X-Request-ID for correlation."
       },
       "source_status": { "type": "integer" }
     }
@@ -319,14 +319,14 @@ Fetch historical OHLCV bars for tickers over a time window, with pagination.
 
 **Purpose**
 
-Simple health indicator for the Stacklion API via MCP.
+Simple health indicator for the Arche API via MCP.
 
 **Schema excerpt**
 
 ```json
 {
   "name": "system.health",
-  "description": "Simple health indicator for the Stacklion API via MCP.",
+  "description": "Simple health indicator for the Arche API via MCP.",
   "input_schema": {
     "type": "object",
     "additionalProperties": false,
@@ -366,14 +366,14 @@ Simple health indicator for the Stacklion API via MCP.
 
 **Purpose**
 
-Static metadata about Stacklion MCP capabilities and usage limits.
+Static metadata about Arche MCP capabilities and usage limits.
 
 **Schema excerpt**
 
 ```json
 {
   "name": "system.metadata",
-  "description": "Static metadata about Stacklion MCP capabilities and usage limits.",
+  "description": "Static metadata about Arche MCP capabilities and usage limits.",
   "input_schema": {
     "type": "object",
     "additionalProperties": false,
@@ -506,7 +506,7 @@ You must:
 1. Bump the manifest `version` following semver.
 2. Update `system.metadata.mcp_version` to match.
 3. Update this `MANIFEST.md` and `docs/mcp/README.md` to reflect the new behavior.
-4. Run full CI (lint, type-check, tests) to keep the MCP layer aligned with the core Stacklion platform.
+4. Run full CI (lint, type-check, tests) to keep the MCP layer aligned with the core Arche platform.
 
 The goal is to keep the MCP interface predictable and stable for agents, with clear, explicit contracts instead of guesswork.
 

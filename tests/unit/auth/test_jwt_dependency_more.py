@@ -3,7 +3,7 @@ from types import SimpleNamespace
 import pytest
 from fastapi import HTTPException
 
-from stacklion_api.infrastructure.auth.jwt_dependency import _decode_hs256
+from arche_api.infrastructure.auth.jwt_dependency import _decode_hs256
 
 
 class _Cfg:
@@ -18,7 +18,7 @@ def test_decode_hs256_missing_secret_raises_500():
 
 
 def test_extract_bearer_token_messages():
-    from stacklion_api.infrastructure.auth.jwt_dependency import _extract_bearer_token
+    from arche_api.infrastructure.auth.jwt_dependency import _extract_bearer_token
 
     class Req(SimpleNamespace):
         headers = {}

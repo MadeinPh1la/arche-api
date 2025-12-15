@@ -9,11 +9,11 @@ from fastapi import FastAPI
 from httpx import ASGITransport, AsyncClient
 from pytest import MonkeyPatch
 
-from stacklion_api.adapters.routers.quotes_router import router
-from stacklion_api.application.use_cases.quotes.get_quotes import GetQuotes
-from stacklion_api.dependencies import market_data as dep
-from stacklion_api.domain.entities.quote import Quote
-from stacklion_api.domain.interfaces.gateways.market_data_gateway import MarketDataGatewayProtocol
+from arche_api.adapters.routers.quotes_router import router
+from arche_api.application.use_cases.quotes.get_quotes import GetQuotes
+from arche_api.dependencies import market_data as dep
+from arche_api.domain.entities.quote import Quote
+from arche_api.domain.interfaces.gateways.market_data_gateway import MarketDataGatewayProtocol
 
 
 class FakeGateway(MarketDataGatewayProtocol):

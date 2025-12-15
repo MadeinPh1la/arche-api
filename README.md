@@ -2,7 +2,7 @@
 
 ### The financial data layer for modern finance teams
 
-[![Build Status](https://img.shields.io/github/actions/workflow/status/MadeinPh1la/stacklion-api/ci.yml?branch=main\&label=build)](https://github.com/MadeinPh1la/stacklion-api/actions)
+[![Build Status](https://img.shields.io/github/actions/workflow/status/MadeinPh1la/arche_api/ci.yml?branch=main\&label=build)](https://github.com/MadeinPh1la/arche_api/actions)
 [![Pre-commit](https://img.shields.io/badge/pre--commit-enabled-brightgreen?logo=pre-commit\&logoColor=white)](https://pre-commit.com/)
 [![License](https://img.shields.io/badge/license-BSL%201.1-blue.svg)](LICENSE)
 [![Python](https://img.shields.io/badge/python-3.11%2B-blue.svg)](https://www.python.org/)
@@ -33,7 +33,7 @@ It is designed for developers, quants, and fintech teams who demand verified, ve
 
 ## Architecture
 
-Stacklion follows **Clean Architecture** and **YAGNT** principles:
+Arche follows **Clean Architecture** and **YAGNT** principles:
 
 ```
 src/
@@ -61,8 +61,8 @@ src/
 
 ```bash
 # 1. Clone your fork
-git clone git@github.com:MadeinPh1la/stacklion-api.git
-cd stacklion-api
+git clone git@github.com:MadeinPh1la/arche_api.git
+cd arche_api
 
 # 2. Create a virtual environment
 python3 -m venv .venv && source .venv/bin/activate
@@ -85,7 +85,7 @@ Visit [http://127.0.0.1:8080/docs](http://127.0.0.1:8080/docs) for live OpenAPI 
 
 | Tool       | Purpose                                       |
 | ---------- | --------------------------------------------- |
-| Black      | Auto-formatting (PEP 8 + Stacklion standards) |
+| Black      | Auto-formatting (PEP 8 + Arche standards) |
 | Ruff       | Static analysis, import sorting, and linting  |
 | MyPy       | Strict type checking                          |
 | Pre-commit | Enforces all of the above on every commit     |
@@ -128,7 +128,7 @@ docker compose up --build
 
 ## Contributing
 
-Contributions are welcome under Stacklion’s open-core model.
+Contributions are welcome under Arche’s open-core model.
 Please review:
 
 * [`CONTRIBUTING.md`](CONTRIBUTING.md) – workflow and PR requirements

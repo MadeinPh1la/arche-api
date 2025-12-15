@@ -1,4 +1,4 @@
-stacklion_api
+arche_api
 ├── adapters
 │   ├── controllers
 │   │   ├── __init__.py
@@ -321,7 +321,7 @@ stacklion_api
 │   │   └── system_metadata.py
 │   ├── client
 │   │   ├── __init__.py
-│   │   └── stacklion_http.py
+│   │   └── arche_http.py
 │   ├── manifest
 │   │   └── mcp.json
 │   ├── schemas
