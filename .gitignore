@@ -112,3 +112,14 @@ __pycache__/
 .idea/
 __pycache__/
 *.py[cod]
+
+# Local / IDE / OS junk
+.DS_Store
+.idea/
+__pycache__/
+*.py[cod]
+.pytest_cache/
+.mypy_cache/
+.ruff_cache/
+.coverage
+coverage.xml
