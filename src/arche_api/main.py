@@ -36,11 +36,12 @@ from starlette.responses import Response as StarletteResponse
 
 from arche_api.adapters.routers import mcp_router
 from arche_api.adapters.routers.api_router import router as api_router
-from arche_api.adapters.routers.edgar_router import router as edgar_router  # <-- EDGAR router
+from arche_api.adapters.routers.edgar_router import router as edgar_router
 from arche_api.adapters.routers.metrics_router import router as metrics_router
 from arche_api.adapters.routers.openapi_registry import (
     attach_openapi_contract_registry,
 )
+from arche_api.adapters.routers.reconciliation_router import router as reconciliation_router
 from arche_api.config.settings import Settings, get_settings
 from arche_api.dependencies.core.bootstrap import bootstrap
 from arche_api.infrastructure.http.errors import (
@@ -306,6 +307,9 @@ def create_app() -> FastAPI:
 
     # EDGAR router (v1/edgar/* endpoints)
     app.include_router(edgar_router)
+
+    # EDGAR reconciliation router (v1/edgar/reconciliation/* endpoints)
+    app.include_router(reconciliation_router)
 
     # MCP router
     app.include_router(mcp_router.router)

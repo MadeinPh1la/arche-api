@@ -1381,6 +1381,197 @@
         "title": "ReadinessResponse",
         "type": "object"
       },
+      "ReconciliationResultHTTP": {
+        "additionalProperties": false,
+        "properties": {
+          "actual_value": {
+            "anyOf": [
+              {
+                "pattern": "^(?!^[-+.]*$)[+-]?0*\\d*\\.?\\d*$",
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Actual Value"
+          },
+          "cik": {
+            "title": "Cik",
+            "type": "string"
+          },
+          "delta": {
+            "anyOf": [
+              {
+                "pattern": "^(?!^[-+.]*$)[+-]?0*\\d*\\.?\\d*$",
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Delta"
+          },
+          "dimension_key": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Dimension Key"
+          },
+          "dimension_labels": {
+            "anyOf": [
+              {
+                "additionalProperties": {
+                  "type": "string"
+                },
+                "type": "object"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Dimension Labels"
+          },
+          "expected_value": {
+            "anyOf": [
+              {
+                "pattern": "^(?!^[-+.]*$)[+-]?0*\\d*\\.?\\d*$",
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Expected Value"
+          },
+          "fiscal_period": {
+            "title": "Fiscal Period",
+            "type": "string"
+          },
+          "fiscal_year": {
+            "title": "Fiscal Year",
+            "type": "integer"
+          },
+          "notes": {
+            "anyOf": [
+              {
+                "additionalProperties": true,
+                "type": "object"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Notes"
+          },
+          "rule_category": {
+            "$ref": "#/components/schemas/ReconciliationRuleCategory"
+          },
+          "rule_id": {
+            "title": "Rule Id",
+            "type": "string"
+          },
+          "severity": {
+            "title": "Severity",
+            "type": "string"
+          },
+          "statement_type": {
+            "title": "Statement Type",
+            "type": "string"
+          },
+          "status": {
+            "$ref": "#/components/schemas/ReconciliationStatus"
+          },
+          "version_sequence": {
+            "title": "Version Sequence",
+            "type": "integer"
+          }
+        },
+        "required": [
+          "cik",
+          "fiscal_period",
+          "fiscal_year",
+          "rule_category",
+          "rule_id",
+          "severity",
+          "statement_type",
+          "status",
+          "version_sequence"
+        ],
+        "title": "ReconciliationResultHTTP",
+        "type": "object"
+      },
+      "ReconciliationRuleCategory": {
+        "enum": [
+          "CALENDAR",
+          "FX",
+          "IDENTITY",
+          "ROLLFORWARD",
+          "SEGMENT"
+        ],
+        "title": "ReconciliationRuleCategory",
+        "type": "string"
+      },
+      "ReconciliationStatus": {
+        "enum": [
+          "FAIL",
+          "PASS",
+          "WARNING"
+        ],
+        "title": "ReconciliationStatus",
+        "type": "string"
+      },
+      "ReconciliationSummaryBucketHTTP": {
+        "additionalProperties": false,
+        "properties": {
+          "fail_count": {
+            "minimum": 0.0,
+            "title": "Fail Count",
+            "type": "integer"
+          },
+          "fiscal_period": {
+            "title": "Fiscal Period",
+            "type": "string"
+          },
+          "fiscal_year": {
+            "title": "Fiscal Year",
+            "type": "integer"
+          },
+          "pass_count": {
+            "minimum": 0.0,
+            "title": "Pass Count",
+            "type": "integer"
+          },
+          "rule_category": {
+            "$ref": "#/components/schemas/ReconciliationRuleCategory"
+          },
+          "version_sequence": {
+            "title": "Version Sequence",
+            "type": "integer"
+          },
+          "warn_count": {
+            "minimum": 0.0,
+            "title": "Warn Count",
+            "type": "integer"
+          }
+        },
+        "required": [
+          "fail_count",
+          "fiscal_period",
+          "fiscal_year",
+          "pass_count",
+          "rule_category",
+          "version_sequence",
+          "warn_count"
+        ],
+        "title": "ReconciliationSummaryBucketHTTP",
+        "type": "object"
+      },
       "RestatementDeltaHTTP": {
         "additionalProperties": false,
         "properties": {
@@ -1707,6 +1898,112 @@
           "total_metrics_compared"
         ],
         "title": "RestatementSummaryHTTP",
+        "type": "object"
+      },
+      "RunReconciliationRequestHTTP": {
+        "additionalProperties": false,
+        "properties": {
+          "cik": {
+            "examples": [
+              "0000320193"
+            ],
+            "title": "Cik",
+            "type": "string"
+          },
+          "deep": {
+            "default": false,
+            "examples": [
+              false
+            ],
+            "title": "Deep",
+            "type": "boolean"
+          },
+          "fiscal_period": {
+            "examples": [
+              "FY"
+            ],
+            "title": "Fiscal Period",
+            "type": "string"
+          },
+          "fiscal_year": {
+            "minimum": 1.0,
+            "title": "Fiscal Year",
+            "type": "integer"
+          },
+          "fiscal_year_window": {
+            "default": 0,
+            "examples": [
+              0,
+              2
+            ],
+            "maximum": 20.0,
+            "minimum": 0.0,
+            "title": "Fiscal Year Window",
+            "type": "integer"
+          },
+          "rule_categories": {
+            "anyOf": [
+              {
+                "items": {
+                  "$ref": "#/components/schemas/ReconciliationRuleCategory"
+                },
+                "type": "array"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "examples": [
+              [
+                "IDENTITY",
+                "CALENDAR"
+              ]
+            ],
+            "title": "Rule Categories"
+          },
+          "statement_type": {
+            "examples": [
+              "INCOME_STATEMENT"
+            ],
+            "title": "Statement Type",
+            "type": "string"
+          }
+        },
+        "required": [
+          "cik",
+          "fiscal_period",
+          "fiscal_year",
+          "statement_type"
+        ],
+        "title": "RunReconciliationRequestHTTP",
+        "type": "object"
+      },
+      "RunReconciliationResponseHTTP": {
+        "additionalProperties": false,
+        "properties": {
+          "executed_at": {
+            "format": "date-time",
+            "title": "Executed At",
+            "type": "string"
+          },
+          "reconciliation_run_id": {
+            "title": "Reconciliation Run Id",
+            "type": "string"
+          },
+          "results": {
+            "items": {
+              "$ref": "#/components/schemas/ReconciliationResultHTTP"
+            },
+            "title": "Results",
+            "type": "array"
+          }
+        },
+        "required": [
+          "executed_at",
+          "reconciliation_run_id",
+          "results"
+        ],
+        "title": "RunReconciliationResponseHTTP",
         "type": "object"
       },
       "RunStatementDQResultHTTP": {
@@ -2137,6 +2434,19 @@
         "title": "SuccessEnvelope",
         "type": "object"
       },
+      "SuccessEnvelope_RunReconciliationResponseHTTP_": {
+        "additionalProperties": false,
+        "properties": {
+          "data": {
+            "$ref": "#/components/schemas/RunReconciliationResponseHTTP"
+          }
+        },
+        "required": [
+          "data"
+        ],
+        "title": "SuccessEnvelope",
+        "type": "object"
+      },
       "SuccessEnvelope_RunStatementDQResultHTTP_": {
         "additionalProperties": false,
         "properties": {
@@ -2168,6 +2478,23 @@
         "properties": {
           "data": {
             "$ref": "#/components/schemas/StatementOverrideTraceHTTP"
+          }
+        },
+        "required": [
+          "data"
+        ],
+        "title": "SuccessEnvelope",
+        "type": "object"
+      },
+      "SuccessEnvelope_list_ReconciliationSummaryBucketHTTP__": {
+        "additionalProperties": false,
+        "properties": {
+          "data": {
+            "items": {
+              "$ref": "#/components/schemas/ReconciliationSummaryBucketHTTP"
+            },
+            "title": "Data",
+            "type": "array"
           }
         },
         "required": [
@@ -4297,6 +4624,519 @@
         },
         "tags": [
           "EDGAR Filings"
+        ]
+      }
+    },
+    "/v1/edgar/reconciliation/ledger": {
+      "get": {
+        "parameters": [
+          {
+            "in": "query",
+            "name": "cik",
+            "required": true,
+            "schema": {
+              "title": "Cik",
+              "type": "string"
+            }
+          },
+          {
+            "in": "query",
+            "name": "fiscal_period",
+            "required": true,
+            "schema": {
+              "$ref": "#/components/schemas/FiscalPeriod"
+            }
+          },
+          {
+            "in": "query",
+            "name": "fiscal_year",
+            "required": true,
+            "schema": {
+              "minimum": 1,
+              "title": "Fiscal Year",
+              "type": "integer"
+            }
+          },
+          {
+            "in": "query",
+            "name": "limit",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "maximum": 20000,
+                  "minimum": 1,
+                  "type": "integer"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Limit"
+            }
+          },
+          {
+            "in": "query",
+            "name": "page",
+            "required": false,
+            "schema": {
+              "default": 1,
+              "minimum": 1,
+              "title": "Page",
+              "type": "integer"
+            }
+          },
+          {
+            "in": "query",
+            "name": "page_size",
+            "required": false,
+            "schema": {
+              "default": 200,
+              "maximum": 200,
+              "minimum": 1,
+              "title": "Page Size",
+              "type": "integer"
+            }
+          },
+          {
+            "in": "query",
+            "name": "reconciliation_run_id",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Reconciliation Run Id"
+            }
+          },
+          {
+            "in": "query",
+            "name": "rule_category",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "$ref": "#/components/schemas/ReconciliationRuleCategory"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Rule Category"
+            }
+          },
+          {
+            "in": "query",
+            "name": "statement_type",
+            "required": true,
+            "schema": {
+              "$ref": "#/components/schemas/StatementType"
+            }
+          },
+          {
+            "in": "query",
+            "name": "statuses",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "items": {
+                    "$ref": "#/components/schemas/ReconciliationStatus"
+                  },
+                  "type": "array"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Statuses"
+            }
+          },
+          {
+            "in": "query",
+            "name": "version_sequence",
+            "required": true,
+            "schema": {
+              "minimum": 1,
+              "title": "Version Sequence",
+              "type": "integer"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/PaginatedEnvelope"
+                }
+              }
+            }
+          },
+          "400": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorEnvelope"
+                }
+              }
+            }
+          },
+          "401": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorEnvelope"
+                }
+              }
+            }
+          },
+          "403": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorEnvelope"
+                }
+              }
+            }
+          },
+          "404": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorEnvelope"
+                }
+              }
+            }
+          },
+          "409": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorEnvelope"
+                }
+              }
+            }
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorEnvelope"
+                }
+              }
+            }
+          },
+          "429": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorEnvelope"
+                }
+              }
+            }
+          },
+          "500": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorEnvelope"
+                }
+              }
+            }
+          },
+          "503": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorEnvelope"
+                }
+              }
+            }
+          }
+        },
+        "tags": [
+          "EDGAR Reconciliation"
+        ]
+      }
+    },
+    "/v1/edgar/reconciliation/run": {
+      "post": {
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/RunReconciliationRequestHTTP"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/SuccessEnvelope_RunReconciliationResponseHTTP_"
+                }
+              }
+            }
+          },
+          "400": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorEnvelope"
+                }
+              }
+            }
+          },
+          "401": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorEnvelope"
+                }
+              }
+            }
+          },
+          "403": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorEnvelope"
+                }
+              }
+            }
+          },
+          "404": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorEnvelope"
+                }
+              }
+            }
+          },
+          "409": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorEnvelope"
+                }
+              }
+            }
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorEnvelope"
+                }
+              }
+            }
+          },
+          "429": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorEnvelope"
+                }
+              }
+            }
+          },
+          "500": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorEnvelope"
+                }
+              }
+            }
+          },
+          "503": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorEnvelope"
+                }
+              }
+            }
+          }
+        },
+        "tags": [
+          "EDGAR Reconciliation"
+        ]
+      }
+    },
+    "/v1/edgar/reconciliation/summary": {
+      "get": {
+        "parameters": [
+          {
+            "in": "query",
+            "name": "cik",
+            "required": true,
+            "schema": {
+              "title": "Cik",
+              "type": "string"
+            }
+          },
+          {
+            "in": "query",
+            "name": "fiscal_year_from",
+            "required": true,
+            "schema": {
+              "minimum": 1,
+              "title": "Fiscal Year From",
+              "type": "integer"
+            }
+          },
+          {
+            "in": "query",
+            "name": "fiscal_year_to",
+            "required": true,
+            "schema": {
+              "minimum": 1,
+              "title": "Fiscal Year To",
+              "type": "integer"
+            }
+          },
+          {
+            "in": "query",
+            "name": "limit",
+            "required": false,
+            "schema": {
+              "default": 5000,
+              "maximum": 50000,
+              "minimum": 1,
+              "title": "Limit",
+              "type": "integer"
+            }
+          },
+          {
+            "in": "query",
+            "name": "rule_category",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "$ref": "#/components/schemas/ReconciliationRuleCategory"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Rule Category"
+            }
+          },
+          {
+            "in": "query",
+            "name": "statement_type",
+            "required": true,
+            "schema": {
+              "$ref": "#/components/schemas/StatementType"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/SuccessEnvelope_list_ReconciliationSummaryBucketHTTP__"
+                }
+              }
+            }
+          },
+          "400": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorEnvelope"
+                }
+              }
+            }
+          },
+          "401": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorEnvelope"
+                }
+              }
+            }
+          },
+          "403": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorEnvelope"
+                }
+              }
+            }
+          },
+          "404": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorEnvelope"
+                }
+              }
+            }
+          },
+          "409": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorEnvelope"
+                }
+              }
+            }
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorEnvelope"
+                }
+              }
+            }
+          },
+          "429": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorEnvelope"
+                }
+              }
+            }
+          },
+          "500": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorEnvelope"
+                }
+              }
+            }
+          },
+          "503": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorEnvelope"
+                }
+              }
+            }
+          }
+        },
+        "tags": [
+          "EDGAR Reconciliation"
         ]
       }
     },
